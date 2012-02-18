@@ -85,7 +85,7 @@
 #include "llsecondlifeurls.h"
 #include "llstring.h"
 #include "lluserrelations.h"
-#include "llversionviewer.h"
+#include "sgversion.h"
 #include "llvfs.h"
 #include "llxorcipher.h"	// saved password, MAC address
 #include "message.h"
@@ -533,9 +533,9 @@ bool idle_startup()
 			if(!start_messaging_system(
 				   message_template_path,
 				   port,
-				   LL_VERSION_MAJOR,
-				   LL_VERSION_MINOR,
-				   LL_VERSION_PATCH,
+				   gVersionMajor,
+				   gVersionMinor,
+				   gVersionPatch,
 				   FALSE,
 				   std::string(),
 				   responder,
@@ -3417,7 +3417,7 @@ bool update_dialog_callback(const LLSD& notification, const LLSD& response)
 	// userserver no longer exists.
 	query_map["userserver"] = LLViewerLogin::getInstance()->getGridLabel();
 	// <edit>
-	query_map["channel"] = LL_CHANNEL;
+	query_map["channel"] = gVersionChannel;
 
 	// *TODO constantize this guy
 	// *NOTE: This URL is also used in win_setup/lldownloader.cpp
@@ -3617,20 +3617,20 @@ void register_viewer_callbacks(LLMessageSystem* msg)
 		LLViewerParcelMgr::processParcelDwellReply);
 
 	msg->setHandlerFunc("AvatarPropertiesReply",
-						LLPanelAvatar::processAvatarPropertiesReply);
+						&LLAvatarPropertiesProcessor::processAvatarPropertiesReply);
 	msg->setHandlerFunc("AvatarInterestsReply",
-						LLPanelAvatar::processAvatarInterestsReply);
+						&LLAvatarPropertiesProcessor::processAvatarInterestsReply);
 	msg->setHandlerFunc("AvatarGroupsReply",
-						LLPanelAvatar::processAvatarGroupsReply);
+						&LLAvatarPropertiesProcessor::processAvatarGroupsReply);
 	// ratings deprecated
 	//msg->setHandlerFuncFast(_PREHASH_AvatarStatisticsReply,
 	//					LLPanelAvatar::processAvatarStatisticsReply);
 	msg->setHandlerFunc("AvatarNotesReply",
-						LLPanelAvatar::processAvatarNotesReply);
+						&LLAvatarPropertiesProcessor::processAvatarNotesReply);
 	msg->setHandlerFunc("AvatarPicksReply",
-						LLPanelAvatar::processAvatarPicksReply);
+						&LLAvatarPropertiesProcessor::processAvatarPicksReply);
 	msg->setHandlerFunc("AvatarClassifiedReply",
-						LLPanelAvatar::processAvatarClassifiedReply);
+						&LLAvatarPropertiesProcessor::processAvatarClassifiedsReply);
 
 	msg->setHandlerFuncFast(_PREHASH_CreateGroupReply,
 						LLGroupMgr::processCreateGroupReply);
@@ -3704,8 +3704,9 @@ void register_viewer_callbacks(LLMessageSystem* msg)
 	msg->setHandlerFunc("MapItemReply", LLWorldMap::processMapItemReply);
 
 	msg->setHandlerFunc("EventInfoReply", LLPanelEvent::processEventInfoReply);
-	msg->setHandlerFunc("PickInfoReply", LLPanelPick::processPickInfoReply);
-	msg->setHandlerFunc("ClassifiedInfoReply", LLPanelClassified::processClassifiedInfoReply);
+	msg->setHandlerFunc("PickInfoReply", &LLAvatarPropertiesProcessor::processPickInfoReply);
+	//msg->setHandlerFunc("ClassifiedInfoReply", LLPanelClassified::processClassifiedInfoReply);
+	msg->setHandlerFunc("ClassifiedInfoReply", LLAvatarPropertiesProcessor::processClassifiedInfoReply);
 	msg->setHandlerFunc("ParcelInfoReply", LLPanelPlace::processParcelInfoReply);
 	msg->setHandlerFunc("ScriptDialog", process_script_dialog);
 	msg->setHandlerFunc("LoadURL", process_load_url);

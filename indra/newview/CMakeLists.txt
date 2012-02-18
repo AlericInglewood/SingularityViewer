@@ -76,6 +76,7 @@ include_directories(
     )
 
 set(viewer_SOURCE_FILES
+    sgversion.cpp
     llviewerobjectbackup.cpp
     slfloatermediafilter.cpp
     floaterlocalassetbrowse.cpp
@@ -128,6 +129,7 @@ set(viewer_SOURCE_FILES
     llassetuploadqueue.cpp
     llattachmentsmgr.cpp
     llaudiosourcevo.cpp
+    llavatarpropertiesprocessor.cpp
     llbox.cpp
     llbuildnewviewsscheduler.cpp
     llcallbacklist.cpp
@@ -561,6 +563,7 @@ set(viewer_HEADER_FILES
     CMakeLists.txt
     ViewerInstall.cmake
 
+    sgversion.h
     llviewerobjectbackup.h
     slfloatermediafilter.h
     floaterlocalassetbrowse.h
@@ -612,6 +615,7 @@ set(viewer_HEADER_FILES
     llassetuploadqueue.h
     llattachmentsmgr.h
     llaudiosourcevo.h
+    llavatarpropertiesprocessor.h
     llbox.h
     llbuildnewviewsscheduler.h
     llcallbacklist.h
@@ -943,7 +947,6 @@ set(viewer_HEADER_FILES
     llviewerassetstorage.h
     llviewerassettype.h
     llvieweraudio.h
-    llviewerbuild.h
     llviewercamera.h
     llviewercontrol.h
     llviewerdisplay.h
@@ -1346,12 +1349,16 @@ if (FMOD OR FMODEX)
   if (NOT WINDOWS)
     set(fmodwrapper_SOURCE_FILES fmodwrapper.cpp)
     add_library(fmodwrapper SHARED ${fmodwrapper_SOURCE_FILES})
-	if(FMODEX)
-		set(fmodwrapper_needed_LIBRARIES ${FMODEX_LIBRARY})
-	endif(FMODEX)
-	if(FMOD)
-		set(fmodwrapper_needed_LIBRARIES "${fmodwrapper_needed_LIBRARIES} ${FMOD_LIBRARY}")
-	endif(FMOD)
+    if(FMOD AND FMODEX)
+		set(fmodwrapper_needed_LIBRARIES "${FMODEX_LIBRARY} ${FMOD_LIBRARY}")
+    else(FMOD AND FMODEX)
+        if(FMODEX)
+            set(fmodwrapper_needed_LIBRARIES ${FMODEX_LIBRARY})
+        endif(FMODEX)
+        if(FMOD)
+            set(fmodwrapper_needed_LIBRARIES "${FMOD_LIBRARY}")
+        endif(FMOD)
+    endif(FMOD AND FMODEX)
     if (DARWIN)
       list(APPEND fmodwrapper_needed_LIBRARIES ${CARBON_LIBRARY})
       set_target_properties(
