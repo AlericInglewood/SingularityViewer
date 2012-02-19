@@ -1,90 +1,23 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
 <panel border="true" bottom="-409" height="408" label="Input &amp; Camera" left="102" name="Input panel" width="517">
-	<text bottom="-10" follows="top" height="10" left="5" name=" Camera Options:">Camera Options:</text>
-  <slider can_edit_text="true" decimal_digits="2" follows="top" label="Angle:" label_width="44" width="192" height="16" increment=".025" initial_val="1.57" left="5" max_val="2.97" min_val=".17" name="camera_fov" value="60"/>
+	<text bottom="-10" follows="top" height="10" left="5" font="SansSerifBold" name=" Camera Options:">Camera Options:</text>
+	<slider bottom="-40" can_edit_text="true" decimal_digits="2" follows="top" label="Angle:" label_width="60" width="192" height="16" increment=".025" initial_val="1.57" left="10" max_val="2.97" min_val=".17" name="camera_fov" value="60"/>
 	<text bottom_delta="0" follows="top" left_delta="214" height="16" name="Move automatically for:">Move automatically for:</text> 
 	<check_box bottom_delta="0" follows="top" left_delta="125" initial_value="false" label="Edit" name="edit_camera_movement" tool_tip="Use automatic camera positioning when entering and exiting edit mode"/>
 	<check_box bottom_delta="0" follows="top" left_delta="56" initial_value="false" label="Appearance" name="appearance_camera_movement" tool_tip="Use automatic camera positioning while in appearance mode"/>
-	<slider can_edit_text="true" control_name="CameraOffsetScale" decimal_digits="2" follows="top" left="5" label="Distance:" label_width="44" width="192" height="16" increment=".025" initial_val="1" min_val=".5" max_val="3" name="camera_offset_scale" value="1"/>
+	<slider can_edit_text="true" control_name="CameraOffsetScale" decimal_digits="2" follows="top" left="10" label="Distance:" label_width="60" width="192" height="16" increment=".025" initial_val="1" min_val=".5" max_val="3" name="camera_offset_scale" value="1"/>
 	<check_box bottom_delta="0" follows="top" left_delta="214" initial_value="false" label="Unsit on Camera Reset" name="unsit_on_camera_reset" tool_tip="Stand up automatically when you press Esc and the camera switches to third person mode"/>
-	<button bottom_delta="0" follows="top" left="360" height="16" label="Joystick Setup" name="mouse2stick_setup_button" width="120"/>
-	<text follows="top" left="5" height="16" font="SansSerifBold" name="Key/Function">Key/Function</text>
-	<text bottom_delta="0" follows="top" left_delta="115" height="16" font="SansSerifBold" name="Key1">Key 1</text>
-	<text bottom_delta="0" follows="top" left_delta="60"  height="16" font="SansSerifBold" name="Key2">Key 2</text>
-	<text bottom_delta="0" follows="top" left_delta="60"  height="16" font="SansSerifBold" name="Mouse1">Mouse 1</text>
-	<text bottom_delta="0" follows="top" left_delta="60"  height="16" font="SansSerifBold" name="Mouse2">Mouse 2</text>
-	<text follows="top" left="5" height="16" name="Forward">Forward</text>
-	<button bottom_delta="0" follows="top" left_delta="115" width="60" height="16" label="FWD1" name="Fwd_key1" font="SansSerifSmall" tool_tip="Default W"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="FWD2" name="Fwd_key2" font="SansSerifSmall" tool_tip="Default UpArrow"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="FWDM" name="Fwd_mouse" font="SansSerifSmall"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="FWDM2" name="Fwd_mouse2" font="SansSerifSmall"/>
-	<text follows="top" left="5" height="16" name="">Backward</text>
-	<button bottom_delta="0" follows="top" left_delta="115" width="60" height="16" label="BWD1" name="Bwd_key1" font="SansSerifSmall" tool_tip="Default S"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="BWD2" name="Bwd_key2" font="SansSerifSmall" tool_tip="Default DownArrow"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="BWDM" name="Bwd_mouse" font="SansSerifSmall"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="BWDM2" name="Bwd_mouse2" font="SansSerifSmall"/>
-	<text follows="top" left="5" height="16" name="">Left</text>
-	<button bottom_delta="0" follows="top" left_delta="115" width="60" height="16" label="LEFT1" name="Left_key1" font="SansSerifSmall" tool_tip="Default A"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="LEFT2" name="Left_key2" font="SansSerifSmall" tool_tip="Default LeftArrow"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="LEFTM" name="Left_mouse" font="SansSerifSmall"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="LEFTM2" name="Left_mouse2" font="SansSerifSmall"/>
-	<text follows="top" left="5" height="16" name="">Right</text>
-	<button bottom_delta="0" follows="top" left_delta="115" width="60" height="16" label="RIGHT1" name="Right_key1" font="SansSerifSmall" tool_tip="Default D"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="RIGHT2" name="Right_key2" font="SansSerifSmall" tool_tip="Default RightArrow"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="RIGHTM" name="Right_mouse" font="SansSerifSmall"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="RIGHTM2" name="Right_mouse2" font="SansSerifSmall"/>
-	<text follows="top" left="5" height="16" name="Up">Up/M2ump</text>
-	<button bottom_delta="0" follows="top" left_delta="115" width="60" height="16" label="JUMP1" name="jump_key1" font="SansSerifSmall" tool_tip="Default E"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="JUMP2" name="jump_key2" font="SansSerifSmall" tool_tip="Default PgUp"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="JUMPM" name="jump_mouse" font="SansSerifSmall"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="JUMPM2" name="jump_mouse2" font="SansSerifSmall"/>
-	<check_box bottom_delta="-10" follows="top" left_delta="60" label="Hold to Fly/land" name="automatic_fly" tool_tip="Holding the Up and Down keys will cause you to fly or land if this box is checked."/>
-	<text bottom_delta="-10" follows="top" left="5" height="16" name="Down">Down/Crouch</text>
-	<button bottom_delta="0" follows="top" left_delta="115" width="60" height="16" label="CROUCH1" name="crouch_key1" font="SansSerifSmall" tool_tip="Default C"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="CROUCH2" name="crouch_key2" font="SansSerifSmall" tool_tip="Default PgDn"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="CROUCHM" name="crouch_mouse" font="SansSerifSmall"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="CROUCHM2" name="crouch_mouse2" font="SansSerifSmall"/>
-	<text follows="top" left="5" height="16" name="Shift">Shift</text>
-	<button bottom_delta="0" follows="top" left_delta="115" width="60" height="16" label="SHIFT1" name="Shift_key1"  font="SansSerifSmall" visible="false"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="SHIFT2" name="Shift_key2"  font="SansSerifSmall" visible="false"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="SHIFTM" name="Shift_mouse" font="SansSerifSmall"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="SHIFTM2" name="Shift_mouse2"   font="SansSerifSmall"/>
-	<text follows="top" left="5" height="16" name="Ctrl-Shift">Ctrl-Shift</text>
-	<button bottom_delta="0" follows="top" left_delta="115" width="60" height="16" label="CTRLSHIFT1" name="Ctrl-Shift_key1"  font="SansSerifSmall" visible="false"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="CTRLSHIFT2" name="Ctrl-Shift_key2"  font="SansSerifSmall" visible="false"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="CTRLSHIFTM" name="Ctrl-Shift_mouse" font="SansSerifSmall"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="CTRLSHIFTM2" name="Ctrl-Shift_mouse2"   font="SansSerifSmall"/>
-	<text follows="top" left="5" height="16" name="Ctrl">Ctrl</text>
-	<button bottom_delta="0" follows="top" left_delta="115" width="60" height="16" label="CTRL1" name="Ctrl_key1"  font="SansSerifSmall" visible="false"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="CTRL2" name="Ctrl_key2"  font="SansSerifSmall" visible="false"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="CTRLM" name="Ctrl_mouse" font="SansSerifSmall"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="CTRLM2" name="Ctrl_mouse2"   font="SansSerifSmall"/>
-	<text follows="top" left="5" height="16" name="Ctrl-Alt">Ctrl-Alt</text>
-	<button bottom_delta="0" follows="top" left_delta="115" width="60" height="16" label="CTRLALT1" name="Ctrl-Alt_key1"  font="SansSerifSmall" visible="false" tool_tip="Default "/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="CTRLALT2" name="Ctrl-Alt_key2"  font="SansSerifSmall" visible="false" tool_tip="Default "/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="CTRLALTM" name="Ctrl-Alt_mouse" font="SansSerifSmall"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="CTRLALTM2" name="Ctrl-Alt_mouse2"   font="SansSerifSmall"/>
-	<text follows="top" left="5" height="16" name="Alt">Alt</text>
-	<button bottom_delta="0" follows="top" left_delta="115" width="60" height="16" label="ALT1" name="Alt_key1"  font="SansSerifSmall" visible="false"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="ALT2" name="Alt_key2"  font="SansSerifSmall" visible="false"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="ALTM" name="Alt_mouse" font="SansSerifSmall"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="ALTM2" name="Alt_mouse2"   font="SansSerifSmall"/>
-	<text follows="top" left="5" height="16" name=""></text>
-	<button bottom_delta="0" follows="top" left_delta="115" width="60" height="16" label="1" name="_key1"  font="SansSerifSmall" visible="false" tool_tip="Default "/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="2" name="_key2"  font="SansSerifSmall" visible="false" tool_tip="Default "/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="M" name="_mouse" font="SansSerifSmall" visible="false"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="M2" name="_mouse2"   font="SansSerifSmall" visible="false"/>
-	<text follows="top" left="5" height="16" name="Voice">Voice</text>
-	<button bottom_delta="0" follows="top" left_delta="115" width="60" height="16" label="VOICE1" name="Voice_key1"  font="SansSerifSmall" visible="false"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="VOICE2" name="Voice_key2"  font="SansSerifSmall" visible="false"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="VOICEM" name="Voice_mouse" font="SansSerifSmall" tool_tip="Default Middlemouse"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="VOICEM2" name="Voice_mouse2"   font="SansSerifSmall"/>
-	<text follows="top" left="5" height="16" name="MouseLook">MouseLook</text>
-	<button bottom_delta="0" follows="top" left_delta="115" width="60" height="16" label="ML1" name="ML_key1"  font="SansSerifSmall" tool_tip="Default M" visible="false"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="ML2" name="ML_key2"  font="SansSerifSmall" visible="false"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="MLM" name="ML_mouse" font="SansSerifSmall"/>
-	<button bottom_delta="0" follows="top" left_delta="60"  width="60" height="16" label="MLM2" name="ML_mouse2"   font="SansSerifSmall"/>
-	<spinner bottom_delta="0" follows="top" left_delta="60" height="16" label="Sensitivity:" label_width="55" decimal_digits="2" increment="0.25" initial_val="2" max_val="15" min_val="0" name="mouse_sensitivity" width="108"/>
-	<check_box bottom_delta="0" follows="top" left="65" label="Invert" name="invert_mouse"/>
+	<text follows="top" left="10" name="Mouselook:">Mouselook:</text>
+	<slider can_edit_text="true" follows="top" left="15" height="16" label="Sensitivity:" label_width="60" decimal_digits="2" increment="0.25" initial_val="2" max_val="15" min_val="0" name="mouse_sensitivity" width="192"/>
+	<check_box bottom_delta="-20" follows="top" label="Invert" name="invert_mouse"/>
 	<check_box bottom_delta="0" follows="top" left_delta="68" label="Show Avatar" name="first_person_avatar_visible" initial_value="false"/>
+	<button follows="top" left="10" height="20" label="Joystick Setup" name="mouse2stick_setup_button" width="120"/>
+	<check_box follows="top" bottom_delta="-20" label="Hold jump/crouch to Fly/land" name="automatic_fly" tool_tip="Holding the Up and Down keys will cause you to fly or land if this box is checked."/>
+	<text top="275" left="15" height="16" font="SansSerifBold" name="Key Changer">Key Changer</text>
+	<scroll_list follows="top|bottom|left|right" bottom="15" height="204" left="15" multi_select="false" name="binding_list">
+		 <column label="Trigger" name="trigger" width="70"/>
+		 <column label="Key" name="shortcut" width="70"/>
+		 <column label="" name="key" width="-1"/>
+		 <column label="Name" name="name" width="160"/>
+	</scroll_list>
 </panel>
