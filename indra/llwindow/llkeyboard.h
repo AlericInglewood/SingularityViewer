@@ -108,9 +108,13 @@ public:
 	EKeyboardInsertMode getInsertMode()	{ return mInsertMode; }
 	void toggleInsertMode();
 
-	static BOOL		maskFromString(const std::string& str, MASK *mask);		// False on failure
+	static BOOL		maskFromString(const std::string& str, MASK *mask);			// False on failure (for keys.ini file decoding).
 	static BOOL		keyFromString(const std::string& str, KEY *key);			// False on failure
+
+	static MASK maskFromString(std::string const& str);							// Reverse decoding of stringFromMask.
+	static std::string stringFromMask(MASK modifiers);
 	static std::string stringFromKey(KEY key);
+	static std::string stringFromShortcut(MASK modifiers, KEY key);
 
 	e_numpad_distinct getNumpadDistinct() { return mNumpadDistinct; }
 	void setNumpadDistinct(e_numpad_distinct val) { mNumpadDistinct = val; }

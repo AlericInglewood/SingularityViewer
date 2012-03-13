@@ -632,7 +632,8 @@ LLScrollListCtrl::LLScrollListCtrl(const std::string& name, const LLRect& rect,
 	void (*commit_callback)(LLUICtrl* ctrl, void* userdata),
 	void* callback_user_data,
 	BOOL allow_multiple_selection,
-	BOOL show_border
+	BOOL show_border,
+	BOOL no_sort
 	)
  :	LLUICtrl(name, rect, TRUE, commit_callback, callback_user_data),
 	mLineHeight(0),
@@ -647,6 +648,7 @@ LLScrollListCtrl::LLScrollListCtrl(const std::string& name, const LLRect& rect,
 	mSelectionChanged(FALSE),
 	mNeedsScroll(FALSE),
 	mCanSelect(TRUE),
+	mNoSort(no_sort),
 	mDisplayColumnHeaders(FALSE),
 	mColumnsDirty(FALSE),
 	mMaxItemCount(INT_MAX), 
@@ -1968,18 +1970,21 @@ BOOL LLScrollListCtrl::handleToolTip(S32 x, S32 y, std::string& msg, LLRect* sti
 	if (hit_item)
 	{
 		// If the item has a specific tool tip set by XUI use that first
-		std::string tooltip=hit_item->getToolTip();
-		if(!tooltip.empty())
-		{
-			msg=tooltip;
-			return TRUE;
-		}
-	
+		std::string tooltip;
 		LLScrollListCell* hit_cell = hit_item->getColumn(column_index);
-		if (!hit_cell) return FALSE;
+		// Prefer the tooltip of the cell itself.
+		if (hit_cell) tooltip = hit_cell->getToolTip();
+		// Otherwise use that of the item (the row).
+		if (tooltip.empty()) tooltip = hit_item->getToolTip();
+		if (!tooltip.empty())
+		{
+			msg = tooltip;
+			handled = TRUE;
+		}
+		// Otherwise, if we hit a cell and it's text, use that -- so that it's possible
+		// to read long text in the tooltip when the column is too narrow.
 		//S32 cell_required_width = hit_cell->getContentWidth();
-		if (hit_cell 
-			&& hit_cell->isText())
+		if (!handled && hit_cell && hit_cell->isText())
 		{
 
 			S32 rect_left = getColumnOffsetFromIndex(column_index) + mItemListRect.mLeft;
@@ -1995,8 +2000,8 @@ BOOL LLScrollListCtrl::handleToolTip(S32 x, S32 y, std::string& msg, LLRect* sti
 				&(sticky_rect_screen->mRight), &(sticky_rect_screen->mTop) );
 
 			msg = hit_cell->getValue().asString();
+			handled = TRUE;
 		}
-		handled = TRUE;
 	}
 
 	// otherwise, look for a tooltip associated with this column
@@ -2838,6 +2843,8 @@ LLXMLNodePtr LLScrollListCtrl::getXML(bool save_children) const
 
 	node->createChild("draw_heading", TRUE)->setBoolValue(mDisplayColumnHeaders);
 
+	node->createChild("no_sort", TRUE)->setBoolValue(mNoSort);
+
 	node->createChild("background_visible", TRUE)->setBoolValue(mBackgroundVisible);
 
 	node->createChild("draw_stripes", TRUE)->setBoolValue(mDrawStripes);
@@ -2962,6 +2969,9 @@ LLView* LLScrollListCtrl::fromXML(LLXMLNodePtr node, LLView *parent, LLUICtrlFac
 	BOOL draw_heading = FALSE;
 	node->getAttributeBOOL("draw_heading", draw_heading);
 
+	BOOL no_sort = TRUE;
+	node->getAttributeBOOL("no_sort", no_sort);
+
 	S32 search_column = 0;
 	node->getAttributeS32("search_column", search_column);
 
@@ -2979,7 +2989,8 @@ LLView* LLScrollListCtrl::fromXML(LLXMLNodePtr node, LLView *parent, LLUICtrlFac
 		callback,
 		NULL,
 		multi_select,
-		draw_border);
+		draw_border,
+		no_sort);
 
 	scroll_list->setDisplayHeading(draw_heading);
 	if (node->hasAttribute("heading_height"))
@@ -3281,6 +3292,8 @@ void LLScrollListCtrl::onClickColumn(void *userdata)
 
 	LLScrollListCtrl *parent = info->mParentCtrl;
 	if (!parent) return;
+
+	if (parent->mNoSort) return;
 
 	S32 column_index = info->mIndex;
 

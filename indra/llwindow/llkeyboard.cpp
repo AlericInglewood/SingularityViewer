@@ -330,7 +330,6 @@ BOOL LLKeyboard::keyFromString(const std::string& str, KEY *key)
 	return FALSE;
 }
 
-
 // static
 std::string LLKeyboard::stringFromKey(KEY key)
 {
@@ -345,7 +344,39 @@ std::string LLKeyboard::stringFromKey(KEY key)
 	return res;
 }
 
+//static
+MASK LLKeyboard::maskFromString(std::string const& str)
+{
+	MASK mask = MASK_NONE;
+	if (str.find("Ctrl-") != std::string::npos)  mask |= MASK_CONTROL;
+	if (str.find("Alt-") != std::string::npos)   mask |= MASK_ALT;
+	if (str.find("Shift-") != std::string::npos) mask |= MASK_SHIFT;
+	return mask;
+}
 
+// static
+std::string LLKeyboard::stringFromMask(MASK modifiers)
+{
+	std::string result;
+	if ((modifiers & MASK_CONTROL)) result.assign("Ctrl-");
+	if ((modifiers & MASK_ALT)) result.append("Alt-");
+	if ((modifiers & MASK_SHIFT)) result.append("Shift-");
+	return result;
+}
+
+//static
+std::string LLKeyboard::stringFromShortcut(MASK modifiers, KEY key)
+{
+	std::string result = LLKeyboard::stringFromMask(modifiers);
+	std::string key_string = LLKeyboard::stringFromKey(key);
+	if ((modifiers & (MASK_CONTROL|MASK_ALT|MASK_SHIFT)) &&
+		(key_string[0] == '-' || key_string[0] == '='))
+	{
+		result.append(" ");
+	}
+	result.append(key_string);
+	return result;
+}
 
 //static
 BOOL LLKeyboard::maskFromString(const std::string& str, MASK *mask)

@@ -92,6 +92,8 @@ set(viewer_SOURCE_FILES
     llwlhandlers.cpp
     llregioninfomodel.cpp
     m7wlinterface.cpp
+    aifloatershortcut.cpp
+    aikeybindings.cpp
     ascentfloatercontactgroups.cpp
     ascentkeyword.cpp
     ascentprefschat.cpp
@@ -577,6 +579,8 @@ set(viewer_HEADER_FILES
     llwlhandlers.h
     llregioninfomodel.h
     m7wlinterface.h
+    aifloatershortcut.h
+    aikeybindings.h
     ascentfloatercontactgroups.h
     ascentkeyword.h
     ascentprefschat.h

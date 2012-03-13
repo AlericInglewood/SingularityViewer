@@ -82,8 +82,12 @@ public:
 	virtual BOOL			handleClick() { return FALSE; }
 	virtual	void			setEnabled(BOOL enable) { }
 
+	void					setToolTip(std::string const& tool_tip) { mToolTip = tool_tip; }
+	std::string const&		getToolTip(void) const { return mToolTip; }
+
 private:
 	S32 mWidth;
+	std::string mToolTip;
 };
 
 /*
@@ -391,7 +395,8 @@ public:
 		void (*commit_callback)(LLUICtrl*, void*),
 		void* callback_userdata,
 		BOOL allow_multiple_selection,
-		BOOL draw_border = TRUE);
+		BOOL draw_border = TRUE,
+		BOOL no_sort = FALSE);
 
 	virtual ~LLScrollListCtrl();
 
@@ -642,9 +647,10 @@ protected:
 	typedef std::deque<LLScrollListItem *> item_list;
 	item_list&		getItemList() { return mItemList; }
 
-private:
+public:
 	void			selectPrevItem(BOOL extend_selection);
 	void			selectNextItem(BOOL extend_selection);
+private:
 	void			drawItems();
 	void			updateLineHeight();
 	void            updateLineHeightInsert(LLScrollListItem* item);
@@ -672,6 +678,7 @@ private:
 	BOOL			mSelectionChanged;
 	BOOL			mNeedsScroll;
 	BOOL			mCanSelect;
+	BOOL			mNoSort;
 	BOOL			mDisplayColumnHeaders;
 	BOOL			mColumnsDirty;
 

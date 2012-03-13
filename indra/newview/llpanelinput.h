@@ -34,6 +34,7 @@
 #define LL_PANELINPUT_H
 
 #include "llpanel.h"
+#include "aikeybindings.h"
 
 class LLPanelInput : public LLPanel
 {
@@ -49,6 +50,16 @@ private:
 	static void onClickJoystickSetup(void* user_data);
 	F32 mPreAdjustFOV;
 	F32 mPreAdjustCameraOffsetScale;
+	AIKeyBindingsListFilter mKeyBindingsListFilter;
+
+	void buildLists(void);
+	void buildCombos(void);
+
+	static void onKeyBindingsListSelect(LLUICtrl* ctrl, void* user_data);
+
+	void onInputModeFilter(LLUICtrl* ctrl, LLSD const& data);
+	void onInputModifiersFilter(LLUICtrl* ctrl, LLSD const& data);
+	void onManageShortcut(LLUICtrl* ctrl, LLSD const& data);
 };
 
 #endif

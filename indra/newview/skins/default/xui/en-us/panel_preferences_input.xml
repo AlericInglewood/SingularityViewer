@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
-<panel border="true" bottom="-409" height="408" label="Input &amp; Camera" left="102" name="Input panel" width="517">
+<panel top="20" left="10" height="400" width="517" border="true" label="Input &amp; Camera" name="Input panel">
+<tab_container label="Input and Camera" bottom="0" height="440" width="497" left="0" name="IAC" tab_min_width="70" tab_position="top">
+  <panel border="true" left="1" bottom="-408" height="408" width="500" label="General" name="IACgeneral">
 	<text bottom="-20" follows="top" height="10" left="10" name=" Mouselook Options:">Mouselook Options:</text>
 	<text bottom="-20" follows="top" height="10" left="148" name=" Mouse Sensitivity:">Mouse Sensitivity:</text>
 	<slider_bar bottom="-26" follows="top" height="16" increment="0.25" initial_val="2" left="276" max_val="15" min_val="0" name="mouse_sensitivity" width="128"/>
@@ -16,4 +18,21 @@
 	<check_box bottom_delta="-18" follows="top" height="16" initial_value="false" label="Automatic Appearance Camera Movement" left="148" name="appearance_camera_movement" tool_tip="Use automatic camera positioning while in edit mode"/>
 	<check_box bottom_delta="-18" follows="top" height="16" initial_value="false" label="Unsit Avatar on Camera Reset" left="148" name="unsit_on_camera_reset" tool_tip="Stand up automatically when you press Esc and the camera switches to third person mode"/>
 	<button bottom_delta="-30" follows="top" font="SansSerif" height="20" label="Joystick Setup" name="joystick_setup_button" width="155"/>
+  </panel>
+  <panel border="true" left="1" bottom="-402" height="402" width="500" label="Key bindings" name="IACbindings">
+	<text bottom="-18" height="10" left="10" name="IACFilters">Filters:</text>
+	<text bottom="-18" height="10" left="98" name="IACinput_mode">input mode:</text>
+	<combo_box bottom="-24" left="159" height="18" name="inputmodes_combobox" width="110" />
+	<combo_box bottom="-24" right="-10" height="18" name="modifiers_combobox" width="110" />
+	<text bottom="-18" height="10" left="334" name="IACModifiers">modifier: </text>
+	<scroll_list draw_heading="true" bottom="50" left="2" right="-3" top="-8" multi_select="false" name="bindings_list" no_sort="true" >
+	  <column label="Action" name="action" width="150" tool_tip="Actions that can be bound to zero or more keyboard keys and/or mouse buttons." />
+	  <column label="Input modes" name="inputmodes" width="80"  tool_tip="The input modes that the action is available for. Meaning of the keys used: D='modal Dialogue', A='Appearance', W='Walking', F='Flying', B='Building', S='Sitting', T='Text input', M='Mouselook' and U='Active UI (floater)'." />
+	  <column label="Shortcut(s)" name="key1" width="124" tool_tip="Shortcuts are a combination of zero or more modifiers (Ctrl-, Alt- and Shift-) with one keyboard key or mouse button" />
+	  <column label="Shortcut(s)" name="key2" width="124" tool_tip="Shortcuts are a combination of zero or more modifiers (Ctrl-, Alt- and Shift-) with one keyboard key or mouse button" />
+	</scroll_list>
+	<text bottom_delta="-18" height="10" left="10" name="selected_action">For selected action "&lt;none selected>" manage shortcut:</text>
+	<combo_box bottom_delta="-7" right="-10" height="18" name="shortcut_combobox" width="124" />
+  </panel>
+</tab_container>
 </panel>

@@ -256,7 +256,7 @@ void LLFloaterGesture::buildGestureList()
 			element["columns"][0]["font"] = "SANSSERIF";
 			element["columns"][0]["font-style"] = font_style;
 
-			std::string key_string = LLKeyboard::stringFromKey(gesture->mKey);
+			std::string key_string;
 			std::string buffer;
 
 			{
@@ -267,15 +267,8 @@ void LLFloaterGesture::buildGestureList()
 				}
 				else
 				{
-					if (gesture->mMask & MASK_CONTROL) buffer.append("Ctrl-");
-					if (gesture->mMask & MASK_ALT) buffer.append("Alt-");
-					if (gesture->mMask & MASK_SHIFT) buffer.append("Shift-");
-					if ((gesture->mMask & (MASK_CONTROL|MASK_ALT|MASK_SHIFT)) &&
-						(key_string[0] == '-' || key_string[0] == '='))
-					{
-						buffer.append(" ");
-					}
-					buffer.append(key_string);
+					buffer = LLKeyboard::stringFromShortcut(gesture->mMask, gesture->mKey);
+					key_string = LLKeyboard::stringFromKey(gesture->mKey);
 				}
 			}
 			element["columns"][1]["column"] = "shortcut";

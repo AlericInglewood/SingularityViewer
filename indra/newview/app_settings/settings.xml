@@ -6101,6 +6101,22 @@
         <integer>0</integer>
       </array>
     </map>
+    <key>FloaterShortcutRect</key>
+    <map>
+      <key>Comment</key>
+      <string>Rectangle for shortcut management floater</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Rect</string>
+      <key>Value</key>
+      <array>
+        <integer>0</integer>
+        <integer>130</integer>
+        <integer>450</integer>
+        <integer>0</integer>
+      </array>
+    </map>
     <key>FloaterSnapshotRect</key>
     <map>
       <key>Comment</key>
