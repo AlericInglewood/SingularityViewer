@@ -155,7 +155,7 @@ bool LLSDMessage::ResponderAdapter::listener(const LLSD& payload, bool success)
     }
     else
     {
-        mResponder->errorWithContent(payload["status"].asInteger(), payload["reason"], payload["content"]);
+        mResponder->pubErrorWithContent(payload["status"].asInteger(), payload["reason"], payload["content"]);
     }
 
     /*---------------- MUST BE LAST STATEMENT BEFORE RETURN ----------------*/

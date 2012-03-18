@@ -40,8 +40,6 @@
 #include "lliopipe.h"		// LLIOPipe::buffer_ptr_t
 
 class LLSD;
-class LLSDMessage;
-class LLSDMessage { class ResponderAdapter; };
 
 // Things defined in this namespace are called from elsewhere in the viewer code.
 namespace AICurlInterface
@@ -103,18 +101,21 @@ class Responder {
 	void setURL(std::string const& url);
 
   protected:
-	// These are overridden in derived classes, but never directly called from outside Responder (or should never be called, exception being LLSDMessage::ResponderAdapter).
+	// These are overridden in derived classes, but never directly called from outside Responder.
 
 	// Derived classes can override this to get informed when a fatal error occurs. The default calls error().
 	virtual void errorWithContent(U32 status, std::string const& reason, LLSD const& content);
-	// ResponderAdapter is a hack, which shows among other things from the fact that it needs to be added as friend here in order to be able to call errorWithContent().
-	friend class LLSDMessage::ResponderAdapter;
 
 	// Derived classes can override this to get informed when a fatal error occurs. The default prints the error to llinfos.
 	virtual void error(U32 status, std::string const& reason);
 
 	// A derived class should return true if curl should follow redirections. The default is not to follow redirections.
 	virtual bool followRedir(void) { return false; }
+
+  public:
+	// Called from LLSDMessage::ResponderAdapter::listener.
+	// LLSDMessage::ResponderAdapter is a hack, showing among others by fact that this function needs to be public.
+	void pubErrorWithContent(U32 status, std::string const& reason, LLSD const& content) { errorWithContent(status, reason, content); }
 };
 
 // A Responder is passed around as ResponderPtr, which causes it to automatically
