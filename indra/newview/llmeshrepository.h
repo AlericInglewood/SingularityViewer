@@ -67,7 +67,6 @@ struct LLCDHull
 
 class LLVOVolume;
 class LLMeshResponder;
-class LLCurlRequest;
 class LLMutex;
 class LLCondition;
 class LLVFS;

@@ -422,6 +422,8 @@ LLHTTPAssetStorage::LLHTTPAssetStorage(LLMessageSystem *msg, LLXferManager *xfer
 	_init(web_host, local_web_host, host_name);
 }
 
+LLAtomicS32 total_asset_storage;
+
 void LLHTTPAssetStorage::_init(const std::string& web_host, const std::string& local_web_host, const std::string& host_name)
 {
 	mBaseURL = web_host;
@@ -432,14 +434,18 @@ void LLHTTPAssetStorage::_init(const std::string& web_host, const std::string& l
 	
 	mCurlMultiHandle = LLCurl::newMultiHandle() ;
 	llassert_always(mCurlMultiHandle != NULL) ;
+	total_asset_storage++;
+	Dout(dc::curl, "Created LLHTTPAssetStorage object with new curl multi; total number of LLHTTPAssetStorage now " << total_asset_storage);
 }
 
 LLHTTPAssetStorage::~LLHTTPAssetStorage()
 {
 	LLCurl::deleteMultiHandle(mCurlMultiHandle);
 	mCurlMultiHandle = NULL;
+	--total_asset_storage;
+	Dout(dc::curl, "Destructed LLHTTPAssetStorage object and curl multi; total number of LLHTTPAssetStorage now " << total_asset_storage);
 	
-	// curl_global_cleanup moved to LLCurl::initClass()
+	// curl_global_cleanup moved to ... nowhere
 }
 
 // storing data is simpler than getting it, so we just overload the whole method

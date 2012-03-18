@@ -133,10 +133,14 @@ std::string LLCurl::getVersionString()
 LLCurl::Responder::Responder()
 	: mReferenceCount(0)
 {
+  DoutEntering(dc::curl, "LLCurl::Responder() with this = " << (void*)this);
+  BACKTRACE;
 }
 
 LLCurl::Responder::~Responder()
 {
+  DoutEntering(dc::curl, "LLCurl::Responder::~Responder() with this = " << (void*)this << "; mReferenceCount = " << mReferenceCount);
+  BACKTRACE;
 }
 
 // virtual
@@ -239,7 +243,6 @@ CURL* LLCurl::Easy::allocEasyHandle()
 	{
 		ret = *(handles_w->free.begin());
 		handles_w->free.erase(ret);
-		curl_easy_reset(ret);
 	}
 
 	if (ret)
@@ -253,6 +256,9 @@ CURL* LLCurl::Easy::allocEasyHandle()
 //static
 void LLCurl::Easy::releaseEasyHandle(CURL* handle)
 {
+	DoutEntering(dc::curl, "LLCurl::Easy::releaseEasyHandle(" << (void*)handle << ")");
+	BACKTRACE;
+
 	static const S32 MAX_NUM_FREE_HANDLES = 32 ;
 
 	if (!handle)
@@ -270,6 +276,7 @@ void LLCurl::Easy::releaseEasyHandle(CURL* handle)
 
 		if (handles_w->free.size() < MAX_NUM_FREE_HANDLES)
 		{
+			curl_easy_reset(handle);
 			handles_w->free.insert(handle);
 		}
 		else
@@ -626,7 +633,7 @@ void LLCurl::Multi::cleanup()
 	
 	// Clean up freed
 	AISTAccess<easy_free_list_t> easy_free_list_w(mEasyFreeList);
-	for_each(easy_free_list_w->begin(), easy_free_list_w->end(), DeletePointer());	
+	for_each(easy_free_list_w->begin(), easy_free_list_w->end(), DeletePointer());
 	easy_free_list_w->clear();
 
 	AISTAccess<CURLM*> curl_multi_handle_w(mCurlMultiHandle);
@@ -908,6 +915,8 @@ void LLCurl::Multi::removeEasy(Easy* easy)
 	easyFree(easy);
 }
 
+LLAtomicS32 total_curl_requests;
+
 //------------------------------------------------------------
 //LLCurlThread
 LLCurlThread::CurlRequest::CurlRequest(handle_t handle, LLCurl::Multi* multi, LLCurlThread* curl_thread) :
@@ -915,15 +924,19 @@ LLCurlThread::CurlRequest::CurlRequest(handle_t handle, LLCurl::Multi* multi, LL
 	mMulti(multi),
 	mCurlThread(curl_thread)
 {	
+	total_curl_requests++;
+	Dout(dc::curl, "Created CurlRequest for handle " << handle << "; total number of CurlRequest objects now " << total_curl_requests);
 }
 
 LLCurlThread::CurlRequest::~CurlRequest()
 {	
+	--total_curl_requests;
 	if(mMulti)
 	{
 		mCurlThread->deleteMulti(mMulti) ;
 		mMulti = NULL ;
 	}
+	Dout(dc::curl, "Deleted CurlRequest for handle " << getHashKey() << "; total number of CurlRequest objects now " << total_curl_requests);
 }
 
 bool LLCurlThread::CurlRequest::processRequest()
@@ -976,13 +989,16 @@ S32 LLCurlThread::update(F32 max_time_ms)
 
 void LLCurlThread::addMulti(LLCurl::Multi* multi)
 {
+	DoutEntering(dc::curl, "LLCurlThread::addMulti(" << (void*)multi << ")");
 	multi->mHandle = generateHandle() ;
+	Dout(dc::curl, "Generated handle " << multi->mHandle);
 
 	CurlRequest* req = new CurlRequest(multi->mHandle, multi, this) ;
 
 	if (!addRequest(req))
 	{
 		llwarns << "curl request added when the thread is quitted" << llendl;
+		req->deleteRequest();
 	}
 }
 	
@@ -1305,7 +1321,7 @@ void LLCurlEasyRequest::setPost(char* postdata, S32 size)
 	}
 }
 
-void LLCurlEasyRequest::setHeaderCallback(curl_header_callback callback, void* userdata)
+void LLCurlEasyRequest::setHeaderCallback(curl_write_callback callback, void* userdata)
 {
 	if (isValid() && mEasy)
 	{
@@ -1471,6 +1487,8 @@ unsigned long LLCurl::ssl_thread_id(void)
 
 void LLCurl::initClass(F32 curl_reuest_timeout, S32 max_number_handles, bool multi_threaded)
 {
+	DoutEntering(dc::curl, "LLCurl::initClass(" << curl_reuest_timeout << ", " << max_number_handles << ", " << (multi_threaded ? "true" : "false") << ")");
+
 	sCurlRequestTimeOut = curl_reuest_timeout ; //seconds
 	sMaxHandles = max_number_handles ; //max number of handles, (multi handles and easy handles combined).
 
@@ -1530,13 +1548,16 @@ void LLCurl::cleanupClass()
 //static 
 CURLM* LLCurl::newMultiHandle()
 {
+	DoutEntering(dc::curl, "LLCurl::newMultiHandle()");
+	BACKTRACE;
 	//*** Multi-threaded.
 	CURLM* ret;
 	{
 		AIAccess<S32> sTotalHandles_w(sTotalHandles);
 		if (*sTotalHandles_w + 1 > LLCurl::getMaxHandles())
 		{
-			llwarns << "no more handles available." << llendl;
+			//llwarns << "LLCurl::newMultiHandle: limit of curl handles reached. Returning NULL." << llendl;
+			Dout(dc::warning, "LLCurl::newMultiHandle: limit of curl handles reached. Returning NULL.");
 			return NULL; // Failed.
 		}
 		ret = curl_multi_init() ;
@@ -1544,11 +1565,14 @@ CURLM* LLCurl::newMultiHandle()
 		{
 			++*sTotalHandles_w;
 		}
+		Dout(dc::curl, "Called curl_multi_int() returning " << (void*)ret << ", sTotalHandles is now " << *sTotalHandles_w);
+		BACKTRACE;
 	}
 
 	if(!ret)
 	{
-		llwarns << "curl_multi_init failed." << llendl ;
+		//llwarns << "curl_multi_init failed." << llendl ;
+		Dout(dc::warning, "curl_multi_init failed.");
 	}
 
 	return ret ;
@@ -1557,10 +1581,13 @@ CURLM* LLCurl::newMultiHandle()
 //static 
 CURLMcode  LLCurl::deleteMultiHandle(CURLM* handle)
 {
+	DoutEntering(dc::curl, "LLCurl::deleteMultiHandle(" << (void*)handle << ")");
+	BACKTRACE;
 	if(handle)
 	{
 		AIAccess<S32> sTotalHandles_w(sTotalHandles);
 		--*sTotalHandles_w;
+		Dout(dc::curl, "Calling curl_multi_cleanup(" << (void*)handle << "), sTotalHandles is now " << *sTotalHandles_w);
 		return curl_multi_cleanup(handle) ;
 	}
 	return CURLM_OK ;
@@ -1569,13 +1596,16 @@ CURLMcode  LLCurl::deleteMultiHandle(CURLM* handle)
 //static 
 CURL*  LLCurl::newEasyHandle()
 {
+	DoutEntering(dc::curl, "LLCurl::newEasyHandle()");
+	BACKTRACE;
 	//*** Multi-threaded.
 	CURLM* ret;
 	{
 		AIAccess<S32> sTotalHandles_w(sTotalHandles);
 		if(*sTotalHandles_w + 1 > LLCurl::getMaxHandles())
 		{
-			llwarns << "no more handles available." << llendl;
+			//llwarns << "LLCurl::newEasyHandle: limit of curl handles reached. Returning NULL." << llendl;
+			Dout(dc::warning, "LLCurl::newEasyHandle: limit of curl handles reached. Returning NULL.");
 			return NULL ; // Failed.
 		}
 		ret = curl_easy_init();
@@ -1583,6 +1613,8 @@ CURL*  LLCurl::newEasyHandle()
 		{
 		  ++*sTotalHandles_w;
 		}
+		Dout(dc::curl, "Called curl_easy_int() returning " << (void*)ret << ", sTotalHandles is now " << *sTotalHandles_w);
+		BACKTRACE;
 	}
 
 	if(!ret)
@@ -1596,11 +1628,14 @@ CURL*  LLCurl::newEasyHandle()
 //static 
 void  LLCurl::deleteEasyHandle(CURL* handle)
 {
+	DoutEntering(dc::curl, "LLCurl::deleteEasyHandle(" << (void*)handle << ")");
+	BACKTRACE;
 	//*** Multi-threaded (logout only?).
 	if(handle)
 	{
 		AIAccess<S32> sTotalHandles_w(sTotalHandles);
 		--*sTotalHandles_w;
+		Dout(dc::curl, "Calling curl_easy_cleanup(" << (void*)handle << "), sTotalHandles is now " << *sTotalHandles_w);
 		curl_easy_cleanup(handle) ;
 	}
 }

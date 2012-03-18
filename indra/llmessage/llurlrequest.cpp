@@ -52,7 +52,7 @@ const std::string CONTEXT_DEST_URI_SD_LABEL("dest_uri");
 const std::string CONTEXT_TRANSFERED_BYTES("transfered_bytes");
 
 
-static size_t headerCallback(void* data, size_t size, size_t nmemb, void* user);
+static size_t headerCallback(char* data, size_t size, size_t nmemb, void* user);
 
 
 
@@ -615,9 +615,8 @@ size_t LLURLRequest::upCallback(
 	return bytes;
 }
 
-static size_t headerCallback(void* data, size_t size, size_t nmemb, void* user)
+static size_t headerCallback(char* header_line, size_t size, size_t nmemb, void* user)
 {
-	const char* header_line = (const char*)data;
 	size_t header_len = size * nmemb;
 	LLURLRequestComplete* complete = (LLURLRequestComplete*)user;
 

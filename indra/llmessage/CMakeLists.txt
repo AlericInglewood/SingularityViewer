@@ -29,7 +29,7 @@ set(llmessage_SOURCE_FILES
     llchainio.cpp
     llcircuit.cpp
     llclassifiedflags.cpp
-    llcurl.cpp
+    aicurl.cpp
     lldatapacker.cpp
     lldispatcher.cpp
     llfiltersd2xmlrpc.cpp
@@ -118,6 +118,7 @@ set(llmessage_HEADER_FILES
     llcircuit.h
     llclassifiedflags.h
     llcurl.h
+    aicurl.h
     lldatapacker.h
     lldbstrings.h
     lldispatcher.h

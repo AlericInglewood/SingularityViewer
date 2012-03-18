@@ -1,3 +1,12 @@
+#include "aicurl.h"
+
+// Map interface to old LLCurl names so this can be used as a drop-in replacement.
+namespace LLCurl = AICurlInterface;
+namespace LLCurlFF = AICurlInterface;
+typedef AICurlInterface::Request LLCurlRequest;
+typedef AICurlInterface::EasyRequest LLCurlEasyRequest;
+
+#if 0
 /** 
  * @file llcurl.h
  * @author Zero / Donovan
@@ -363,6 +372,7 @@ public:
 
 		/*virtual*/ bool processRequest();
 		/*virtual*/ void finishRequest(bool completed);
+		/*virtual*/ bool is_curl_request(void) const { return true; }
 
 	private:
 		// input
@@ -463,3 +473,4 @@ namespace LLCurlFF
 }
 
 #endif // LL_LLCURL_H
+#endif
