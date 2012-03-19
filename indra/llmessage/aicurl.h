@@ -38,6 +38,7 @@
 
 #include "stdtypes.h"		// U32
 #include "lliopipe.h"		// LLIOPipe::buffer_ptr_t
+#include "llatomic.h"		// LLAtomicU32
 
 class LLSD;
 
@@ -88,42 +89,74 @@ void deleteEasyHandle(CURL* handle);			// Called from LLHTTPAssetRequest::cleanu
 
 class Responder {
   protected:
-	virtual ~Responder() { }
+	Responder(void);
+	virtual ~Responder();
+
+  private:
+	// Associated URL, used for debug output.
+	std::string mURL;
 
   public:
-	virtual void completedRaw(U32 status, std::string const& reason, LLChannelDescriptors const& channels, LLIOPipe::buffer_ptr_t const& buffer);
-	virtual void completedHeader(U32 status, std::string const& reason, LLSD const& content);
-	virtual void completed(U32 status, std::string const& reason, LLSD const& content);
-	virtual void result(LLSD const& content);
-
 	// Called to set the url of the current request for this responder,
 	// used only when printing debug output regarding activity of the responder.
 	void setURL(std::string const& url);
 
-  protected:
-	// These are overridden in derived classes, but never directly called from outside Responder.
+  public:
+	// Called from LLHTTPClientURLAdaptor::complete():
 
-	// Derived classes can override this to get informed when a fatal error occurs. The default calls error().
+	// Derived classes can override this to get the HTML header that was received, when the message is completed.
+	// The default does nothing.
+	virtual void completedHeader(U32 status, std::string const& reason, LLSD const& content);
+
+	// Derived classes can override this to get the raw data of the body of the HTML message that was received.
+	// The default is to interpret the content as LLSD and call completed().
+	virtual void completedRaw(U32 status, std::string const& reason, LLChannelDescriptors const& channels, LLIOPipe::buffer_ptr_t const& buffer);
+
+	// Called from LLHTTPClient request calls, if an error occurs even before we can call one of the above.
+	// It calls completed() with a fake status U32_MAX, as that is what some derived clients expect (bad design).
+	// This means that if a derived class overrides completedRaw() it now STILL has to override completed() to catch this error.
+	void fatalError(std::string const& reason);
+
+  protected:
+	// ... or, derived classes can override this to get the LLSD content when the message is completed.
+	// The default is to call result() (or errorWithContent() in case of a HTML status indicating an error).
+	virtual void completed(U32 status, std::string const& reason, LLSD const& content);
+
+	// ... or, derived classes can override this to received the content of a body upon success.
+	// The default does nothing.
+	virtual void result(LLSD const& content);
+
+	// Derived classes can override this to get informed when a bad HTML status code is received.
+	// The default calls error().
 	virtual void errorWithContent(U32 status, std::string const& reason, LLSD const& content);
 
-	// Derived classes can override this to get informed when a fatal error occurs. The default prints the error to llinfos.
+	// ... or, derived classes can override this to get informed when a bad HTML statis code is received.
+	// The default prints the error to llinfos.
 	virtual void error(U32 status, std::string const& reason);
 
-	// A derived class should return true if curl should follow redirections. The default is not to follow redirections.
+	// A derived class should return true if curl should follow redirections.
+	// The default is not to follow redirections.
 	virtual bool followRedir(void) { return false; }
 
   public:
 	// Called from LLSDMessage::ResponderAdapter::listener.
-	// LLSDMessage::ResponderAdapter is a hack, showing among others by fact that this function needs to be public.
+	// LLSDMessage::ResponderAdapter is a hack, showing among others by fact that these function needs to be public.
+
 	void pubErrorWithContent(U32 status, std::string const& reason, LLSD const& content) { errorWithContent(status, reason, content); }
+	void pubResult(LLSD const& content) { result(content); }
+
+  private:
+	// Used by ResponderPtr. Object is deleted when reference count reaches zero.
+	LLAtomicU32 mReferenceCount;
+
+	friend void intrusive_ptr_add_ref(Responder* p);		// Called by boost::intrusive_ptr when a new copy of a boost::intrusive_ptr<Responder> is made.
+	friend void intrusive_ptr_release(Responder* p);		// Called by boost::intrusive_ptr when a boost::intrusive_ptr<Responder> is destroyed.
+															// This function must delete the Responder object when the reference count reaches zero.
 };
 
 // A Responder is passed around as ResponderPtr, which causes it to automatically
 // destruct when the last of such pointers is destructed.
 typedef boost::intrusive_ptr<Responder> ResponderPtr;
-void intrusive_ptr_add_ref(Responder* p);					// Called by boost::intrusive_ptr when a new copy of a boost::intrusive_ptr<Responder> is made.
-void intrusive_ptr_release(Responder* p);					// Called by boost::intrusive_ptr when a boost::intrusive_ptr<Responder> is destroyed.
-															// This function must delete the Responder object when the reference count reaches zero.
 
 // Output parameter of LLCurlEasyRequest::getResult.
 // Only used by LLXMLRPCTransaction::Impl.

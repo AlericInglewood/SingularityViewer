@@ -30,6 +30,8 @@
 
 #include "linden_common.h"
 #include "aicurl.h"
+#include "llbufferstream.h"
+#include "llsdserialize.h"
 
 //==================================================================================
 // External API
@@ -45,14 +47,6 @@ void check_easy_code(CURLcode code)
   {
 	llinfos << "curl easy error detected: " << curl_easy_strerror(code) << llendl;
   }
-}
-
-void intrusive_ptr_add_ref(Responder* p)
-{
-}
-
-void intrusive_ptr_release(Responder* p)
-{
 }
 
 void initClass(bool multi_threaded, F32 curl_request_timeout, S32 max_number_handles)
@@ -100,32 +94,101 @@ void deleteEasyHandle(CURL* handle)
 // class Responder
 //
 
-void Responder::completedHeader(U32 status, std::string const& reason, LLSD const& content)
+Responder::Responder(void) : mReferenceCount(0)
 {
+  DoutEntering(dc::curl, "AICurlInterface::Responder() with this = " << (void*)this);
+  BACKTRACE;
 }
 
-void Responder::errorWithContent(U32 status, std::string const& reason, LLSD const& content)
+Responder::~Responder()
 {
-}
-
-void Responder::result(LLSD const& content)
-{
-}
-
-void Responder::completedRaw(U32 status, std::string const& reason, LLChannelDescriptors const& channels, LLIOPipe::buffer_ptr_t const& buffer)
-{
-}
-
-void Responder::completed(U32 status, std::string const& reason, LLSD const& content)
-{
+  DoutEntering(dc::curl, "AICurlInterface::Responder::~Responder() with this = " << (void*)this << "; mReferenceCount = " << mReferenceCount);
+  BACKTRACE;
 }
 
 void Responder::setURL(std::string const& url)
 {
+  // setURL is called from llhttpclient.cpp (request()), before calling any of the below (of course).
+  // We don't need locking here therefore; it's a case of initializing before use.
+  mURL = url;
 }
 
+// Called with HTML header.
+// virtual
+void Responder::completedHeader(U32, std::string const&, LLSD const&)
+{
+  // Nothing.
+}
+
+// Called with HTML body.
+// virtual
+void Responder::completedRaw(U32 status, std::string const& reason, LLChannelDescriptors const& channels, LLIOPipe::buffer_ptr_t const& buffer)
+{
+  LLSD content;
+  LLBufferStream istr(channels, buffer.get());
+  if (!LLSDSerialize::fromXML(content, istr))
+  {
+	llinfos << "Failed to deserialize LLSD. " << mURL << " [" << status << "]: " << reason << llendl;
+  }
+
+  // Allow derived class to override at this point.
+  completed(status, reason, content);
+}
+
+void Responder::fatalError(std::string const& reason)
+{
+  llwarns << "Responder::fatalError(\"" << reason << "\") is called (" << mURL << "). Passing it to Responder::completed with fake HTML error status and empty HTML body!" << llendl;
+  completed(U32_MAX, reason, LLSD());
+}
+
+// virtual
+void Responder::completed(U32 status, std::string const& reason, LLSD const& content)
+{
+  // HTML status good?
+  if (200 <= status && status < 300)
+  {
+	// Allow derived class to override at this point.
+	result(content);
+  }
+  else
+  {
+	// Allow derived class to override at this point.
+	errorWithContent(status, reason, content);
+  }
+}
+
+// virtual
+void Responder::errorWithContent(U32 status, std::string const& reason, LLSD const&)
+{
+  // Allow derived class to override at this point.
+  error(status, reason);
+}
+
+// virtual
 void Responder::error(U32 status, std::string const& reason)
 {
+  llinfos << mURL << " [" << status << "]: " << reason << llendl;
+}
+
+// virtual
+void Responder::result(LLSD const&)
+{
+  // Nothing.
+}
+
+// Friend functions.
+
+void intrusive_ptr_add_ref(Responder* responder)
+{
+  responder->mReferenceCount++;
+}
+
+void intrusive_ptr_release(Responder* responder)
+{
+  if (--responder->mReferenceCount == 0)
+  {
+	delete responder;
+  }
 }
 
 //-----------------------------------------------------------------------------

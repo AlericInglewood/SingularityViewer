@@ -220,9 +220,15 @@ static void request(
 	const LLSD& headers = LLSD()
     )
 {
+	if (responder)
+	{
+		// For possible debug output from within the responder.
+		responder->setURL(url);
+	}
+
 	if (!LLHTTPClient::hasPump())
 	{
-		responder->completed(U32_MAX, "No pump", LLSD());
+		responder->fatalError("No pump");
 		return;
 	}
 	LLPumpIO::chain_t chain;
@@ -280,11 +286,6 @@ static void request(
 		{
 			req->addHeader("Accept: application/llsd+xml");
 		}
-	}
-
-	if (responder)
-	{
-		responder->setURL(url);
 	}
 
 	req->setCallback(new LLHTTPClientURLAdaptor(responder));

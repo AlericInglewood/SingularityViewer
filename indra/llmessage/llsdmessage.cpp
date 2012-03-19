@@ -151,7 +151,7 @@ bool LLSDMessage::ResponderAdapter::listener(const LLSD& payload, bool success)
 {
     if (success)
     {
-        mResponder->result(payload);
+        mResponder->pubResult(payload);
     }
     else
     {
