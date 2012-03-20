@@ -51,16 +51,22 @@ namespace AICurlInterface
 
 // Called once at start of application (from newview/llappviewer.cpp by main thread (before threads are created)),
 // with main purpose to initialize curl.
-void initClass(bool multi_threaded = false, F32 curl_request_timeout = 120.f, S32 max_number_handles = 256);
+void initCurl(F32 curl_request_timeout = 120.f, S32 max_number_handles = 256);
+
+// Called once at start of application (from LLAppViewer::initThreads), starts AICurlThread.
+void startCurlThread(bool multiple_threads);
 
 // Called once at end of application (from newview/llappviewer.cpp by main thread),
 // with purpose to stop curl threads, free curl resources and deinitialize curl.
-void cleanupClass(void);
+void cleanupCurl(void);
 
 // Called from indra/llmessage/llproxy.cpp for return values of curl_easy_setopt,
 // for debug output purpose when there was an error code.
 // Prints some debug output to llinfos if code is not CURLE_OK.
-void check_easy_code(CURLcode code);
+CURLcode check_easy_code(CURLcode code);
+
+// Not called from anywhere.
+CURLMcode check_multi_code(CURLMcode code);
 
 // Called from indra/llmessage/llurlrequest.cpp to print debug output regarding
 // an error code returned by EasyRequest::getResult.
@@ -75,6 +81,10 @@ std::string getVersionString(void);
 // Called newview/llappviewer.cpp from (and llcrashlogger/llcrashlogger.cpp) to set
 // the Certificate Authority file used to verify HTTPS certs.
 void setCAFile(std::string const& file);
+
+// Not called from anywhere.
+// Can be used to set the path to the Certificate Authority file.
+void setCAPath(std::string const& file);
 
 // LLHTTPAssetStorage calls these functions, and does a lot of curl calls directly on the returned curl handles.
 CURLM* newMultiHandle(void);					// Called from constructor of LLHTTPAssetStorage.

@@ -3,6 +3,7 @@
  * @brief Implementation of AICurl.
  *
  * Copyright (c) 2012, Aleric Inglewood.
+ * Copyright (C) 2010, Linden Research, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,12 +27,34 @@
  *
  *   17/03/2012
  *   Initial version, written by Aleric Inglewood @ SL
+ *
+ *   20/03/2012
+ *   Added copyright notice for Linden Lab for those parts that were
+ *   copied or derived llcurl.cpp.
  */
 
 #include "linden_common.h"
 #include "aicurl.h"
 #include "llbufferstream.h"
 #include "llsdserialize.h"
+#include "aithreadsafe.h"
+
+//==================================================================================
+// Local variables.
+//
+
+namespace {
+
+struct CertificateAuthority {
+  std::string file;
+  std::string path;
+};
+
+AIThreadSafeSingleThreadDC<CertificateAuthority> gCertificateAuthority;
+typedef AISTAccess<CertificateAuthority> CertificateAuthority_wat;
+typedef AISTAccessConst<CertificateAuthority> CertificateAuthority_rat;
+
+} // Anonymous namespace
 
 //==================================================================================
 // External API
@@ -41,34 +64,93 @@ namespace AICurlInterface
 {
 
 // This function is used in indra/llmessage/llproxy.cpp.
-void check_easy_code(CURLcode code)
+CURLcode check_easy_code(CURLcode code)
 {
   if (code != CURLE_OK)
   {
 	llinfos << "curl easy error detected: " << curl_easy_strerror(code) << llendl;
   }
+  return code;
 }
 
-void initClass(bool multi_threaded, F32 curl_request_timeout, S32 max_number_handles)
+// This function is not called from outside this compilation unit,
+// but provided as part of the AICurlInterface anyway because check_easy_code is.
+CURLMcode check_multi_code(CURLMcode code) 
 {
+  if (code != CURLM_OK)
+  {
+	llinfos << "curl multi error detected: " << curl_multi_strerror(code) << llendl;
+  }
+  return code;
 }
 
-void cleanupClass(void)
+void initCurl(F32 curl_request_timeout, S32 max_number_handles)
 {
+  DoutEntering(dc::curl, "AICurlInterface::initCurl(" << curl_request_timeout << ", " << max_number_handles << ")");
+
+  llassert(LLThread::getRunning() == 0);		// We must not call curl_global_init unless we are the only thread.
+  CURLcode res = check_easy_code(curl_global_init(CURL_GLOBAL_ALL));
+  if (res != CURLE_OK)
+  {
+	llerrs << "curl_global_init(CURL_GLOBAL_ALL) failed." << llendl;
+  }
+
+  // Print version and do some feature sanity checks.
+  {
+	curl_version_info_data* version_info = curl_version_info(CURLVERSION_NOW);
+
+	llassert_always(version_info->age >= 0);
+	if (version_info->age < 1)
+	{
+	  llwarns << "libcurl's age is 0; no ares support." << llendl;
+	}
+	llassert_always((version_info->features & CURL_VERSION_SSL));	// SSL support, added in libcurl 7.10.
+	if (!(version_info->features & CURL_VERSION_ASYNCHDNS));		// Asynchronous name lookups (added in libcurl 7.10.7).
+	{
+	  llwarns << "libcurl was not compiled with support for asynchronous name lookups!" << llendl;
+	}
+
+	llinfos << "Successful initialization of libcurl " <<
+		version_info->version << " (" << version_info->version_num << "), (" <<
+	    version_info->ssl_version << ", libz/" << version_info->libz_version << ")." << llendl;
+  }
 }
 
-void setCAFile(std::string const& file)
+void cleanupCurl(void)
 {
+  DoutEntering(dc::curl, "AICurlInterface::cleanupCurl()");
+
+  llassert(LLThread::getRunning() == 0);		// We must not call curl_global_cleanup unless we are the only thread left.
+  curl_global_cleanup();
 }
 
-std::string strerror(CURLcode errorcode)
+void startCurlThread(bool multiple_threads)
 {
-  return "";
 }
 
 std::string getVersionString(void)
 {
-  return "";
+  // libcurl is thread safe, no locking needed.
+  return curl_version();
+}
+
+void setCAFile(std::string const& file)
+{
+  CertificateAuthority_wat CertificateAuthority_w(gCertificateAuthority);
+  CertificateAuthority_w->file = file;
+}
+
+// This function is not called from anywhere, but provided as part of AICurlInterface because setCAFile is.
+void setCAPath(std::string const& path)
+{
+  CertificateAuthority_wat CertificateAuthority_w(gCertificateAuthority);
+  CertificateAuthority_w->path = path;
+}
+
+std::string strerror(CURLcode errorcode)
+{
+  // libcurl is thread safe, no locking needed.
+  return curl_easy_strerror(errorcode);
 }
 
 CURLM* newMultiHandle(void)
@@ -286,12 +368,4 @@ S32 Request::process(void)
 //==================================================================================
 // Local implementation.
 //
-
-void check_multi_code(CURLMcode code) 
-{
-  if (code != CURLM_OK)
-  {
-	llinfos << "curl multi error detected: " << curl_multi_strerror(code) << llendl;
-  }
-}
 
