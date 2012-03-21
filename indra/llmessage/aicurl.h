@@ -36,6 +36,9 @@
 #include <boost/intrusive_ptr.hpp>
 #include <curl/curl.h>		// CURL, CURLM, CURLMcode, CURLoption, curl_*_callback
 
+// Make sure we don't use this option: it is not thread-safe.
+#undef CURLOPT_DNS_USE_GLOBAL_CACHE
+
 #include "stdtypes.h"		// U32
 #include "lliopipe.h"		// LLIOPipe::buffer_ptr_t
 #include "llatomic.h"		// LLAtomicU32

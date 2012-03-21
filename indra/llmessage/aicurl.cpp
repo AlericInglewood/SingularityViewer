@@ -30,14 +30,20 @@
  *
  *   20/03/2012
  *   Added copyright notice for Linden Lab for those parts that were
- *   copied or derived llcurl.cpp.
+ *   copied or derived from llcurl.cpp.
  */
 
 #include "linden_common.h"
+
+#define OPENSSL_THREAD_DEFINES
+#include <openssl/opensslconf.h>	// OPENSSL_THREADS
+#include <openssl/crypto.h>
+
 #include "aicurl.h"
 #include "llbufferstream.h"
 #include "llsdserialize.h"
 #include "aithreadsafe.h"
+#include "llqueuedthread.h"
 
 //==================================================================================
 // Local variables.
@@ -54,7 +60,139 @@ AIThreadSafeSingleThreadDC<CertificateAuthority> gCertificateAuthority;
 typedef AISTAccess<CertificateAuthority> CertificateAuthority_wat;
 typedef AISTAccessConst<CertificateAuthority> CertificateAuthority_rat;
 
-} // Anonymous namespace
+enum gSSLlib_type {
+  ssl_unknown,
+  ssl_openssl,
+  ssl_gnutls,
+  ssl_nss
+};
+
+// No locking needed: initialized before threads are created, and subsequently only read.
+gSSLlib_type gSSLlib;
+
+} // namespace
+
+//-----------------------------------------------------------------------------------
+// Needed for thread-safe openSSL operation.
+
+// Must be defined in global namespace.
+struct CRYPTO_dynlock_value
+{
+  AIRWLock rwlock;
+};
+
+namespace {
+
+AIRWLock* ssl_rwlock_array;
+
+// OpenSSL locking function.
+void ssl_locking_function(int mode, int n, char const* file, int line)
+{
+  if ((mode & CRYPTO_LOCK))
+  {
+	if ((mode & CRYPTO_READ))
+	  ssl_rwlock_array[n].rdlock();
+	else
+	  ssl_rwlock_array[n].wrlock();
+  }
+  else
+  {
+    if ((mode & CRYPTO_READ))
+	  ssl_rwlock_array[n].rdunlock();
+	else
+	  ssl_rwlock_array[n].wrunlock();
+  }
+}
+
+// OpenSSL uniq id function.
+void ssl_id_function(CRYPTO_THREADID* thread_id)
+{
+#if 1	// apr_os_thread_current() returns an unsigned long.
+  CRYPTO_THREADID_set_numeric(thread_id, apr_os_thread_current());
+#else	// if it would return a pointer.
+  CRYPTO_THREADID_set_pointer(thread_id, apr_os_thread_current());
+#endif
+}
+
+// OpenSSL allocate and initialize dynamic crypto lock.
+CRYPTO_dynlock_value* ssl_dyn_create_function(char const* file, int line)
+{
+  return new CRYPTO_dynlock_value;
+}
+
+// OpenSSL destroy dynamic crypto lock.
+void ssl_dyn_destroy_function(CRYPTO_dynlock_value* l, char const* file, int line)
+{
+  delete l;
+}
+
+// OpenSSL dynamic locking function.
+void ssl_dyn_lock_function(int mode, CRYPTO_dynlock_value* l, char const* file, int line)
+{
+  if ((mode & CRYPTO_LOCK))
+  {
+	if ((mode & CRYPTO_READ))
+	  l->rwlock.rdlock();
+	else
+	  l->rwlock.wrlock();
+  }
+  else
+  {
+    if ((mode & CRYPTO_READ))
+	  l->rwlock.rdunlock();
+	else
+	  l->rwlock.wrunlock();
+  }
+}
+
+typedef void (*ssl_locking_function_type)(int, int, char const*, int);
+typedef void (*ssl_id_function_type)(CRYPTO_THREADID*);
+typedef CRYPTO_dynlock_value* (*ssl_dyn_create_function_type)(char const*, int);
+typedef void (*ssl_dyn_destroy_function_type)(CRYPTO_dynlock_value*, char const*, int);
+typedef void (*ssl_dyn_lock_function_type)(int, CRYPTO_dynlock_value*, char const*, int);
+
+ssl_locking_function_type     old_ssl_locking_function;
+ssl_id_function_type          old_ssl_id_function;
+ssl_dyn_create_function_type  old_ssl_dyn_create_function;
+ssl_dyn_destroy_function_type old_ssl_dyn_destroy_function;
+ssl_dyn_lock_function_type    old_ssl_dyn_lock_function;
+
+// Initialize OpenSSL library for thread-safety.
+void ssl_init(void)
+{
+  // Static locks vector.
+  ssl_rwlock_array = new AIRWLock[CRYPTO_num_locks()];
+  // Static locks callbacks.
+  old_ssl_locking_function = CRYPTO_get_locking_callback();
+  old_ssl_id_function = CRYPTO_THREADID_get_callback();
+  CRYPTO_set_locking_callback(&ssl_locking_function);
+  CRYPTO_THREADID_set_callback(&ssl_id_function);		// Setting this avoids the need for a thread-local error number facility, which is hard to check.
+  // Dynamic locks callbacks.
+  old_ssl_dyn_create_function = CRYPTO_get_dynlock_create_callback();
+  old_ssl_dyn_lock_function = CRYPTO_get_dynlock_lock_callback();
+  old_ssl_dyn_destroy_function = CRYPTO_get_dynlock_destroy_callback();
+  CRYPTO_set_dynlock_create_callback(&ssl_dyn_create_function);
+  CRYPTO_set_dynlock_lock_callback(&ssl_dyn_lock_function);
+  CRYPTO_set_dynlock_destroy_callback(&ssl_dyn_destroy_function);
+}
+
+// Cleanup OpenSLL library thread-safety.
+void ssl_cleanup(void)
+{
+  // Dynamic locks callbacks.
+  CRYPTO_set_dynlock_destroy_callback(old_ssl_dyn_destroy_function);
+  CRYPTO_set_dynlock_lock_callback(old_ssl_dyn_lock_function);
+  CRYPTO_set_dynlock_create_callback(old_ssl_dyn_create_function);
+  // Static locks callbacks.
+  CRYPTO_THREADID_set_callback(old_ssl_id_function);
+  CRYPTO_set_locking_callback(old_ssl_locking_function);
+  // Static locks vector.
+  delete [] ssl_rwlock_array;
+}
+
+} // namespace openSSL
+//-----------------------------------------------------------------------------------
+
 
 //==================================================================================
 // External API
@@ -64,6 +202,7 @@ namespace AICurlInterface
 {
 
 // This function is used in indra/llmessage/llproxy.cpp.
+// THREAD-SAFE
 CURLcode check_easy_code(CURLcode code)
 {
   if (code != CURLE_OK)
@@ -75,6 +214,7 @@ CURLcode check_easy_code(CURLcode code)
 
 // This function is not called from outside this compilation unit,
 // but provided as part of the AICurlInterface anyway because check_easy_code is.
+// THREAD-SAFE
 CURLMcode check_multi_code(CURLMcode code) 
 {
   if (code != CURLM_OK)
@@ -84,6 +224,7 @@ CURLMcode check_multi_code(CURLMcode code)
   return code;
 }
 
+// MAIN-THREAD
 void initCurl(F32 curl_request_timeout, S32 max_number_handles)
 {
   DoutEntering(dc::curl, "AICurlInterface::initCurl(" << curl_request_timeout << ", " << max_number_handles << ")");
@@ -113,27 +254,72 @@ void initCurl(F32 curl_request_timeout, S32 max_number_handles)
 	llinfos << "Successful initialization of libcurl " <<
 		version_info->version << " (" << version_info->version_num << "), (" <<
 	    version_info->ssl_version << ", libz/" << version_info->libz_version << ")." << llendl;
+
+	// Detect SSL library used.
+	gSSLlib = ssl_unknown;
+	std::string ssl_version(version_info->ssl_version);
+	if (ssl_version.find("OpenSSL") != std::string::npos)
+	  gSSLlib = ssl_openssl;										// See http://www.openssl.org/docs/crypto/threads.html#DESCRIPTION
+	else if (ssl_version.find("GnuTLS") != std::string::npos)
+	  gSSLlib = ssl_gnutls;											// See http://www.gnu.org/software/gnutls/manual/html_node/Thread-safety.html
+	else if (ssl_version.find("NSS") != std::string::npos)
+	  gSSLlib = ssl_nss;											// Supposedly thread-safe without any requirements.
+
+	// Set up thread-safety requirements of underlaying SSL library.
+	// See http://curl.haxx.se/libcurl/c/libcurl-tutorial.html
+	switch (gSSLlib)
+	{
+	  case ssl_unknown:
+	  {
+		llerrs << "Unknown SSL library \"" << version_info->ssl_version << "\", required actions for thread-safe handling are unknown! Bailing out." << llendl;
+	  }
+	  case ssl_openssl:
+	  {
+#ifndef OPENSSL_THREADS
+		llerrs << "OpenSSL was not configured with thread support! Bailing out." << llendl;
+#endif
+		ssl_init();
+	  }
+	  case ssl_gnutls:
+	  {
+		// FIXME. I don't think we ever get here, do we?
+		llassert_always(gSSLlib != ssl_gnutls);
+		// If we do, then didn't curl_global_init already call gnutls_global_init?
+		// It seems there is nothing to do for us here.
+	  }
+	  case ssl_nss:
+	  {
+	    break;	// No requirements.
+	  }
+	}
   }
 }
 
+// MAIN-THREAD
 void cleanupCurl(void)
 {
   DoutEntering(dc::curl, "AICurlInterface::cleanupCurl()");
+
+  ssl_cleanup();
 
   llassert(LLThread::getRunning() == 0);		// We must not call curl_global_cleanup unless we are the only thread left.
   curl_global_cleanup();
 }
 
+// MAIN-THREAD
 void startCurlThread(bool multiple_threads)
 {
+  llassert(is_main_thread());
 }
 
+// THREAD-SAFE
 std::string getVersionString(void)
 {
   // libcurl is thread safe, no locking needed.
   return curl_version();
 }
 
+// THREAD-SAFE
 void setCAFile(std::string const& file)
 {
   CertificateAuthority_wat CertificateAuthority_w(gCertificateAuthority);
@@ -141,12 +327,14 @@ void setCAFile(std::string const& file)
 }
 
 // This function is not called from anywhere, but provided as part of AICurlInterface because setCAFile is.
+// THREAD-SAFE
 void setCAPath(std::string const& path)
 {
   CertificateAuthority_wat CertificateAuthority_w(gCertificateAuthority);
   CertificateAuthority_w->path = path;
 }
 
+// THREAD-SAFE
 std::string strerror(CURLcode errorcode)
 {
   // libcurl is thread safe, no locking needed.
@@ -368,4 +556,26 @@ S32 Request::process(void)
 //==================================================================================
 // Local implementation.
 //
+
+class AICurlMulti {
+};
+
+class AICurlThread : public LLQueuedThread
+{
+  class CurlRequest : public LLQueuedThread::QueuedRequest
+  {
+	protected:
+	  /*virtual*/ ~CurlRequest();			// Use deleteRequest().
+	  
+	public:
+	  CurlRequest(handle_t handle, AICurlMulti* multi, AICurlThread* curl_thread);
+
+	  /*virtual*/ bool processRequest(void);
+	  /*virtual*/ void finishRequest(bool completed);
+  };
+
+  public:
+	AICurlThread(bool threaded = true);
+	virtual ~AICurlThread();
+};
 
