@@ -36,6 +36,7 @@
 #include "llproxy.h"
 #include "llvfile.h"
 #include "llvfs.h"
+#include "aicurl.h"
 
 #ifdef LL_STANDALONE
 # include <zlib.h>
@@ -78,11 +79,11 @@ class LLHTTPAssetRequest : public LLAssetRequest
 public:
 	LLHTTPAssetRequest(LLHTTPAssetStorage *asp, const LLUUID &uuid, 
 					   LLAssetType::EType type, LLAssetStorage::ERequestType rt,
-					   const std::string& url, CURLM *curl_multi);
+					   const std::string& url);
 	virtual ~LLHTTPAssetRequest();
 	
-	void setupCurlHandle();
-	void cleanupCurlHandle();
+	void setupCurlHandle(AICurlEasyHandle_wat const&);
+	void cleanupRequest();
 
 	void   	prepareCompressedUpload();
 	void	finishCompressedUpload();
@@ -97,8 +98,7 @@ public:
 public:
 	LLHTTPAssetStorage *mAssetStoragep;
 
-	CURL  *mCurlHandle;
-	CURLM *mCurlMultiHandle;
+	AICurlEasyHandle mCurlHandle;
 	std::string mURLBuffer;
 	struct curl_slist *mHTTPHeaders;
 	LLVFile *mVFile;
@@ -118,15 +118,12 @@ LLHTTPAssetRequest::LLHTTPAssetRequest(LLHTTPAssetStorage *asp,
 						const LLUUID &uuid, 
 						LLAssetType::EType type, 
 						LLAssetStorage::ERequestType rt,
-						const std::string& url, 
-						CURLM *curl_multi)
+						const std::string& url)
 	: LLAssetRequest(uuid, type),
 	  mZInitialized(false)
 {
 	memset(&mZStream, 0, sizeof(mZStream)); // we'll initialize this later, but for now zero the whole C-style struct to avoid debug/coverity noise
 	mAssetStoragep = asp;
-	mCurlHandle = NULL;
-	mCurlMultiHandle = curl_multi;
 	mVFile = NULL;
 	mRequestType = rt;
 	mHTTPHeaders = NULL;
@@ -140,11 +137,7 @@ LLHTTPAssetRequest::LLHTTPAssetRequest(LLHTTPAssetStorage *asp,
 LLHTTPAssetRequest::~LLHTTPAssetRequest()
 {
 	// Cleanup/cancel the request
-	if (mCurlHandle)
-	{
-		curl_multi_remove_handle(mCurlMultiHandle, mCurlHandle);
-		cleanupCurlHandle();
-	}
+	cleanupRequest();
 	if (mHTTPHeaders)
 	{
 		curl_slist_free_all(mHTTPHeaders);
@@ -168,28 +161,36 @@ LLSD LLHTTPAssetRequest::getFullDetails() const
 {
 	LLSD sd = LLAssetRequest::getFullDetails();
 
-	if (mCurlHandle)
+	long curl_response = -1;
+	long curl_connect = -1;
+	double curl_total_time = -1.0f;
+	double curl_size_upload = -1.0f;
+	double curl_size_download = -1.0f;
+	double curl_content_length_upload = -1.0f;
+	double curl_content_length_download = -1.0f;
+	long curl_request_size = -1;
+	const char* curl_content_type = NULL;
+
+	bool handle_active = false;
 	{
-		long curl_response = -1;
-		long curl_connect = -1;
-		double curl_total_time = -1.0f;
-		double curl_size_upload = -1.0f;
-		double curl_size_download = -1.0f;
-		double curl_content_length_upload = -1.0f;
-		double curl_content_length_download = -1.0f;
-		long curl_request_size = -1;
-		const char* curl_content_type = NULL;
+		AICurlEasyHandle_wat curlHandle_w(*mCurlHandle);
+		handle_active = curlHandle_w->active();
 
-		curl_easy_getinfo(mCurlHandle, CURLINFO_HTTP_CODE, &curl_response);
-		curl_easy_getinfo(mCurlHandle, CURLINFO_HTTP_CONNECTCODE, &curl_connect);
-		curl_easy_getinfo(mCurlHandle, CURLINFO_TOTAL_TIME, &curl_total_time);
-		curl_easy_getinfo(mCurlHandle, CURLINFO_SIZE_UPLOAD,  &curl_size_upload);
-		curl_easy_getinfo(mCurlHandle, CURLINFO_SIZE_DOWNLOAD, &curl_size_download);
-		curl_easy_getinfo(mCurlHandle, CURLINFO_CONTENT_LENGTH_UPLOAD,   &curl_content_length_upload);
-		curl_easy_getinfo(mCurlHandle, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &curl_content_length_download);
-		curl_easy_getinfo(mCurlHandle, CURLINFO_REQUEST_SIZE, &curl_request_size);
-		curl_easy_getinfo(mCurlHandle, CURLINFO_CONTENT_TYPE, &curl_content_type);
-
+		if (handle_active)
+		{
+			curlHandle_w->getinfo(CURLINFO_HTTP_CODE, &curl_response);
+			curlHandle_w->getinfo(CURLINFO_HTTP_CONNECTCODE, &curl_connect);
+			curlHandle_w->getinfo(CURLINFO_TOTAL_TIME, &curl_total_time);
+			curlHandle_w->getinfo(CURLINFO_SIZE_UPLOAD,  &curl_size_upload);
+			curlHandle_w->getinfo(CURLINFO_SIZE_DOWNLOAD, &curl_size_download);
+			curlHandle_w->getinfo(CURLINFO_CONTENT_LENGTH_UPLOAD,   &curl_content_length_upload);
+			curlHandle_w->getinfo(CURLINFO_CONTENT_LENGTH_DOWNLOAD, &curl_content_length_download);
+			curlHandle_w->getinfo(CURLINFO_REQUEST_SIZE, &curl_request_size);
+			curlHandle_w->getinfo(CURLINFO_CONTENT_TYPE, &curl_content_type);
+		}
+	}
+	if (handle_active)
+	{
 		sd["curl_response_code"] = (int) curl_response;
 		sd["curl_http_connect_code"] = (int) curl_connect;
 		sd["curl_total_time"] = curl_total_time;
@@ -229,22 +230,18 @@ LLSD LLHTTPAssetRequest::getFullDetails() const
 }
 
 
-void LLHTTPAssetRequest::setupCurlHandle()
+void LLHTTPAssetRequest::setupCurlHandle(AICurlEasyHandle_wat const& curlEasyHandle_w)
 {
-	// *NOTE: Similar code exists in mapserver/llcurlutil.cpp  JC
-	mCurlHandle = LLCurl::newEasyHandle();
-	llassert_always(mCurlHandle != NULL) ;
-
 	// Apply proxy settings if configured to do so
-	LLProxy::getInstance()->applyProxySettings(mCurlHandle);
+	LLProxy::getInstance()->applyProxySettings(curlEasyHandle_w);
 
-	curl_easy_setopt(mCurlHandle, CURLOPT_NOSIGNAL, 1);
-	curl_easy_setopt(mCurlHandle, CURLOPT_NOPROGRESS, 1);
-	curl_easy_setopt(mCurlHandle, CURLOPT_URL, mURLBuffer.c_str());
-	curl_easy_setopt(mCurlHandle, CURLOPT_PRIVATE, this);
+	curlEasyHandle_w->setopt(CURLOPT_NOSIGNAL, 1);
+	curlEasyHandle_w->setopt(CURLOPT_NOPROGRESS, 1);
+	curlEasyHandle_w->setopt(CURLOPT_URL, mURLBuffer.c_str());
+	curlEasyHandle_w->setopt(CURLOPT_PRIVATE, this);
 	if (LLAssetStorage::RT_DOWNLOAD == mRequestType)
 	{
-		curl_easy_setopt(mCurlHandle, CURLOPT_ENCODING, "");
+		curlEasyHandle_w->setopt(CURLOPT_ENCODING, "");
 		// only do this on downloads, as uploads 
 		// to some apache configs (like our test grids)
 		// mistakenly claim the response is gzip'd if the resource
@@ -255,17 +252,17 @@ void LLHTTPAssetRequest::setupCurlHandle()
 	   we want the cached version, if possible. */
 	if (mZInitialized)
 	{
-		curl_easy_setopt(mCurlHandle, CURLOPT_PROXY, "");
+		curlEasyHandle_w->setopt(CURLOPT_PROXY, "");
 			// disable use of proxy, which can't handle chunked transfers
 	}
 	mHTTPHeaders = curl_slist_append(mHTTPHeaders, "Pragma:");
 
 	// bug in curl causes DNS to be cached for too long a time, 0 sets it to never cache DNS results internally (to curl)
-	curl_easy_setopt(mCurlHandle, CURLOPT_DNS_CACHE_TIMEOUT, 0);
+	curlEasyHandle_w->setopt(CURLOPT_DNS_CACHE_TIMEOUT, 0);
 	
 	// resist the temptation to explicitly add the Transfer-Encoding: chunked
 	// header here - invokes a libCURL bug
-	curl_easy_setopt(mCurlHandle, CURLOPT_HTTPHEADER, mHTTPHeaders);
+	curlEasyHandle_w->setopt(CURLOPT_HTTPHEADER, mHTTPHeaders);
 	if (mAssetStoragep)
 	{
 		// Set the appropriate pending upload or download flag
@@ -277,9 +274,8 @@ void LLHTTPAssetRequest::setupCurlHandle()
 	}
 }
 
-void LLHTTPAssetRequest::cleanupCurlHandle()
+void LLHTTPAssetRequest::cleanupRequest()
 {
-	LLCurl::deleteEasyHandle(mCurlHandle);
 	if (mAssetStoragep)
 	{
 		// Terminating a request.  Thus upload or download is no longer pending.
@@ -289,7 +285,6 @@ void LLHTTPAssetRequest::cleanupCurlHandle()
 	{
 		llerrs << "LLHTTPAssetRequest::~LLHTTPAssetRequest - No asset storage associated with this request!" << llendl;
 	}
-	mCurlHandle = NULL;
 }
 
 void LLHTTPAssetRequest::prepareCompressedUpload()
@@ -432,16 +427,12 @@ void LLHTTPAssetStorage::_init(const std::string& web_host, const std::string& l
 
 	// curl_global_init moved to LLCurl::initClass()
 	
-	mCurlMultiHandle = LLCurl::newMultiHandle() ;
-	llassert_always(mCurlMultiHandle != NULL) ;
 	total_asset_storage++;
 	Dout(dc::curl, "Created LLHTTPAssetStorage object with new curl multi; total number of LLHTTPAssetStorage now " << total_asset_storage);
 }
 
 LLHTTPAssetStorage::~LLHTTPAssetStorage()
 {
-	LLCurl::deleteMultiHandle(mCurlMultiHandle);
-	mCurlMultiHandle = NULL;
 	--total_asset_storage;
 	Dout(dc::curl, "Destructed LLHTTPAssetStorage object and curl multi; total number of LLHTTPAssetStorage now " << total_asset_storage);
 	
@@ -785,29 +776,28 @@ void LLHTTPAssetStorage::checkForTimeouts()
 		std::string base_url = getBaseURL(req->getUUID(), req->getType());
 		tmp_url = llformat("%s/%36s.%s", base_url.c_str() , uuid_str.c_str(), LLAssetType::lookup(req->getType()));
 
-		LLHTTPAssetRequest *new_req = new LLHTTPAssetRequest(this, req->getUUID(), 
-										req->getType(), RT_DOWNLOAD, tmp_url, mCurlMultiHandle);
+		LLHTTPAssetRequest *new_req = new LLHTTPAssetRequest(this, req->getUUID(), req->getType(), RT_DOWNLOAD, tmp_url);
 		new_req->mTmpUUID.generate();
 
-		// Sets pending download flag internally
-		new_req->setupCurlHandle();
-		curl_easy_setopt(new_req->mCurlHandle, CURLOPT_FOLLOWLOCATION, TRUE);
-		curl_easy_setopt(new_req->mCurlHandle, CURLOPT_WRITEFUNCTION, &curlDownCallback);
-		curl_easy_setopt(new_req->mCurlHandle, CURLOPT_WRITEDATA, new_req->mCurlHandle);
-	
-		mcode = curl_multi_add_handle(mCurlMultiHandle, new_req->mCurlHandle);
+		{
+			AICurlEasyHandle_wat curlEasyHandle_w(*new_req->mCurlHandle);
+
+			// Sets pending download flag internally
+			new_req->setupCurlHandle(curlEasyHandle_w);
+			curlEasyHandle_w->setopt(CURLOPT_FOLLOWLOCATION, TRUE);
+			curlEasyHandle_w->setopt(CURLOPT_WRITEFUNCTION, &curlDownCallback);
+			curlEasyHandle_w->setopt(CURLOPT_WRITEDATA, new_req);
+		}
+		mcode = AICurlMultiHandle_wat(AICurlMultiHandle::getInstance())->add_easy_handle(new_req->mCurlHandle);
 		if (mcode > CURLM_OK)
 		{
 			// Failure.  Deleting the pending request will remove it from the running
 			// queue, and push it to the end of the pending queue.
-			new_req->cleanupCurlHandle();
+			new_req->cleanupRequest();
 			deletePendingRequest(RT_DOWNLOAD, new_req->getType(), new_req->getUUID());
 			break;
 		}
-		else
-		{
-			llinfos << "Requesting " << new_req->mURLBuffer << llendl;
-		}
+		llinfos << "Requesting " << new_req->mURLBuffer << llendl;
 	}
 
 	while ( (req = findNextRequest(mPendingUploads, mRunningUploads)) )
@@ -822,8 +812,7 @@ void LLHTTPAssetStorage::checkForTimeouts()
 		tmp_url = mBaseURL + "/" + uuid_str + "." + LLAssetType::lookup(req->getType());
 		if (do_compress) tmp_url += ".gz";
 
-		LLHTTPAssetRequest *new_req = new LLHTTPAssetRequest(this, req->getUUID(), 
-									req->getType(), RT_UPLOAD, tmp_url, mCurlMultiHandle);
+		LLHTTPAssetRequest *new_req = new LLHTTPAssetRequest(this, req->getUUID(), req->getType(), RT_UPLOAD, tmp_url);
 
 		if (req->mIsUserWaiting) //If a user is waiting on a realtime response, we want to perserve information across upload attempts.
 		{
@@ -837,46 +826,46 @@ void LLHTTPAssetStorage::checkForTimeouts()
 			new_req->prepareCompressedUpload();
 		}
 
-		// Sets pending upload flag internally
-		new_req->setupCurlHandle();
-		curl_easy_setopt(new_req->mCurlHandle, CURLOPT_UPLOAD, 1);
-		curl_easy_setopt(new_req->mCurlHandle, CURLOPT_WRITEFUNCTION, &nullOutputCallback);
+		// Configure curl easy handle.
+		{
+			AICurlEasyHandle_wat curlEasyHandle_w(*new_req->mCurlHandle);
 
-		if (do_compress)
-		{
-			curl_easy_setopt(new_req->mCurlHandle, CURLOPT_READFUNCTION,
-					&LLHTTPAssetRequest::curlCompressedUploadCallback);
+			// Sets pending upload flag internally
+			new_req->setupCurlHandle(curlEasyHandle_w);
+			curlEasyHandle_w->setopt(CURLOPT_UPLOAD, 1);
+			curlEasyHandle_w->setopt(CURLOPT_WRITEFUNCTION, &nullOutputCallback);
+
+			if (do_compress)
+			{
+				curlEasyHandle_w->setopt(CURLOPT_READFUNCTION, &LLHTTPAssetRequest::curlCompressedUploadCallback);
+			}
+			else
+			{
+				LLVFile file(mVFS, req->getUUID(), req->getType());
+				curlEasyHandle_w->setopt(CURLOPT_INFILESIZE, file.getSize());
+				curlEasyHandle_w->setopt(CURLOPT_READFUNCTION, &curlUpCallback);
+			}
+			curlEasyHandle_w->setopt(CURLOPT_READDATA, new_req);
 		}
-		else
-		{
-			LLVFile file(mVFS, req->getUUID(), req->getType());
-			curl_easy_setopt(new_req->mCurlHandle, CURLOPT_INFILESIZE, file.getSize());
-			curl_easy_setopt(new_req->mCurlHandle, CURLOPT_READFUNCTION,
-					&curlUpCallback);
-		}
-		curl_easy_setopt(new_req->mCurlHandle, CURLOPT_READDATA, new_req->mCurlHandle);
-	
-		mcode = curl_multi_add_handle(mCurlMultiHandle, new_req->mCurlHandle);
+		// Add it to the curl multi handle.
+		mcode = AICurlMultiHandle_wat(AICurlMultiHandle::getInstance())->add_easy_handle(new_req->mCurlHandle);
 		if (mcode > CURLM_OK)
 		{
 			// Failure.  Deleting the pending request will remove it from the running
 			// queue, and push it to the end of the pending queue.
-			new_req->cleanupCurlHandle();
+			new_req->cleanupRequest();
 			deletePendingRequest(RT_UPLOAD, new_req->getType(), new_req->getUUID());
 			break;
 		}
-		else
+		// Get the uncompressed file size.
+		LLVFile file(mVFS,new_req->getUUID(),new_req->getType());
+		S32 size = file.getSize();
+		llinfos << "Requesting PUT " << new_req->mURLBuffer << ", asset size: " << size << " bytes" << llendl;
+		if (size == 0)
 		{
-			// Get the uncompressed file size.
-			LLVFile file(mVFS,new_req->getUUID(),new_req->getType());
-			S32 size = file.getSize();
-			llinfos << "Requesting PUT " << new_req->mURLBuffer << ", asset size: " << size << " bytes" << llendl;
-			if (size == 0)
-			{
-				llwarns << "Rejecting zero size PUT request!" << llendl;
-				new_req->cleanupCurlHandle();
-				deletePendingRequest(RT_UPLOAD, new_req->getType(), new_req->getUUID());				
-			}
+			llwarns << "Rejecting zero size PUT request!" << llendl;
+			new_req->cleanupRequest();
+			deletePendingRequest(RT_UPLOAD, new_req->getType(), new_req->getUUID());				
 		}
 		// Pending upload will have been flagged by the request
 	}
@@ -893,57 +882,60 @@ void LLHTTPAssetStorage::checkForTimeouts()
 		// KLW - All temporary uploads are saved locally "http://localhost:12041/asset"
 		tmp_url = llformat("%s/%36s.%s", mLocalBaseURL.c_str(), uuid_str.c_str(), LLAssetType::lookup(req->getType()));
 
-		LLHTTPAssetRequest *new_req = new LLHTTPAssetRequest(this, req->getUUID(), 
-										req->getType(), RT_LOCALUPLOAD, tmp_url, mCurlMultiHandle);
+		LLHTTPAssetRequest *new_req = new LLHTTPAssetRequest(this, req->getUUID(), req->getType(), RT_LOCALUPLOAD, tmp_url);
 		new_req->mRequestingAgentID = req->mRequestingAgentID;
 
-		// Sets pending upload flag internally
-		new_req->setupCurlHandle();
-		curl_easy_setopt(new_req->mCurlHandle, CURLOPT_PUT, 1);
-		curl_easy_setopt(new_req->mCurlHandle, CURLOPT_INFILESIZE, file.getSize());
-		curl_easy_setopt(new_req->mCurlHandle, CURLOPT_WRITEFUNCTION, &nullOutputCallback);
-		curl_easy_setopt(new_req->mCurlHandle, CURLOPT_READFUNCTION, &curlUpCallback);
-		curl_easy_setopt(new_req->mCurlHandle, CURLOPT_READDATA, new_req->mCurlHandle);
-	
-		mcode = curl_multi_add_handle(mCurlMultiHandle, new_req->mCurlHandle);
+		// Configure curl easy handle.
+		{
+			AICurlEasyHandle_wat curlEasyHandle_w(*new_req->mCurlHandle);
+
+			// Sets pending upload flag internally
+			new_req->setupCurlHandle(curlEasyHandle_w);
+			curlEasyHandle_w->setopt(CURLOPT_PUT, 1);
+			curlEasyHandle_w->setopt(CURLOPT_INFILESIZE, file.getSize());
+			curlEasyHandle_w->setopt(CURLOPT_WRITEFUNCTION, &nullOutputCallback);
+			curlEasyHandle_w->setopt(CURLOPT_READFUNCTION, &curlUpCallback);
+			curlEasyHandle_w->setopt(CURLOPT_READDATA, new_req);
+		}
+		// Add it to the curl multi handle.
+		mcode = AICurlMultiHandle_wat(AICurlMultiHandle::getInstance())->add_easy_handle(new_req->mCurlHandle);
 		if (mcode > CURLM_OK)
 		{
 			// Failure.  Deleting the pending request will remove it from the running
 			// queue, and push it to the end of the pending queue.
-			new_req->cleanupCurlHandle();
+			new_req->cleanupRequest();
 			deletePendingRequest(RT_LOCALUPLOAD, new_req->getType(), new_req->getUUID());
 			break;
 		}
-		else
+		// Get the uncompressed file size.
+		S32 size = file.getSize();
+
+		llinfos << "TAT: LLHTTPAssetStorage::checkForTimeouts() : pending local!"
+			<< " Requesting PUT " << new_req->mURLBuffer << ", asset size: " << size << " bytes" << llendl;
+		if (size == 0)
 		{
-			// Get the uncompressed file size.
-			S32 size = file.getSize();
-
-			llinfos << "TAT: LLHTTPAssetStorage::checkForTimeouts() : pending local!"
-				<< " Requesting PUT " << new_req->mURLBuffer << ", asset size: " << size << " bytes" << llendl;
-			if (size == 0)
-			{
-				
-				llwarns << "Rejecting zero size PUT request!" << llendl;
-				new_req->cleanupCurlHandle();
-				deletePendingRequest(RT_UPLOAD, new_req->getType(), new_req->getUUID());				
-			}
-
+			
+			llwarns << "Rejecting zero size PUT request!" << llendl;
+			new_req->cleanupRequest();
+			deletePendingRequest(RT_UPLOAD, new_req->getType(), new_req->getUUID());				
 		}
 		// Pending upload will have been flagged by the request
 	}
+
+	AICurlMultiHandle_wat curlMultiHandle_w(AICurlMultiHandle::getInstance());
+
 	S32 count = 0;
 	int queue_length;
 	do
 	{
-		mcode = curl_multi_perform(mCurlMultiHandle, &queue_length);
+		mcode = curlMultiHandle_w->perform(&queue_length);
 		count++;
 	} while (mcode == CURLM_CALL_MULTI_PERFORM && (count < 5));
 
 	CURLMsg *curl_msg;
 	do
 	{
-		curl_msg = curl_multi_info_read(mCurlMultiHandle, &queue_length);
+		curl_msg = curlMultiHandle_w->info_read(&queue_length);
 		if (curl_msg && curl_msg->msg == CURLMSG_DONE)
 		{
 			long curl_result = 0;
@@ -1113,9 +1105,7 @@ size_t LLHTTPAssetStorage::curlDownCallback(void *data, size_t size, size_t nmem
 		return 0;
 	}
 	S32 bytes = (S32)(size * nmemb);
-	CURL *curl_handle = (CURL *)user_data;
-	LLHTTPAssetRequest *req = NULL;
-	curl_easy_getinfo(curl_handle, CURLINFO_PRIVATE, &req);
+	LLHTTPAssetRequest* req = (LLHTTPAssetRequest*)user_data;
 
 	if (! req->mVFile)
 	{
@@ -1123,7 +1113,7 @@ size_t LLHTTPAssetStorage::curlDownCallback(void *data, size_t size, size_t nmem
 	}
 
 	double content_length = 0.0;
-	curl_easy_getinfo(curl_handle, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &content_length);
+	AICurlEasyHandle_wat(*req->mCurlHandle)->getinfo(CURLINFO_CONTENT_LENGTH_DOWNLOAD, &content_length);
 
 	// sanitize content_length, reconcile w/ actual data
 	S32 file_length = llmax(0, (S32)llmin(content_length, 20000000.0), bytes + req->mVFile->getSize());
@@ -1142,9 +1132,7 @@ size_t LLHTTPAssetStorage::curlUpCallback(void *data, size_t size, size_t nmemb,
 		llwarns << "Missing gAssetStorage, aborting curl download callback!" << llendl;
 		return 0;
 	}
-	CURL *curl_handle = (CURL *)user_data;
-	LLHTTPAssetRequest *req = NULL;
-	curl_easy_getinfo(curl_handle, CURLINFO_PRIVATE, &req);
+	LLHTTPAssetRequest* req = (LLHTTPAssetRequest*)user_data;
 
 	if (! req->mVFile)
 	{
@@ -1184,18 +1172,22 @@ S32 LLHTTPAssetStorage::getURLToFile(const LLUUID& uuid, LLAssetType::EType asse
 	}
 
 	// make sure we use the normal curl setup, even though we don't really need a request object
-	LLHTTPAssetRequest req(this, uuid, asset_type, RT_DOWNLOAD, url, mCurlMultiHandle);
+	LLHTTPAssetRequest req(this, uuid, asset_type, RT_DOWNLOAD, url);
 	req.mFP = fp;
 	
-	req.setupCurlHandle();
-	curl_easy_setopt(req.mCurlHandle, CURLOPT_FOLLOWLOCATION, TRUE);
-	curl_easy_setopt(req.mCurlHandle, CURLOPT_WRITEFUNCTION, &curlFileDownCallback);
-	curl_easy_setopt(req.mCurlHandle, CURLOPT_WRITEDATA, req.mCurlHandle);
+	{
+		AICurlEasyHandle_wat curlEasyHandle_w(*req.mCurlHandle);
 
-	curl_multi_add_handle(mCurlMultiHandle, req.mCurlHandle);
+		req.setupCurlHandle(curlEasyHandle_w);
+		curlEasyHandle_w->setopt(CURLOPT_FOLLOWLOCATION, TRUE);
+		curlEasyHandle_w->setopt(CURLOPT_WRITEFUNCTION, &curlFileDownCallback);
+		curlEasyHandle_w->setopt(CURLOPT_WRITEDATA, &req);
+	}
 	llinfos << "Requesting as file " << req.mURLBuffer << llendl;
-
-	// braindead curl loop
+	// Add it to the curl multi handle.
+	AICurlMultiHandle_wat curlMultiHandle_w(AICurlMultiHandle::getInstance());
+	curlMultiHandle_w->add_easy_handle(req.mCurlHandle);
+	// Perform braindead curl loop.
 	int queue_length;
 	CURLMsg *curl_msg;
 	LLTimer timeout;
@@ -1204,8 +1196,8 @@ S32 LLHTTPAssetStorage::getURLToFile(const LLUUID& uuid, LLAssetType::EType asse
 	S32 xfer_result = 0;
 	do
 	{
-		curl_multi_perform(mCurlMultiHandle, &queue_length);
-		curl_msg = curl_multi_info_read(mCurlMultiHandle, &queue_length);
+		curlMultiHandle_w->perform(&queue_length);
+		curl_msg = curlMultiHandle_w->info_read(&queue_length);
 
 		if (callback)
 		{
@@ -1251,6 +1243,7 @@ S32 LLHTTPAssetStorage::getURLToFile(const LLUUID& uuid, LLAssetType::EType asse
 				" with result " << curl_easy_strerror(curl_msg->data.result) << ", http result " << curl_result << llendl;
 		}
 	}
+	curlMultiHandle_w->remove_easy_handle(req.mCurlHandle);
 
 	fclose(fp);
 	if (xfer_result)
@@ -1264,9 +1257,7 @@ S32 LLHTTPAssetStorage::getURLToFile(const LLUUID& uuid, LLAssetType::EType asse
 // static
 size_t LLHTTPAssetStorage::curlFileDownCallback(void *data, size_t size, size_t nmemb, void *user_data)
 {	
-	CURL *curl_handle = (CURL *)user_data;
-	LLHTTPAssetRequest *req = NULL;
-	curl_easy_getinfo(curl_handle, CURLINFO_PRIVATE, &req);
+	LLHTTPAssetRequest* req = (LLHTTPAssetRequest*)user_data;
 
 	if (! req->mFP)
 	{
