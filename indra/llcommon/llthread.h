@@ -50,6 +50,7 @@ extern LL_COMMON_API bool is_main_thread(void);
 class LLThread;
 class LLMutex;
 class LLCondition;
+class AICurlMultiHandle;
 
 #if LL_WINDOWS
 #define ll_thread_local __declspec(thread)
@@ -66,11 +67,15 @@ public:
 	// Thread-local memory pool.
 	LLAPRRootPool mRootPool;
 	LLVolatileAPRPool mVolatileAPRPool;
+	AICurlMultiHandle* mCurlMultiHandle;	// Initialized by AICurlMultiHandle::getInstance
 
 	static void init(void);
 	static void destroy(void* thread_local_data);
 	static void create(LLThread* pthread);
 	static LLThreadLocalData& tldata(void);
+
+private:
+	LLThreadLocalData(void);
 };
 
 class LL_COMMON_API LLThread
@@ -206,6 +211,11 @@ protected:
 	apr_thread_mutex_t* mAPRMutexp;
 	mutable U32			mCount;
 	mutable U32			mLockingThread;
+
+private:
+	// Disallow copy construction and assignment.
+	LLMutexBase(LLMutexBase const&);
+	LLMutexBase& operator=(LLMutexBase const&);
 };
 
 class LL_COMMON_API LLMutex : public LLMutexBase
@@ -225,10 +235,6 @@ public:
 
 protected:
 	LLAPRPool mPool;
-private:
-	// Disable copy construction, as si teh bomb!!! -SG
-	LLMutex(const LLMutex&);
-	LLMutex& operator=(const LLMutex&);
 };
 
 #if APR_HAS_THREADS

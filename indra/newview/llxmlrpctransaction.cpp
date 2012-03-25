@@ -237,7 +237,7 @@ void LLXMLRPCTransaction::Impl::init(XMLRPC_REQUEST request, bool useGzip)
 	}
 
 
-	LLProxy::getInstance()->applyProxySettings(mCurlRequest);
+	//LLProxy::getInstance()->applyProxySettings(mCurlRequest); FIXME
 
 //	mCurlRequest->setopt(CURLOPT_VERBOSE, 1); // usefull for debugging
 	mCurlRequest->setopt(CURLOPT_NOSIGNAL, 1);

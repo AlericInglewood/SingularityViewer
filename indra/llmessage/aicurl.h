@@ -33,7 +33,9 @@
 
 #include <string>
 #include <vector>
+#include <stdexcept>
 #include <boost/intrusive_ptr.hpp>
+#include <boost/utility.hpp>
 #include <curl/curl.h>		// CURL, CURLM, CURLMcode, CURLoption, curl_*_callback
 
 // Make sure we don't use this option: it is not thread-safe.
@@ -42,8 +44,217 @@
 #include "stdtypes.h"		// U32
 #include "lliopipe.h"		// LLIOPipe::buffer_ptr_t
 #include "llatomic.h"		// LLAtomicU32
+#include "aithreadsafe.h"
 
 class LLSD;
+
+//-----------------------------------------------------------------------------
+// Exceptions.
+//
+
+// A general curl exception.
+//
+class AICurlError : public std::runtime_error {
+  public:
+	AICurlError(std::string const& message) : std::runtime_error(message) { }
+};
+
+class AICurlNoEasyHandle : public AICurlError {
+  public:
+	AICurlNoEasyHandle(std::string const& message) : AICurlError(message) { }
+};
+
+class AICurlNoMultiHandle : public AICurlError {
+  public:
+	AICurlNoMultiHandle(std::string const& message) : AICurlError(message) { }
+};
+
+// End Exceptions.
+//-----------------------------------------------------------------------------
+
+namespace AICurlPrivate
+{
+
+// This class wraps CURL*'s.
+// It guarantees that a pointer is cleaned up when no longer needed, as required by libcurl.
+class CurlEasyHandle : public boost::noncopyable {
+  public:
+	CurlEasyHandle(void) throw(AICurlNoEasyHandle);
+	~CurlEasyHandle();
+
+  private:
+	// Disallow assignment.
+	CurlEasyHandle& operator=(CurlEasyHandle const*);
+
+  public:
+	// Reset all options of a libcurl session handle.
+	void reset(void) { llassert(!mActive); curl_easy_reset(mEasyHandle); }
+
+	// Set options for a curl easy handle.
+	template<typename BUILTIN>
+	  CURLcode setopt(CURLoption option, BUILTIN parameter);
+
+	// Clone a libcurl session handle using all the options previously set.
+	CurlEasyHandle(CurlEasyHandle const& orig) : mEasyHandle(curl_easy_duphandle(orig.mEasyHandle)) { }
+
+	// URL encode/decode the given string.
+	char* escape(char* url, int length);
+	char* unescape(char* url, int inlength , int* outlength);
+
+	// Extract information from a curl handle.
+	CURLcode getinfo(CURLINFO info, void* data);
+	// Perform a file transfer (blocking).
+	CURLcode perform(void);
+	// Pause and unpause a connection.
+	CURLcode pause(int bitmask);
+
+	// This should only be called from CurlMultiHandle; add/remove an easy handle to/from a multi handle.
+	CURLMcode add_handle_to_multi(CURLM* multi_handle);
+	CURLMcode remove_handle_from_multi(CURLM* multi_handle);
+
+	// Returns true if this easy handle was added to a curl multi handle.
+	bool active(void) const { return mActive; }
+
+  private:
+	CURL* mEasyHandle;
+	bool mActive;
+	static LLAtomicU32 sTotalEasyHandles;
+
+  public:
+	// Retuns total number of existing CURL* handles (excluding ones created outside this class).
+	static U32 getTotalEasyHandles(void) { return sTotalEasyHandles; }
+};
+
+// This class wraps CurlEasyHandle for thread-safety and adds a reference counter so we can
+// copy it around cheaply and it gets destructed automatically when the last instance is deleted.
+// It guarantees that the CURL* handle is never used concurrently, which is not allowed by libcurl.
+// As AIThreadSafeSimpleDC contains a mutex, it cannot be copied. Therefore we need a reference counter for this object.
+class AIThreadSafeCurlEasyHandle : public AIThreadSafeSimpleDC<CurlEasyHandle> {
+  public:
+	AIThreadSafeCurlEasyHandle(void) throw(AICurlNoEasyHandle) { }
+
+  private:
+	LLAtomicU32 mReferenceCount;
+
+	friend void intrusive_ptr_add_ref(AIThreadSafeCurlEasyHandle* p);	// Called by boost::intrusive_ptr when a new copy of a boost::intrusive_ptr<AIThreadSafeCurlEasyHandle> is made.
+	friend void intrusive_ptr_release(AIThreadSafeCurlEasyHandle* p);	// Called by boost::intrusive_ptr when a boost::intrusive_ptr<AIThreadSafeCurlEasyHandle> is destroyed.
+};
+
+CURLcode check_easy_code(CURLcode code);
+CURLMcode check_multi_code(CURLMcode code);
+
+template<typename BUILTIN>
+CURLcode CurlEasyHandle::setopt(CURLoption option, BUILTIN parameter)
+{
+  llassert(!mActive);
+  return check_easy_code(curl_easy_setopt(mEasyHandle, option, parameter));
+}
+
+} // namespace AICurlPrivate
+
+// boost::intrusive_ptr is no more threadsafe than a builtin type, but wrapping it in AIThreadSafe is obviously not going to help here.
+// Therefore we use the following trick: we wrap the boost::intrusive_ptr too, and only allow read accesses on it.
+
+// Thread safe, reference counting, auto cleaning curl easy handle.
+class AICurlEasyHandle {
+  public:
+	// Initial construction is allowed (thread-safe).
+	// Note: If AIThreadSafeCurlEasyHandle() throws then the memory allocated is still freed.
+	// 'new' never returned however and the constructor nor destructor of mCurlEasyHandle is called in this case.
+	AICurlEasyHandle() throw(AICurlNoEasyHandle) : mCurlEasyHandle(new AICurlPrivate::AIThreadSafeCurlEasyHandle) { }
+	AICurlEasyHandle(AICurlEasyHandle const& orig) : mCurlEasyHandle(orig.mCurlEasyHandle) { }
+
+	// For the rest, only allow read operations.
+	AIThreadSafeSimple<AICurlPrivate::CurlEasyHandle>& operator*(void) const { return *mCurlEasyHandle; }
+	AIThreadSafeSimple<AICurlPrivate::CurlEasyHandle>* operator->(void) const { return mCurlEasyHandle.get(); }
+	AIThreadSafeSimple<AICurlPrivate::CurlEasyHandle>* get(void) const { return mCurlEasyHandle.get(); }
+
+	// It's also OK to automatically convert this object to a const boost::intrusive_ptr.
+	operator boost::intrusive_ptr<AICurlPrivate::AIThreadSafeCurlEasyHandle> const&() const { return mCurlEasyHandle; }
+
+  private:
+	// The actual pointer to the AIThreadSafeCurlEasyHandle instance.
+	boost::intrusive_ptr<AICurlPrivate::AIThreadSafeCurlEasyHandle> mCurlEasyHandle;
+
+  private:
+	// Assignment would not be thread-safe; we may create this object and read from it.
+	// Note: Destruction is implicitly assumed thread-safe, as it would be a logic error to
+	// destruct it while another thread still needs it, concurrent or not.
+	AICurlEasyHandle& operator=(AICurlEasyHandle const&) { return *this; }
+};
+
+// Define access types (_crat = Const Read Access Type, _rat = Read Access Type, _wat = Write Access Type).
+// Typical usage is:
+// AICurlEasyHandle h1;				// Create easy handle.
+// AICurlEasyHandle h2(h1);			// Make lightweight copies.
+// AICurlEasyHandle_wat h2_w(*h2);	// Lock and obtain write access to the easy handle.
+// Use *h2_w, which is a reference to the locked CurlEasyHandle instance.
+// Note: As it is not allowed to use curl easy handles in any way concurrently,
+// read access would at most give access to a CURL const*, which will turn out
+// to be completely useless; therefore it is sufficient and efficient to use
+// an AIThreadSafeSimple and it's unlikely that AICurlEasyHandle_rat will be used.
+typedef AIAccessConst<AICurlPrivate::CurlEasyHandle> AICurlEasyHandle_rat;
+typedef AIAccess<AICurlPrivate::CurlEasyHandle> AICurlEasyHandle_wat;
+
+namespace AICurlPrivate
+{
+
+// This class wraps CURLM*'s.
+// It guarantees that a pointer is cleaned up when no longer needed, as required by libcurl.
+class CurlMultiHandle : public boost::noncopyable {
+  public:
+	CurlMultiHandle(void) throw(AICurlNoMultiHandle);
+	~CurlMultiHandle();
+
+  private:
+	// Disallow assignment.
+	CurlMultiHandle& operator=(CurlMultiHandle const*);
+
+  public:
+	CURLMcode add_easy_handle(AICurlEasyHandle const& easy_handle);
+	CURLMcode remove_easy_handle(AICurlEasyHandle const& easy_handle);
+
+	template<typename BUILTIN>
+	  CURLMcode setopt(CURLMoption option, BUILTIN parameter);
+
+	CURLMcode perform(int* running_handles);
+	CURLMsg* info_read(int* msgs_in_queue);
+
+  private:
+	CURLM* mMultiHandle;
+	static LLAtomicU32 sTotalMultiHandles;
+
+  public:
+	// Retuns total number of existing CURLM* handles (excluding ones created outside this class).
+	static U32 getTotalMultiHandles(void) { return sTotalMultiHandles; }
+};
+
+template<typename BUILTIN>
+CURLMcode CurlMultiHandle::setopt(CURLMoption option, BUILTIN parameter)
+{
+  return check_multi_code(curl_multi_setopt(mMultiHandle, option, parameter));
+}
+
+} // namespace AICurlPrivate
+
+// Thread safe, noncopyable curl multi handle.
+// This class wraps CurlMultiHandle for thread-safety.
+// AIThreadSafeSingleThreadDC cannot be copied, but that is OK as we don't need that (or want that);
+// this class provides a thread-local singleton (exactly one instance per thread), and because it
+// can't be copied, that guarantees that the CURLM* handle is never used concurrently, which is
+// not allowed by libcurl.
+class AICurlMultiHandle : public AIThreadSafeSingleThreadDC<AICurlPrivate::CurlMultiHandle> {
+  public:
+	static AICurlMultiHandle& getInstance(void) throw(AICurlNoMultiHandle);
+  private:
+	// Use getInstance().
+	AICurlMultiHandle(void) throw(AICurlNoMultiHandle) { }
+};
+
+typedef AISTAccessConst<AICurlPrivate::CurlMultiHandle> AICurlMultiHandle_rat;
+typedef AISTAccess<AICurlPrivate::CurlMultiHandle> AICurlMultiHandle_wat;
+
+#define AICurlPrivate DONTUSETHIS
 
 // Things defined in this namespace are called from elsewhere in the viewer code.
 namespace AICurlInterface
@@ -63,14 +274,6 @@ void startCurlThread(bool multiple_threads);
 // with purpose to stop curl threads, free curl resources and deinitialize curl.
 void cleanupCurl(void);
 
-// Called from indra/llmessage/llproxy.cpp for return values of curl_easy_setopt,
-// for debug output purpose when there was an error code.
-// Prints some debug output to llinfos if code is not CURLE_OK.
-CURLcode check_easy_code(CURLcode code);
-
-// Not called from anywhere.
-CURLMcode check_multi_code(CURLMcode code);
-
 // Called from indra/llmessage/llurlrequest.cpp to print debug output regarding
 // an error code returned by EasyRequest::getResult.
 // Just returns curl_easy_strerror(errorcode).
@@ -88,14 +291,6 @@ void setCAFile(std::string const& file);
 // Not called from anywhere.
 // Can be used to set the path to the Certificate Authority file.
 void setCAPath(std::string const& file);
-
-// LLHTTPAssetStorage calls these functions, and does a lot of curl calls directly on the returned curl handles.
-CURLM* newMultiHandle(void);					// Called from constructor of LLHTTPAssetStorage.
-CURLMcode deleteMultiHandle(CURLM* handle);		// Called from destructor of LLHTTPAssetStorage.
-
-// LLHTTPAssetRequest calls these functions, and does a lot of curl calls directly on the returned curl handles.
-CURL* newEasyHandle(void);						// Called from LLHTTPAssetRequest::setupCurlHandle.
-void deleteEasyHandle(CURL* handle);			// Called from LLHTTPAssetRequest::cleanupCurlHandle.
 
 //-----------------------------------------------------------------------------
 // Global classes.

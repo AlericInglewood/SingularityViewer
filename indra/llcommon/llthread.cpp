@@ -314,6 +314,10 @@ LL_COMMON_API bool is_main_thread(void) { return apr_os_thread_equal(main_thread
 // The thread private handle to access the LLThreadLocalData instance.
 apr_threadkey_t* LLThreadLocalData::sThreadLocalDataKey;
 
+LLThreadLocalData::LLThreadLocalData(void) : mCurlMultiHandle(NULL)
+{
+}
+
 //static
 void LLThreadLocalData::init(void)
 {

@@ -201,28 +201,8 @@ void ssl_cleanup(void)
 namespace AICurlInterface
 {
 
-// This function is used in indra/llmessage/llproxy.cpp.
-// THREAD-SAFE
-CURLcode check_easy_code(CURLcode code)
-{
-  if (code != CURLE_OK)
-  {
-	llinfos << "curl easy error detected: " << curl_easy_strerror(code) << llendl;
-  }
-  return code;
-}
-
-// This function is not called from outside this compilation unit,
-// but provided as part of the AICurlInterface anyway because check_easy_code is.
-// THREAD-SAFE
-CURLMcode check_multi_code(CURLMcode code) 
-{
-  if (code != CURLM_OK)
-  {
-	llinfos << "curl multi error detected: " << curl_multi_strerror(code) << llendl;
-  }
-  return code;
-}
+#undef AICurlPrivate
+using AICurlPrivate::check_easy_code;
 
 // MAIN-THREAD
 void initCurl(F32 curl_request_timeout, S32 max_number_handles)
@@ -339,25 +319,6 @@ std::string strerror(CURLcode errorcode)
 {
   // libcurl is thread safe, no locking needed.
   return curl_easy_strerror(errorcode);
-}
-
-CURLM* newMultiHandle(void)
-{
-  return NULL;
-}
-
-CURLMcode deleteMultiHandle(CURLM* handle)
-{
-  return (CURLMcode)0;
-}
-
-CURL* newEasyHandle(void)
-{
-  return NULL;
-}
-
-void deleteEasyHandle(CURL* handle)
-{
 }
 
 //-----------------------------------------------------------------------------
@@ -579,3 +540,155 @@ class AICurlThread : public LLQueuedThread
 	virtual ~AICurlThread();
 };
 
+namespace AICurlPrivate
+{
+
+// THREAD-SAFE
+CURLcode check_easy_code(CURLcode code)
+{
+  if (code != CURLE_OK)
+  {
+	llinfos << "curl easy error detected: " << curl_easy_strerror(code) << llendl;
+  }
+  return code;
+}
+
+// THREAD-SAFE
+CURLMcode check_multi_code(CURLMcode code) 
+{
+  if (code != CURLM_OK)
+  {
+	llinfos << "curl multi error detected: " << curl_multi_strerror(code) << llendl;
+  }
+  return code;
+}
+
+//-----------------------------------------------------------------------------
+// AICurlEasyHandle (base classes)
+//
+
+LLAtomicU32 CurlEasyHandle::sTotalEasyHandles;
+
+CurlEasyHandle::CurlEasyHandle(void) throw(AICurlNoEasyHandle)
+{
+  mEasyHandle = curl_easy_init();
+  if (!mEasyHandle)
+  {
+	throw AICurlNoEasyHandle("curl_easy_init() returned NULL");
+  }
+  sTotalEasyHandles++;
+}
+
+CurlEasyHandle::~CurlEasyHandle()
+{
+  curl_easy_cleanup(mEasyHandle);
+  --sTotalEasyHandles;
+}
+
+CURLcode CurlEasyHandle::getinfo(CURLINFO info, void* data)
+{
+  return check_easy_code(curl_easy_getinfo(mEasyHandle, info, data));
+}
+
+char* CurlEasyHandle::escape(char* url, int length)
+{
+  return curl_easy_escape(mEasyHandle, url, length);
+}
+
+char* CurlEasyHandle::unescape(char* url, int inlength , int* outlength)
+{
+  return curl_easy_unescape(mEasyHandle, url, inlength, outlength);
+}
+
+CURLcode CurlEasyHandle::perform(void)
+{
+  llassert(!mActive);
+  return check_easy_code(curl_easy_perform(mEasyHandle));
+}
+
+CURLcode CurlEasyHandle::pause(int bitmask)
+{
+  return check_easy_code(curl_easy_pause(mEasyHandle, bitmask));
+}
+
+CURLMcode CurlEasyHandle::add_handle_to_multi(CURLM* multi)
+{
+  llassert_always(!mActive);
+  mActive = true;
+  return curl_multi_add_handle(multi, mEasyHandle);
+}
+
+CURLMcode CurlEasyHandle::remove_handle_from_multi(CURLM* multi)
+{
+  llassert_always(mActive);
+  mActive = false;
+  return curl_multi_remove_handle(multi, mEasyHandle);
+}
+
+void intrusive_ptr_add_ref(AIThreadSafeCurlEasyHandle* threadsafe_curl_easy_handle)
+{
+  threadsafe_curl_easy_handle->mReferenceCount++;
+}
+
+void intrusive_ptr_release(AIThreadSafeCurlEasyHandle* threadsafe_curl_easy_handle)
+{
+  if (--threadsafe_curl_easy_handle->mReferenceCount == 0)
+  {
+	delete threadsafe_curl_easy_handle;
+  }
+}
+
+//-----------------------------------------------------------------------------
+// AICurlMultiHandle (base classes)
+//
+
+LLAtomicU32 CurlMultiHandle::sTotalMultiHandles;
+
+CurlMultiHandle::CurlMultiHandle(void) throw(AICurlNoMultiHandle)
+{
+  mMultiHandle = curl_multi_init();
+  if (!mMultiHandle)
+  {
+	throw AICurlNoMultiHandle("curl_multi_init() returned NULL");
+  }
+  sTotalMultiHandles++;
+}
+
+CurlMultiHandle::~CurlMultiHandle()
+{
+  curl_multi_cleanup(mMultiHandle);
+  --sTotalMultiHandles;
+}
+
+CURLMcode CurlMultiHandle::perform(int* running_handles)
+{
+  return check_multi_code(curl_multi_perform(mMultiHandle, running_handles));
+}
+
+CURLMsg* CurlMultiHandle::info_read(int* msgs_in_queue)
+{
+  return curl_multi_info_read(mMultiHandle, msgs_in_queue);
+}
+
+CURLMcode CurlMultiHandle::add_easy_handle(AICurlEasyHandle const& easy_handle)
+{
+  return AICurlEasyHandle_wat(*easy_handle)->add_handle_to_multi(mMultiHandle);
+}
+
+CURLMcode CurlMultiHandle::remove_easy_handle(AICurlEasyHandle const& easy_handle)
+{
+  return AICurlEasyHandle_wat(*easy_handle)->remove_handle_from_multi(mMultiHandle);
+}
+
+} // namespace AICurlPrivate
+
+//static
+AICurlMultiHandle& AICurlMultiHandle::getInstance(void) throw(AICurlNoMultiHandle)
+{
+  LLThreadLocalData& tldata = LLThreadLocalData::tldata();
+  if (!tldata.mCurlMultiHandle)
+  {
+	tldata.mCurlMultiHandle = new AICurlMultiHandle;
+  }
+  return *tldata.mCurlMultiHandle;
+}

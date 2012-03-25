@@ -251,9 +251,7 @@ public:
 
 	// Apply the current proxy settings to a curl request. Doesn't do anything if mHTTPProxyEnabled is false.
 	// Safe to call from any thread.
-	void applyProxySettings(CURL* handle);
-	void applyProxySettings(LLCurl::Easy* handle);
-	void applyProxySettings(LLCurlEasyRequest* handle);
+	void applyProxySettings(AICurlEasyHandle_wat const& curlEasyHandle_w);
 
 	// Start a connection to the SOCKS 5 proxy. Call from main thread only.
 	S32 startSOCKSProxy(LLHost host);

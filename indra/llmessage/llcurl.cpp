@@ -1613,7 +1613,7 @@ CURL*  LLCurl::newEasyHandle()
 		{
 		  ++*sTotalHandles_w;
 		}
-		Dout(dc::curl, "Called curl_easy_int() returning " << (void*)ret << ", sTotalHandles is now " << *sTotalHandles_w);
+		Dout(dc::curl, "Called curl_easy_init() returning " << (void*)ret << ", sTotalHandles is now " << *sTotalHandles_w);
 		BACKTRACE;
 	}
 
