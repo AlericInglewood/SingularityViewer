@@ -58,6 +58,12 @@ class AICurlMultiHandle;
 #define ll_thread_local __thread
 #endif
 
+class LL_COMMON_API LLThreadLocalDataMember
+{
+public:
+	virtual ~LLThreadLocalDataMember() { };
+};
+
 class LL_COMMON_API LLThreadLocalData
 {
 private:
@@ -67,7 +73,8 @@ public:
 	// Thread-local memory pool.
 	LLAPRRootPool mRootPool;
 	LLVolatileAPRPool mVolatileAPRPool;
-	AICurlMultiHandle* mCurlMultiHandle;	// Initialized by AICurlMultiHandle::getInstance
+	LLThreadLocalDataMember* mCurlMultiHandle;	// Initialized by AICurlMultiHandle::getInstance
+	std::string mName;						// "main thread", or a copy of LLThread::mName.
 
 	static void init(void);
 	static void destroy(void* thread_local_data);
@@ -75,7 +82,8 @@ public:
 	static LLThreadLocalData& tldata(void);
 
 private:
-	LLThreadLocalData(void);
+	LLThreadLocalData(char const* name);
+	~LLThreadLocalData();
 };
 
 class LL_COMMON_API LLThread

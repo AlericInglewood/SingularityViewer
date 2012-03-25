@@ -33,6 +33,7 @@
 
 #include <string>
 #include <vector>
+#include <set>
 #include <stdexcept>
 #include <boost/intrusive_ptr.hpp>
 #include <boost/utility.hpp>
@@ -108,21 +109,23 @@ class CurlEasyHandle : public boost::noncopyable {
 	// Pause and unpause a connection.
 	CURLcode pause(int bitmask);
 
-	// This should only be called from CurlMultiHandle; add/remove an easy handle to/from a multi handle.
-	CURLMcode add_handle_to_multi(CURLM* multi_handle);
-	CURLMcode remove_handle_from_multi(CURLM* multi_handle);
-
-	// Returns true if this easy handle was added to a curl multi handle.
-	bool active(void) const { return mActive; }
-
   private:
 	CURL* mEasyHandle;
-	bool mActive;
+	CURLM* mActive;
 	static LLAtomicU32 sTotalEasyHandles;
+
+  private:
+	// This should only be called from CurlMultiHandle; add/remove an easy handle to/from a multi handle.
+	friend class CurlMultiHandle;
+	CURLMcode add_handle_to_multi(CURLM* multi_handle);
+	CURLMcode remove_handle_from_multi(CURLM* multi_handle);
 
   public:
 	// Retuns total number of existing CURL* handles (excluding ones created outside this class).
 	static U32 getTotalEasyHandles(void) { return sTotalEasyHandles; }
+
+	// Returns true if this easy handle was added to a curl multi handle.
+	bool active(void) const { return mActive; }
 };
 
 // This class wraps CurlEasyHandle for thread-safety and adds a reference counter so we can
@@ -199,6 +202,11 @@ typedef AIAccess<AICurlPrivate::CurlEasyHandle> AICurlEasyHandle_wat;
 namespace AICurlPrivate
 {
 
+// For ordering a std::set with AICurlEasyHandle objects.
+struct AICurlEasyHandleCompare {
+  bool operator()(AICurlEasyHandle const& h1, AICurlEasyHandle const& h2) { return h1.get() < h2.get(); }
+};
+
 // This class wraps CURLM*'s.
 // It guarantees that a pointer is cleaned up when no longer needed, as required by libcurl.
 class CurlMultiHandle : public boost::noncopyable {
@@ -211,17 +219,24 @@ class CurlMultiHandle : public boost::noncopyable {
 	CurlMultiHandle& operator=(CurlMultiHandle const*);
 
   public:
+	// Add/remove an easy handle to/from a multi session.
 	CURLMcode add_easy_handle(AICurlEasyHandle const& easy_handle);
 	CURLMcode remove_easy_handle(AICurlEasyHandle const& easy_handle);
 
+	// Set options for a curl multi handle.
 	template<typename BUILTIN>
 	  CURLMcode setopt(CURLMoption option, BUILTIN parameter);
 
+	// Reads/writes available data from each easy handle (non-blocking).
 	CURLMcode perform(int* running_handles);
+
+	// Read multi stack informationals.
 	CURLMsg* info_read(int* msgs_in_queue);
 
   private:
 	CURLM* mMultiHandle;
+	typedef std::set<AICurlEasyHandle, AICurlEasyHandleCompare> addedEasyHandles_type;
+	addedEasyHandles_type mAddedEasyHandles;
 	static LLAtomicU32 sTotalMultiHandles;
 
   public:
@@ -243,7 +258,7 @@ CURLMcode CurlMultiHandle::setopt(CURLMoption option, BUILTIN parameter)
 // this class provides a thread-local singleton (exactly one instance per thread), and because it
 // can't be copied, that guarantees that the CURLM* handle is never used concurrently, which is
 // not allowed by libcurl.
-class AICurlMultiHandle : public AIThreadSafeSingleThreadDC<AICurlPrivate::CurlMultiHandle> {
+class AICurlMultiHandle : public AIThreadSafeSingleThreadDC<AICurlPrivate::CurlMultiHandle>, public LLThreadLocalDataMember {
   public:
 	static AICurlMultiHandle& getInstance(void) throw(AICurlNoMultiHandle);
   private:

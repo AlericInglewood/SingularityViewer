@@ -569,7 +569,7 @@ CURLMcode check_multi_code(CURLMcode code)
 
 LLAtomicU32 CurlEasyHandle::sTotalEasyHandles;
 
-CurlEasyHandle::CurlEasyHandle(void) throw(AICurlNoEasyHandle)
+CurlEasyHandle::CurlEasyHandle(void) throw(AICurlNoEasyHandle) : mActive(NULL)
 {
   mEasyHandle = curl_easy_init();
   if (!mEasyHandle)
@@ -581,6 +581,7 @@ CurlEasyHandle::CurlEasyHandle(void) throw(AICurlNoEasyHandle)
 
 CurlEasyHandle::~CurlEasyHandle()
 {
+  llassert(!mActive);
   curl_easy_cleanup(mEasyHandle);
   --sTotalEasyHandles;
 }
@@ -613,16 +614,16 @@ CURLcode CurlEasyHandle::pause(int bitmask)
 
 CURLMcode CurlEasyHandle::add_handle_to_multi(CURLM* multi)
 {
-  llassert_always(!mActive);
-  mActive = true;
-  return curl_multi_add_handle(multi, mEasyHandle);
+  llassert_always(!mActive && multi);
+  mActive = multi;
+  return check_multi_code(curl_multi_add_handle(multi, mEasyHandle));
 }
 
 CURLMcode CurlEasyHandle::remove_handle_from_multi(CURLM* multi)
 {
-  llassert_always(mActive);
-  mActive = false;
-  return curl_multi_remove_handle(multi, mEasyHandle);
+  llassert_always(mActive && mActive == multi);
+  mActive = NULL;
+  return check_multi_code(curl_multi_remove_handle(multi, mEasyHandle));
 }
 
 void intrusive_ptr_add_ref(AIThreadSafeCurlEasyHandle* threadsafe_curl_easy_handle)
@@ -656,6 +657,12 @@ CurlMultiHandle::CurlMultiHandle(void) throw(AICurlNoMultiHandle)
 
 CurlMultiHandle::~CurlMultiHandle()
 {
+  // This thread was terminated.
+  // Curl demands that all handles are removed from the multi session handle before calling curl_multi_cleanup.
+  for(addedEasyHandles_type::iterator iter = mAddedEasyHandles.begin(); iter != mAddedEasyHandles.end(); iter = mAddedEasyHandles.begin())
+  {
+	remove_easy_handle(*iter);
+  }
   curl_multi_cleanup(mMultiHandle);
   --sTotalMultiHandles;
 }
@@ -672,12 +679,18 @@ CURLMsg* CurlMultiHandle::info_read(int* msgs_in_queue)
 
 CURLMcode CurlMultiHandle::add_easy_handle(AICurlEasyHandle const& easy_handle)
 {
+  std::pair<addedEasyHandles_type::iterator, bool> res = mAddedEasyHandles.insert(easy_handle);
+  llassert(res.second);		// May not have been added before.
   return AICurlEasyHandle_wat(*easy_handle)->add_handle_to_multi(mMultiHandle);
 }
 
 CURLMcode CurlMultiHandle::remove_easy_handle(AICurlEasyHandle const& easy_handle)
 {
-  return AICurlEasyHandle_wat(*easy_handle)->remove_handle_from_multi(mMultiHandle);
+  addedEasyHandles_type::iterator iter = mAddedEasyHandles.find(easy_handle);
+  llassert(iter != mAddedEasyHandles.end());	// Must have been added before.
+  CURLMcode res = AICurlEasyHandle_wat(**iter)->remove_handle_from_multi(mMultiHandle);
+  mAddedEasyHandles.erase(iter);
+  return res;
 }
 
 } // namespace AICurlPrivate
@@ -688,7 +701,8 @@ AICurlMultiHandle& AICurlMultiHandle::getInstance(void) throw(AICurlNoMultiHandl
   LLThreadLocalData& tldata = LLThreadLocalData::tldata();
   if (!tldata.mCurlMultiHandle)
   {
+	llinfos << "Creating AICurlMultiHandle for thread \"" << tldata.mName << "\"." << llendl;
 	tldata.mCurlMultiHandle = new AICurlMultiHandle;
   }
-  return *tldata.mCurlMultiHandle;
+  return *static_cast<AICurlMultiHandle*>(tldata.mCurlMultiHandle);
 }
