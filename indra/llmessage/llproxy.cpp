@@ -415,9 +415,9 @@ void LLProxy::cleanupClass()
  * When the HTTP proxy is enabled, the proxy mutex will
  * be locked every time this method is called.
  *
- * @param curlEasyHandle_w An already locked curl easy handle, before it has been performed.
+ * @param curlEasyRequest_w An already locked curl easy handle, before it has been performed.
  */
-void LLProxy::applyProxySettings(AICurlEasyHandle_wat const& curlEasyHandle_w)
+void LLProxy::applyProxySettings(AICurlEasyRequest_wat const& curlEasyRequest_w)
 {
 	// Do a faster unlocked check to see if we are supposed to proxy.
 	if (mHTTPProxyEnabled)
@@ -427,21 +427,21 @@ void LLProxy::applyProxySettings(AICurlEasyHandle_wat const& curlEasyHandle_w)
 		// Now test again to verify that the proxy wasn't disabled between the first check and the lock.
 		if (mHTTPProxyEnabled)
 		{
-			curlEasyHandle_w->setopt(CURLOPT_PROXY, mHTTPProxy.getIPString().c_str());
-			curlEasyHandle_w->setopt(CURLOPT_PROXYPORT, mHTTPProxy.getPort());
+			curlEasyRequest_w->setopt(CURLOPT_PROXY, mHTTPProxy.getIPString().c_str());
+			curlEasyRequest_w->setopt(CURLOPT_PROXYPORT, mHTTPProxy.getPort());
 
 			if (mProxyType == LLPROXY_SOCKS)
 			{
-				curlEasyHandle_w->setopt(CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5);
+				curlEasyRequest_w->setopt(CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5);
 				if (mAuthMethodSelected == METHOD_PASSWORD)
 				{
 					std::string auth_string = mSocksUsername + ":" + mSocksPassword;
-					curlEasyHandle_w->setopt(CURLOPT_PROXYUSERPWD, auth_string.c_str());
+					curlEasyRequest_w->setopt(CURLOPT_PROXYUSERPWD, auth_string.c_str());
 				}
 			}
 			else
 			{
-				curlEasyHandle_w->setopt(CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
+				curlEasyRequest_w->setopt(CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
 			}
 		}
 	}

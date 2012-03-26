@@ -69,6 +69,7 @@ enum gSSLlib_type {
 
 // No locking needed: initialized before threads are created, and subsequently only read.
 gSSLlib_type gSSLlib;
+bool gSetoptParamsNeedDup;
 
 } // namespace
 
@@ -272,6 +273,13 @@ void initCurl(F32 curl_request_timeout, S32 max_number_handles)
 	    break;	// No requirements.
 	  }
 	}
+
+	gSetoptParamsNeedDup = (version_info->version_num < 0x071700);
+	if (gSetoptParamsNeedDup)
+	{
+	  llwarns << "Your libcurl version is too old." << llendl;
+	}
+	llassert_always(!gSetoptParamsNeedDup);		// Might add support later.
   }
 }
 
@@ -423,80 +431,6 @@ void intrusive_ptr_release(Responder* responder)
 }
 
 //-----------------------------------------------------------------------------
-// class Easy
-//
-
-CURL* Easy::getCurlHandle(void) const
-{
-  return NULL;
-}
-
-//-----------------------------------------------------------------------------
-// class EasyReqest
-//
-
-Easy* EasyRequest::getEasy(void) const
-{
-  return NULL;
-}
-
-void EasyRequest::setopt(CURLoption option, S32 value)
-{
-}
-
-void EasyRequest::setoptString(CURLoption option, std::string const& value)
-{
-}
-
-void EasyRequest::setPost(char* postdata, S32 size)
-{ 
-}
-
-void EasyRequest::setHeaderCallback(curl_write_callback callback, void* userdata)
-{
-}
-
-void EasyRequest::setWriteCallback(curl_write_callback callback, void* userdata)
-{
-}
-
-void EasyRequest::setReadCallback(curl_read_callback callback, void* userdata)
-{
-}
-
-void EasyRequest::setSSLCtxCallback(curl_ssl_ctx_callback callback, void* userdata)
-{
-}
-
-void EasyRequest::slist_append(char const* str)
-{
-}
-
-void EasyRequest::sendRequest(std::string const& url)
-{
-}
-
-std::string EasyRequest::getErrorString(void)
-{
-  return "";
-}
-
-bool EasyRequest::getResult(CURLcode* result, TransferInfo* info)
-{
-  return true;
-}
-
-bool EasyRequest::wait(void) const
-{
-  return false;
-}
-
-bool EasyRequest::isValid(void) const
-{
-  return true;
-}
-
-//-----------------------------------------------------------------------------
 // class Reqest
 //
 
@@ -564,7 +498,7 @@ CURLMcode check_multi_code(CURLMcode code)
 }
 
 //-----------------------------------------------------------------------------
-// AICurlEasyHandle (base classes)
+// AICurlEasyRequest (base classes)
 //
 
 LLAtomicU32 CurlEasyHandle::sTotalEasyHandles;
@@ -626,17 +560,73 @@ CURLMcode CurlEasyHandle::remove_handle_from_multi(CURLM* multi)
   return check_multi_code(curl_multi_remove_handle(multi, mEasyHandle));
 }
 
-void intrusive_ptr_add_ref(AIThreadSafeCurlEasyHandle* threadsafe_curl_easy_handle)
+void intrusive_ptr_add_ref(AIThreadSafeCurlEasyRequest* threadsafe_curl_easy_request)
 {
-  threadsafe_curl_easy_handle->mReferenceCount++;
+  threadsafe_curl_easy_request->mReferenceCount++;
 }
 
-void intrusive_ptr_release(AIThreadSafeCurlEasyHandle* threadsafe_curl_easy_handle)
+void intrusive_ptr_release(AIThreadSafeCurlEasyRequest* threadsafe_curl_easy_request)
 {
-  if (--threadsafe_curl_easy_handle->mReferenceCount == 0)
+  if (--threadsafe_curl_easy_request->mReferenceCount == 0)
   {
-	delete threadsafe_curl_easy_handle;
+	delete threadsafe_curl_easy_request;
   }
+}
+
+//-----------------------------------------------------------------------------
+// class CurlEasyReqest
+//
+
+void CurlEasyRequest::setoptString(CURLoption option, std::string const& value)
+{
+}
+
+void CurlEasyRequest::setPost(char* postdata, S32 size)
+{ 
+}
+
+void CurlEasyRequest::setHeaderCallback(curl_write_callback callback, void* userdata)
+{
+}
+
+void CurlEasyRequest::setWriteCallback(curl_write_callback callback, void* userdata)
+{
+}
+
+void CurlEasyRequest::setReadCallback(curl_read_callback callback, void* userdata)
+{
+}
+
+void CurlEasyRequest::setSSLCtxCallback(curl_ssl_ctx_callback callback, void* userdata)
+{
+}
+
+void CurlEasyRequest::slist_append(char const* str)
+{
+}
+
+void CurlEasyRequest::sendRequest(std::string const& url)
+{
+}
+
+std::string CurlEasyRequest::getErrorString(void)
+{
+  return "";
+}
+
+bool CurlEasyRequest::getResult(CURLcode* result, AICurlInterface::TransferInfo* info)
+{
+  return true;
+}
+
+bool CurlEasyRequest::wait(void) const
+{
+  return false;
+}
+
+bool CurlEasyRequest::isValid(void) const
+{
+  return true;
 }
 
 //-----------------------------------------------------------------------------
@@ -659,9 +649,9 @@ CurlMultiHandle::~CurlMultiHandle()
 {
   // This thread was terminated.
   // Curl demands that all handles are removed from the multi session handle before calling curl_multi_cleanup.
-  for(addedEasyHandles_type::iterator iter = mAddedEasyHandles.begin(); iter != mAddedEasyHandles.end(); iter = mAddedEasyHandles.begin())
+  for(addedEasyRequests_type::iterator iter = mAddedEasyRequests.begin(); iter != mAddedEasyRequests.end(); iter = mAddedEasyRequests.begin())
   {
-	remove_easy_handle(*iter);
+	remove_easy_request(*iter);
   }
   curl_multi_cleanup(mMultiHandle);
   --sTotalMultiHandles;
@@ -677,19 +667,19 @@ CURLMsg* CurlMultiHandle::info_read(int* msgs_in_queue)
   return curl_multi_info_read(mMultiHandle, msgs_in_queue);
 }
 
-CURLMcode CurlMultiHandle::add_easy_handle(AICurlEasyHandle const& easy_handle)
+CURLMcode CurlMultiHandle::add_easy_request(AICurlEasyRequest const& easy_request)
 {
-  std::pair<addedEasyHandles_type::iterator, bool> res = mAddedEasyHandles.insert(easy_handle);
+  std::pair<addedEasyRequests_type::iterator, bool> res = mAddedEasyRequests.insert(easy_request);
   llassert(res.second);		// May not have been added before.
-  return AICurlEasyHandle_wat(*easy_handle)->add_handle_to_multi(mMultiHandle);
+  return AICurlEasyRequest_wat(*easy_request)->add_handle_to_multi(mMultiHandle);
 }
 
-CURLMcode CurlMultiHandle::remove_easy_handle(AICurlEasyHandle const& easy_handle)
+CURLMcode CurlMultiHandle::remove_easy_request(AICurlEasyRequest const& easy_request)
 {
-  addedEasyHandles_type::iterator iter = mAddedEasyHandles.find(easy_handle);
-  llassert(iter != mAddedEasyHandles.end());	// Must have been added before.
-  CURLMcode res = AICurlEasyHandle_wat(**iter)->remove_handle_from_multi(mMultiHandle);
-  mAddedEasyHandles.erase(iter);
+  addedEasyRequests_type::iterator iter = mAddedEasyRequests.find(easy_request);
+  llassert(iter != mAddedEasyRequests.end());	// Must have been added before.
+  CURLMcode res = AICurlEasyRequest_wat(**iter)->remove_handle_from_multi(mMultiHandle);
+  mAddedEasyRequests.erase(iter);
   return res;
 }
 

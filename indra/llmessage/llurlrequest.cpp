@@ -65,7 +65,7 @@ public:
 	LLURLRequestDetail();
 	~LLURLRequestDetail();
 	std::string mURL;
-	LLCurlEasyRequest* mCurlRequest;
+	AICurlEasyRequest mCurlEasyRequest;
 	LLIOPipe::buffer_ptr_t mResponseBuffer;
 	LLChannelDescriptors mChannels;
 	U8* mLastRead;
@@ -76,36 +76,26 @@ public:
 };
 
 LLURLRequestDetail::LLURLRequestDetail() :
-	mCurlRequest(NULL),
 	mLastRead(NULL),
 	mBodyLimit(0),
 	mByteAccumulator(0),
 	mIsBodyLimitSet(false),
     mSSLVerifyCallback(NULL)
 {
-	LLMemType m1(LLMemType::MTYPE_IO_URL_REQUEST);
-	mCurlRequest = new LLCurlEasyRequest();
-	
-	if(!mCurlRequest->isValid()) //failed.
-	{
-		delete mCurlRequest ;
-		mCurlRequest = NULL ;
-	}
 }
 
 LLURLRequestDetail::~LLURLRequestDetail()
 {
-	LLMemType m1(LLMemType::MTYPE_IO_URL_REQUEST);
-	delete mCurlRequest;
 	mLastRead = NULL;
 }
 
 void LLURLRequest::setSSLVerifyCallback(SSLCertVerifyCallback callback, void *param)
 {
 	mDetail->mSSLVerifyCallback = callback;
-	mDetail->mCurlRequest->setSSLCtxCallback(LLURLRequest::_sslCtxCallback, (void *)this);
-	mDetail->mCurlRequest->setopt(CURLOPT_SSL_VERIFYPEER, true);
-	mDetail->mCurlRequest->setopt(CURLOPT_SSL_VERIFYHOST, 2);	
+	AICurlEasyRequest_wat curlEasyRequest_w(*mDetail->mCurlEasyRequest);
+	curlEasyRequest_w->setSSLCtxCallback(LLURLRequest::_sslCtxCallback, (void *)this);
+	curlEasyRequest_w->setopt(CURLOPT_SSL_VERIFYPEER, true);
+	curlEasyRequest_w->setopt(CURLOPT_SSL_VERIFYHOST, 2);	
 }
 
 
@@ -193,7 +183,8 @@ std::string LLURLRequest::getURL() const
 void LLURLRequest::addHeader(const char* header)
 {
 	LLMemType m1(LLMemType::MTYPE_IO_URL_REQUEST);
-	mDetail->mCurlRequest->slist_append(header);
+	AICurlEasyRequest_wat curlEasyRequest_w(*mDetail->mCurlEasyRequest);
+	curlEasyRequest_w->slist_append(header);
 }
 
 void LLURLRequest::setBodyLimit(U32 size)
@@ -206,7 +197,8 @@ void LLURLRequest::setCallback(LLURLRequestComplete* callback)
 {
 	LLMemType m1(LLMemType::MTYPE_IO_URL_REQUEST);
 	mCompletionCallback = callback;
-	mDetail->mCurlRequest->setHeaderCallback(&headerCallback, (void*)callback);
+	AICurlEasyRequest_wat curlEasyRequest_w(*mDetail->mCurlEasyRequest);
+	curlEasyRequest_w->setHeaderCallback(&headerCallback, (void*)callback);
 }
 
 // Added to mitigate the effect of libcurl looking
@@ -242,30 +234,28 @@ void LLURLRequest::useProxy(bool use_proxy)
 
     lldebugs << "use_proxy = " << (use_proxy?'Y':'N') << ", env_proxy = \"" << env_proxy << "\"" << llendl;
 
-    if (use_proxy)
-    {
-		mDetail->mCurlRequest->setoptString(CURLOPT_PROXY, env_proxy);
-    }
-    else
-    {
-        mDetail->mCurlRequest->setoptString(CURLOPT_PROXY, "");
-    }
+	AICurlEasyRequest_wat curlEasyRequest_w(*mDetail->mCurlEasyRequest);
+	curlEasyRequest_w->setoptString(CURLOPT_PROXY, use_proxy ? env_proxy : std::string(""));
 }
 
 void LLURLRequest::useProxy(const std::string &proxy)
 {
-    mDetail->mCurlRequest->setoptString(CURLOPT_PROXY, proxy);
+	AICurlEasyRequest_wat curlEasyRequest_w(*mDetail->mCurlEasyRequest);
+    curlEasyRequest_w->setoptString(CURLOPT_PROXY, proxy);
 }
 
 void LLURLRequest::allowCookies()
 {
-	mDetail->mCurlRequest->setoptString(CURLOPT_COOKIEFILE, "");
+	AICurlEasyRequest_wat curlEasyRequest_w(*mDetail->mCurlEasyRequest);
+	curlEasyRequest_w->setoptString(CURLOPT_COOKIEFILE, "");
 }
 
 //virtual 
 bool LLURLRequest::isValid() 
 {
-	return mDetail->mCurlRequest && mDetail->mCurlRequest->isValid(); 
+	//FIXME - wtf is with this isValid?
+	//return mDetail->mCurlRequest->isValid(); 
+	return true;
 }
 
 // virtual
@@ -364,10 +354,12 @@ LLIOPipe::EStatus LLURLRequest::process_impl(
 	{
 		PUMP_DEBUG;
 		LLIOPipe::EStatus status = STATUS_BREAK;
+		AICurlEasyRequest_wat curlEasyRequest_w(*mDetail->mCurlEasyRequest);
+
 		static LLFastTimer::DeclareTimer FTM_URL_PERFORM("Perform");
 		{
 			LLFastTimer t(FTM_URL_PERFORM);
-			if(!mDetail->mCurlRequest->wait())
+			if(!curlEasyRequest_w->wait())
 			{
 				return status ;
 			}
@@ -382,7 +374,7 @@ LLIOPipe::EStatus LLURLRequest::process_impl(
 			bool newmsg = false;
 			{
 				LLFastTimer t(FTM_PROCESS_URL_REQUEST_GET_RESULT);
-				newmsg = mDetail->mCurlRequest->getResult(&result);
+				newmsg = curlEasyRequest_w->getResult(&result);
 			}
 		
 			if(!newmsg)
@@ -471,9 +463,13 @@ void LLURLRequest::initialize()
 		return ;
 	}
 
-	mDetail->mCurlRequest->setopt(CURLOPT_NOSIGNAL, 1);
-	mDetail->mCurlRequest->setWriteCallback(&downCallback, (void*)this);
-	mDetail->mCurlRequest->setReadCallback(&upCallback, (void*)this);
+	{
+		AICurlEasyRequest_wat curlEasyRequest_w(*mDetail->mCurlEasyRequest);
+		curlEasyRequest_w->setopt(CURLOPT_NOSIGNAL, 1);
+		curlEasyRequest_w->setWriteCallback(&downCallback, (void*)this);
+		curlEasyRequest_w->setReadCallback(&upCallback, (void*)this);
+	}
+
 	mRequestTransferedBytes = 0;
 	mResponseTransferedBytes = 0;
 }
@@ -488,20 +484,21 @@ bool LLURLRequest::configure()
 	S32 bytes = mDetail->mResponseBuffer->countAfter(
    		mDetail->mChannels.in(),
 		NULL);
+	AICurlEasyRequest_wat curlEasyRequest_w(*mDetail->mCurlEasyRequest);
 	switch(mAction)
 	{
 	case HTTP_HEAD:
-		mDetail->mCurlRequest->setopt(CURLOPT_HEADER, 1);
-		mDetail->mCurlRequest->setopt(CURLOPT_NOBODY, 1);
-		mDetail->mCurlRequest->setopt(CURLOPT_FOLLOWLOCATION, 1);
+		curlEasyRequest_w->setopt(CURLOPT_HEADER, 1);
+		curlEasyRequest_w->setopt(CURLOPT_NOBODY, 1);
+		curlEasyRequest_w->setopt(CURLOPT_FOLLOWLOCATION, 1);
 		rv = true;
 		break;
 	case HTTP_GET:
-		mDetail->mCurlRequest->setopt(CURLOPT_HTTPGET, 1);
-		mDetail->mCurlRequest->setopt(CURLOPT_FOLLOWLOCATION, 1);
+		curlEasyRequest_w->setopt(CURLOPT_HTTPGET, 1);
+		curlEasyRequest_w->setopt(CURLOPT_FOLLOWLOCATION, 1);
 
 		// Set Accept-Encoding to allow response compression
-		mDetail->mCurlRequest->setoptString(CURLOPT_ENCODING, "");
+		curlEasyRequest_w->setoptString(CURLOPT_ENCODING, "");
 		rv = true;
 		break;
 
@@ -510,8 +507,8 @@ bool LLURLRequest::configure()
 		// to turning this on, and I am not too sure what it means.
 		addHeader("Expect:");
 
-		mDetail->mCurlRequest->setopt(CURLOPT_UPLOAD, 1);
-		mDetail->mCurlRequest->setopt(CURLOPT_INFILESIZE, bytes);
+		curlEasyRequest_w->setopt(CURLOPT_UPLOAD, 1);
+		curlEasyRequest_w->setopt(CURLOPT_INFILESIZE, bytes);
 		rv = true;
 		break;
 
@@ -525,22 +522,22 @@ bool LLURLRequest::configure()
 		addHeader("Content-Type:");
 
 		// Set the handle for an http post
-		mDetail->mCurlRequest->setPost(NULL, bytes);
+		curlEasyRequest_w->setPost(NULL, bytes);
 
 		// Set Accept-Encoding to allow response compression
-		mDetail->mCurlRequest->setoptString(CURLOPT_ENCODING, "");
+		curlEasyRequest_w->setoptString(CURLOPT_ENCODING, "");
 		rv = true;
 		break;
 
 	case HTTP_DELETE:
 		// Set the handle for an http post
-		mDetail->mCurlRequest->setoptString(CURLOPT_CUSTOMREQUEST, "DELETE");
+		curlEasyRequest_w->setoptString(CURLOPT_CUSTOMREQUEST, "DELETE");
 		rv = true;
 		break;
 
 	case HTTP_MOVE:
 		// Set the handle for an http post
-		mDetail->mCurlRequest->setoptString(CURLOPT_CUSTOMREQUEST, "MOVE");
+		curlEasyRequest_w->setoptString(CURLOPT_CUSTOMREQUEST, "MOVE");
 		// *NOTE: should we check for the Destination header?
 		rv = true;
 		break;
@@ -551,7 +548,7 @@ bool LLURLRequest::configure()
 	}
 	if(rv)
 	{
-		mDetail->mCurlRequest->sendRequest(mDetail->mURL);
+		curlEasyRequest_w->sendRequest(mDetail->mURL);
 	}
 	return rv;
 }

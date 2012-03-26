@@ -73,8 +73,25 @@ class AICurlNoMultiHandle : public AICurlError {
 // End Exceptions.
 //-----------------------------------------------------------------------------
 
+namespace AICurlInterface
+{
+
+// Output parameter of LLCurlEasyRequest::getResult.
+// Only used by LLXMLRPCTransaction::Impl.
+struct TransferInfo {
+  TransferInfo() : mSizeDownload(0.0), mTotalTime(0.0), mSpeedDownload(0.0) { }
+  F64 mSizeDownload;
+  F64 mTotalTime;
+  F64 mSpeedDownload;
+};
+
+} // namespace AICurlInterface
+
 namespace AICurlPrivate
 {
+
+CURLcode check_easy_code(CURLcode code);
+CURLMcode check_multi_code(CURLMcode code);
 
 // This class wraps CURL*'s.
 // It guarantees that a pointer is cleaned up when no longer needed, as required by libcurl.
@@ -128,24 +145,6 @@ class CurlEasyHandle : public boost::noncopyable {
 	bool active(void) const { return mActive; }
 };
 
-// This class wraps CurlEasyHandle for thread-safety and adds a reference counter so we can
-// copy it around cheaply and it gets destructed automatically when the last instance is deleted.
-// It guarantees that the CURL* handle is never used concurrently, which is not allowed by libcurl.
-// As AIThreadSafeSimpleDC contains a mutex, it cannot be copied. Therefore we need a reference counter for this object.
-class AIThreadSafeCurlEasyHandle : public AIThreadSafeSimpleDC<CurlEasyHandle> {
-  public:
-	AIThreadSafeCurlEasyHandle(void) throw(AICurlNoEasyHandle) { }
-
-  private:
-	LLAtomicU32 mReferenceCount;
-
-	friend void intrusive_ptr_add_ref(AIThreadSafeCurlEasyHandle* p);	// Called by boost::intrusive_ptr when a new copy of a boost::intrusive_ptr<AIThreadSafeCurlEasyHandle> is made.
-	friend void intrusive_ptr_release(AIThreadSafeCurlEasyHandle* p);	// Called by boost::intrusive_ptr when a boost::intrusive_ptr<AIThreadSafeCurlEasyHandle> is destroyed.
-};
-
-CURLcode check_easy_code(CURLcode code);
-CURLMcode check_multi_code(CURLMcode code);
-
 template<typename BUILTIN>
 CURLcode CurlEasyHandle::setopt(CURLoption option, BUILTIN parameter)
 {
@@ -153,58 +152,89 @@ CURLcode CurlEasyHandle::setopt(CURLoption option, BUILTIN parameter)
   return check_easy_code(curl_easy_setopt(mEasyHandle, option, parameter));
 }
 
+class CurlEasyRequest : public CurlEasyHandle {
+  public:
+	void setoptString(CURLoption option, std::string const& value);
+	void setPost(char* postdata, S32 size);
+	void setHeaderCallback(curl_write_callback callback, void* userdata);
+	void setWriteCallback(curl_write_callback callback, void* userdata);
+	void setReadCallback(curl_read_callback callback, void* userdata);
+	void setSSLCtxCallback(curl_ssl_ctx_callback callback, void* userdata);
+	void slist_append(char const* str);
+	void sendRequest(std::string const& url);
+	std::string getErrorString(void);
+	bool getResult(CURLcode* result, AICurlInterface::TransferInfo* info = NULL);
+	bool wait(void) const;
+	bool isValid(void) const;
+};
+
+// This class wraps CurlEasyRequest for thread-safety and adds a reference counter so we can
+// copy it around cheaply and it gets destructed automatically when the last instance is deleted.
+// It guarantees that the CURL* handle is never used concurrently, which is not allowed by libcurl.
+// As AIThreadSafeSimpleDC contains a mutex, it cannot be copied. Therefore we need a reference counter for this object.
+class AIThreadSafeCurlEasyRequest : public AIThreadSafeSimpleDC<CurlEasyRequest> {
+  public:
+	AIThreadSafeCurlEasyRequest(void) throw(AICurlNoEasyHandle) { }
+
+  private:
+	LLAtomicU32 mReferenceCount;
+
+	friend void intrusive_ptr_add_ref(AIThreadSafeCurlEasyRequest* p);	// Called by boost::intrusive_ptr when a new copy of a boost::intrusive_ptr<AIThreadSafeCurlEasyQuest> is made.
+	friend void intrusive_ptr_release(AIThreadSafeCurlEasyRequest* p);	// Called by boost::intrusive_ptr when a boost::intrusive_ptr<AIThreadSafeCurlEasyRequest> is destroyed.
+};
+
 } // namespace AICurlPrivate
 
 // boost::intrusive_ptr is no more threadsafe than a builtin type, but wrapping it in AIThreadSafe is obviously not going to help here.
 // Therefore we use the following trick: we wrap the boost::intrusive_ptr too, and only allow read accesses on it.
 
 // Thread safe, reference counting, auto cleaning curl easy handle.
-class AICurlEasyHandle {
+class AICurlEasyRequest {
   public:
 	// Initial construction is allowed (thread-safe).
-	// Note: If AIThreadSafeCurlEasyHandle() throws then the memory allocated is still freed.
-	// 'new' never returned however and the constructor nor destructor of mCurlEasyHandle is called in this case.
-	AICurlEasyHandle() throw(AICurlNoEasyHandle) : mCurlEasyHandle(new AICurlPrivate::AIThreadSafeCurlEasyHandle) { }
-	AICurlEasyHandle(AICurlEasyHandle const& orig) : mCurlEasyHandle(orig.mCurlEasyHandle) { }
+	// Note: If AIThreadSafeCurlEasyRequest() throws then the memory allocated is still freed.
+	// 'new' never returned however and the constructor nor destructor of mCurlEasyRequest is called in this case.
+	AICurlEasyRequest() throw(AICurlNoEasyHandle) : mCurlEasyRequest(new AICurlPrivate::AIThreadSafeCurlEasyRequest) { }
+	AICurlEasyRequest(AICurlEasyRequest const& orig) : mCurlEasyRequest(orig.mCurlEasyRequest) { }
 
 	// For the rest, only allow read operations.
-	AIThreadSafeSimple<AICurlPrivate::CurlEasyHandle>& operator*(void) const { return *mCurlEasyHandle; }
-	AIThreadSafeSimple<AICurlPrivate::CurlEasyHandle>* operator->(void) const { return mCurlEasyHandle.get(); }
-	AIThreadSafeSimple<AICurlPrivate::CurlEasyHandle>* get(void) const { return mCurlEasyHandle.get(); }
+	AIThreadSafeSimple<AICurlPrivate::CurlEasyRequest>& operator*(void) const { return *mCurlEasyRequest; }
+	AIThreadSafeSimple<AICurlPrivate::CurlEasyRequest>* operator->(void) const { return mCurlEasyRequest.get(); }
+	AIThreadSafeSimple<AICurlPrivate::CurlEasyRequest>* get(void) const { return mCurlEasyRequest.get(); }
 
 	// It's also OK to automatically convert this object to a const boost::intrusive_ptr.
-	operator boost::intrusive_ptr<AICurlPrivate::AIThreadSafeCurlEasyHandle> const&() const { return mCurlEasyHandle; }
+	operator boost::intrusive_ptr<AICurlPrivate::AIThreadSafeCurlEasyRequest> const&() const { return mCurlEasyRequest; }
 
   private:
-	// The actual pointer to the AIThreadSafeCurlEasyHandle instance.
-	boost::intrusive_ptr<AICurlPrivate::AIThreadSafeCurlEasyHandle> mCurlEasyHandle;
+	// The actual pointer to the AIThreadSafeCurlEasyRequest instance.
+	boost::intrusive_ptr<AICurlPrivate::AIThreadSafeCurlEasyRequest> mCurlEasyRequest;
 
   private:
 	// Assignment would not be thread-safe; we may create this object and read from it.
 	// Note: Destruction is implicitly assumed thread-safe, as it would be a logic error to
 	// destruct it while another thread still needs it, concurrent or not.
-	AICurlEasyHandle& operator=(AICurlEasyHandle const&) { return *this; }
+	AICurlEasyRequest& operator=(AICurlEasyRequest const&) { return *this; }
 };
 
 // Define access types (_crat = Const Read Access Type, _rat = Read Access Type, _wat = Write Access Type).
 // Typical usage is:
-// AICurlEasyHandle h1;				// Create easy handle.
-// AICurlEasyHandle h2(h1);			// Make lightweight copies.
-// AICurlEasyHandle_wat h2_w(*h2);	// Lock and obtain write access to the easy handle.
-// Use *h2_w, which is a reference to the locked CurlEasyHandle instance.
+// AICurlEasyRequest h1;				// Create easy handle.
+// AICurlEasyRequest h2(h1);			// Make lightweight copies.
+// AICurlEasyRequest_wat h2_w(*h2);	// Lock and obtain write access to the easy handle.
+// Use *h2_w, which is a reference to the locked CurlEasyRequest instance.
 // Note: As it is not allowed to use curl easy handles in any way concurrently,
 // read access would at most give access to a CURL const*, which will turn out
 // to be completely useless; therefore it is sufficient and efficient to use
-// an AIThreadSafeSimple and it's unlikely that AICurlEasyHandle_rat will be used.
-typedef AIAccessConst<AICurlPrivate::CurlEasyHandle> AICurlEasyHandle_rat;
-typedef AIAccess<AICurlPrivate::CurlEasyHandle> AICurlEasyHandle_wat;
+// an AIThreadSafeSimple and it's unlikely that AICurlEasyRequest_rat will be used.
+typedef AIAccessConst<AICurlPrivate::CurlEasyRequest> AICurlEasyRequest_rat;
+typedef AIAccess<AICurlPrivate::CurlEasyRequest> AICurlEasyRequest_wat;
 
 namespace AICurlPrivate
 {
 
-// For ordering a std::set with AICurlEasyHandle objects.
-struct AICurlEasyHandleCompare {
-  bool operator()(AICurlEasyHandle const& h1, AICurlEasyHandle const& h2) { return h1.get() < h2.get(); }
+// For ordering a std::set with AICurlEasyRequest objects.
+struct AICurlEasyRequestCompare {
+  bool operator()(AICurlEasyRequest const& h1, AICurlEasyRequest const& h2) { return h1.get() < h2.get(); }
 };
 
 // This class wraps CURLM*'s.
@@ -220,8 +250,8 @@ class CurlMultiHandle : public boost::noncopyable {
 
   public:
 	// Add/remove an easy handle to/from a multi session.
-	CURLMcode add_easy_handle(AICurlEasyHandle const& easy_handle);
-	CURLMcode remove_easy_handle(AICurlEasyHandle const& easy_handle);
+	CURLMcode add_easy_request(AICurlEasyRequest const& easy_request);
+	CURLMcode remove_easy_request(AICurlEasyRequest const& easy_request);
 
 	// Set options for a curl multi handle.
 	template<typename BUILTIN>
@@ -235,8 +265,8 @@ class CurlMultiHandle : public boost::noncopyable {
 
   private:
 	CURLM* mMultiHandle;
-	typedef std::set<AICurlEasyHandle, AICurlEasyHandleCompare> addedEasyHandles_type;
-	addedEasyHandles_type mAddedEasyHandles;
+	typedef std::set<AICurlEasyRequest, AICurlEasyRequestCompare> addedEasyRequests_type;
+	addedEasyRequests_type mAddedEasyRequests;
 	static LLAtomicU32 sTotalMultiHandles;
 
   public:
@@ -380,39 +410,6 @@ class Responder {
 // A Responder is passed around as ResponderPtr, which causes it to automatically
 // destruct when the last of such pointers is destructed.
 typedef boost::intrusive_ptr<Responder> ResponderPtr;
-
-// Output parameter of LLCurlEasyRequest::getResult.
-// Only used by LLXMLRPCTransaction::Impl.
-struct TransferInfo {
-  TransferInfo() : mSizeDownload(0.0), mTotalTime(0.0), mSpeedDownload(0.0) { }
-  F64 mSizeDownload;
-  F64 mTotalTime;
-  F64 mSpeedDownload;
-};
-
-class Easy {
-  public:
-	CURL* getCurlHandle(void) const;
-};
-
-class EasyRequest {
-  public:
-	AICurlInterface::Easy* getEasy(void) const;
-
-	void setopt(CURLoption option, S32 value);
-	void setoptString(CURLoption option, std::string const& value);
-	void setPost(char* postdata, S32 size);
-	void setHeaderCallback(curl_write_callback callback, void* userdata);
-	void setWriteCallback(curl_write_callback callback, void* userdata);
-	void setReadCallback(curl_read_callback callback, void* userdata);
-	void setSSLCtxCallback(curl_ssl_ctx_callback callback, void* userdata);
-	void slist_append(char const* str);
-	void sendRequest(std::string const& url);
-	std::string getErrorString(void);
-	bool getResult(CURLcode* result, AICurlInterface::TransferInfo* info = NULL);
-	bool wait(void) const;
-	bool isValid(void) const;
-};
 
 class Request {
   public:

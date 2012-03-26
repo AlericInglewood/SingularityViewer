@@ -430,8 +430,8 @@ static LLSD blocking_request(
 {
 	lldebugs << "blockingRequest of " << url << llendl;
 
-	AICurlEasyHandle curlEasyHandle;
-	AICurlEasyHandle_wat curlEasyHandle_w(*curlEasyHandle);
+	AICurlEasyRequest curlEasyRequest;
+	AICurlEasyRequest_wat curlEasyRequest_w(*curlEasyRequest);
 
 	LLHTTPBuffer http_buffer;
 	std::string body_str;
@@ -439,16 +439,16 @@ static LLSD blocking_request(
 	// other request method checks root cert first, we skip?
 
 	// Apply configured proxy settings
-	LLProxy::getInstance()->applyProxySettings(curlEasyHandle_w);
+	LLProxy::getInstance()->applyProxySettings(curlEasyRequest_w);
 	
 	// * Set curl handle options
 	char curl_error_buffer[CURL_ERROR_SIZE] = "\0";
-	curlEasyHandle_w->setopt(CURLOPT_NOSIGNAL, 1);	// don't use SIGALRM for timeouts
-	curlEasyHandle_w->setopt(CURLOPT_TIMEOUT, timeout);	// seconds, see warning at top of function.
-	curlEasyHandle_w->setopt(CURLOPT_WRITEFUNCTION, LLHTTPBuffer::curl_write);
-	curlEasyHandle_w->setopt(CURLOPT_WRITEDATA, &http_buffer);
-	curlEasyHandle_w->setopt(CURLOPT_URL, url.c_str());
-	curlEasyHandle_w->setopt(CURLOPT_ERRORBUFFER, curl_error_buffer);
+	curlEasyRequest_w->setopt(CURLOPT_NOSIGNAL, 1);	// don't use SIGALRM for timeouts
+	curlEasyRequest_w->setopt(CURLOPT_TIMEOUT, timeout);	// seconds, see warning at top of function.
+	curlEasyRequest_w->setopt(CURLOPT_WRITEFUNCTION, LLHTTPBuffer::curl_write);
+	curlEasyRequest_w->setopt(CURLOPT_WRITEDATA, &http_buffer);
+	curlEasyRequest_w->setopt(CURLOPT_URL, url.c_str());
+	curlEasyRequest_w->setopt(CURLOPT_ERRORBUFFER, curl_error_buffer);
 
 	// * Setup headers (don't forget to free them after the call!)
 	curl_slist* headers_list = NULL;
@@ -468,16 +468,16 @@ static LLSD blocking_request(
 	// * Setup specific method / "verb" for the URI (currently only GET and POST supported + poppy)
 	if (method == LLURLRequest::HTTP_GET)
 	{
-		curlEasyHandle_w->setopt(CURLOPT_HTTPGET, 1);
+		curlEasyRequest_w->setopt(CURLOPT_HTTPGET, 1);
 	}
 	else if (method == LLURLRequest::HTTP_POST)
 	{
-		curlEasyHandle_w->setopt(CURLOPT_POST, 1);
+		curlEasyRequest_w->setopt(CURLOPT_POST, 1);
 		//serialize to ostr then copy to str - need to because ostr ptr is unstable :(
 		std::ostringstream ostr;
 		LLSDSerialize::toXML(body, ostr);
 		body_str = ostr.str();
-		curlEasyHandle_w->setopt(CURLOPT_POSTFIELDS, body_str.c_str());
+		curlEasyRequest_w->setopt(CURLOPT_POSTFIELDS, body_str.c_str());
 		//copied from PHP libs, correct?
 		headers_list = curl_slist_append(headers_list, "Content-Type: application/llsd+xml");
 
@@ -491,16 +491,16 @@ static LLSD blocking_request(
 	// * Do the action using curl, handle results
 	lldebugs << "HTTP body: " << body_str << llendl;
 	headers_list = curl_slist_append(headers_list, "Accept: application/llsd+xml");
-	CURLcode curl_result = curlEasyHandle_w->setopt(CURLOPT_HTTPHEADER, headers_list);
+	CURLcode curl_result = curlEasyRequest_w->setopt(CURLOPT_HTTPHEADER, headers_list);
 	if ( curl_result != CURLE_OK )
 	{
 		llinfos << "Curl is hosed - can't add headers" << llendl;
 	}
 
 	LLSD response = LLSD::emptyMap();
-	S32 curl_success = curlEasyHandle_w->perform();
+	S32 curl_success = curlEasyRequest_w->perform();
 	S32 http_status = 499;
-	curlEasyHandle_w->getinfo(CURLINFO_RESPONSE_CODE, &http_status);
+	curlEasyRequest_w->getinfo(CURLINFO_RESPONSE_CODE, &http_status);
 	response["status"] = http_status;
 	// if we get a non-404 and it's not a 200 OR maybe it is but you have error bits,
 	if ( http_status != 404 && (http_status != 200 || curl_success != 0) )

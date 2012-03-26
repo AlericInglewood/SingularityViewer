@@ -154,7 +154,7 @@ class LLXMLRPCTransaction::Impl
 public:
 	typedef LLXMLRPCTransaction::Status	Status;
 
-	LLCurlEasyRequest* mCurlRequest;
+	AICurlEasyRequest	mCurlEasyRequest;
 
 	Status		mStatus;
 	CURLcode	mCurlCode;
@@ -191,8 +191,7 @@ private:
 
 LLXMLRPCTransaction::Impl::Impl(const std::string& uri,
 		XMLRPC_REQUEST request, bool useGzip)
-	: mCurlRequest(0),
-	  mStatus(LLXMLRPCTransaction::StatusNotStarted),
+	: mStatus(LLXMLRPCTransaction::StatusNotStarted),
 	  mURI(uri),
 	  mRequestText(0), 
 	  mResponse(0)
@@ -203,8 +202,7 @@ LLXMLRPCTransaction::Impl::Impl(const std::string& uri,
 
 LLXMLRPCTransaction::Impl::Impl(const std::string& uri,
 		const std::string& method, LLXMLRPCValue params, bool useGzip)
-	: mCurlRequest(0),
-	  mStatus(LLXMLRPCTransaction::StatusNotStarted),
+	: mStatus(LLXMLRPCTransaction::StatusNotStarted),
 	  mURI(uri),
 	  mRequestText(0), 
 	  mResponse(0)
@@ -222,55 +220,41 @@ LLXMLRPCTransaction::Impl::Impl(const std::string& uri,
 
 void LLXMLRPCTransaction::Impl::init(XMLRPC_REQUEST request, bool useGzip)
 {
-	if (!mCurlRequest)
-	{
-		mCurlRequest = new LLCurlEasyRequest();
-	}
+	AICurlEasyRequest_wat curlEasyRequest_w(*mCurlEasyRequest);
+	LLProxy::getInstance()->applyProxySettings(curlEasyRequest_w);
 
-	if(!mCurlRequest->isValid())
-	{
-		llwarns << "mCurlRequest is invalid." << llendl ;
-
-		delete mCurlRequest ;
-		mCurlRequest = NULL ;
-		return ;
-	}
-
-
-	//LLProxy::getInstance()->applyProxySettings(mCurlRequest); FIXME
-
-//	mCurlRequest->setopt(CURLOPT_VERBOSE, 1); // usefull for debugging
-	mCurlRequest->setopt(CURLOPT_NOSIGNAL, 1);
-	mCurlRequest->setWriteCallback(&curlDownloadCallback, (void*)this);
+//	curlEasyRequest_w->setopt(CURLOPT_VERBOSE, 1); // usefull for debugging
+	curlEasyRequest_w->setopt(CURLOPT_NOSIGNAL, 1);
+	curlEasyRequest_w->setWriteCallback(&curlDownloadCallback, (void*)this);
     	BOOL vefifySSLCert = !gSavedSettings.getBOOL("NoVerifySSLCert");
-	mCurlRequest->setopt(CURLOPT_SSL_VERIFYPEER, vefifySSLCert);
-	mCurlRequest->setopt(CURLOPT_SSL_VERIFYHOST, vefifySSLCert ? 2 : 0);
+	curlEasyRequest_w->setopt(CURLOPT_SSL_VERIFYPEER, vefifySSLCert);
+	curlEasyRequest_w->setopt(CURLOPT_SSL_VERIFYHOST, vefifySSLCert ? 2 : 0);
 	// Be a little impatient about establishing connections.
-	mCurlRequest->setopt(CURLOPT_CONNECTTIMEOUT, 40L);
+	curlEasyRequest_w->setopt(CURLOPT_CONNECTTIMEOUT, 40L);
 
 	/* Setting the DNS cache timeout to -1 disables it completely.
 	   This might help with bug #503 */
-	mCurlRequest->setopt(CURLOPT_DNS_CACHE_TIMEOUT, -1);
+	curlEasyRequest_w->setopt(CURLOPT_DNS_CACHE_TIMEOUT, -1);
 
-    mCurlRequest->slist_append("Content-Type: text/xml");
+    curlEasyRequest_w->slist_append("Content-Type: text/xml");
 
 	if (useGzip)
 	{
-		mCurlRequest->setoptString(CURLOPT_ENCODING, "");
+		curlEasyRequest_w->setoptString(CURLOPT_ENCODING, "");
 	}
 	
 	mRequestText = XMLRPC_REQUEST_ToXML(request, &mRequestTextSize);
 	if (mRequestText)
 	{
-		mCurlRequest->setoptString(CURLOPT_POSTFIELDS, mRequestText);
-		mCurlRequest->setopt(CURLOPT_POSTFIELDSIZE, mRequestTextSize);
+		curlEasyRequest_w->setoptString(CURLOPT_POSTFIELDS, mRequestText);
+		curlEasyRequest_w->setopt(CURLOPT_POSTFIELDSIZE, mRequestTextSize);
 	}
 	else
 	{
 		setStatus(StatusOtherError);
 	}
 
-	mCurlRequest->sendRequest(mURI);
+	curlEasyRequest_w->sendRequest(mURI);
 }
 
 
@@ -285,19 +269,14 @@ LLXMLRPCTransaction::Impl::~Impl()
 	{
 		XMLRPC_Free(mRequestText);
 	}
-	
-	delete mCurlRequest;
-	mCurlRequest = NULL ;
 }
 
 bool LLXMLRPCTransaction::Impl::process()
 {
-	if(!mCurlRequest || !mCurlRequest->isValid())
+	AICurlEasyRequest_wat curlEasyRequest_w(*mCurlEasyRequest);
+	if(!curlEasyRequest_w->isValid())
 	{
 		llwarns << "transaction failed." << llendl ;
-
-		delete mCurlRequest ;
-		mCurlRequest = NULL ;
 		return true ; //failed, quit.
 	}
 
@@ -326,9 +305,9 @@ bool LLXMLRPCTransaction::Impl::process()
 	//const F32 MAX_PROCESSING_TIME = 0.05f;
 	//LLTimer timer;
 
-	mCurlRequest->wait();
+	curlEasyRequest_w->wait();
 
-	/*while (mCurlRequest->perform() > 0)
+	/*while (curlEasyRequest_w->perform() > 0)
 	{
 		if (timer.getElapsedTimeF32() >= MAX_PROCESSING_TIME)
 		{
@@ -339,14 +318,14 @@ bool LLXMLRPCTransaction::Impl::process()
 	while(1)
 	{
 		CURLcode result;
-		bool newmsg = mCurlRequest->getResult(&result, &mTransferInfo);
+		bool newmsg = curlEasyRequest_w->getResult(&result, &mTransferInfo);
 		if (newmsg)
 		{
 			if (result != CURLE_OK)
 			{
 				setCurlStatus(result);
 				llwarns << "LLXMLRPCTransaction CURL error "
-						<< mCurlCode << ": " << mCurlRequest->getErrorString() << llendl;
+						<< mCurlCode << ": " << curlEasyRequest_w->getErrorString() << llendl;
 				llwarns << "LLXMLRPCTransaction request URI: "
 						<< mURI << llendl;
 					

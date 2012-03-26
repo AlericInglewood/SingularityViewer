@@ -2,9 +2,7 @@
 
 // Map interface to old LLCurl names so this can be used as a drop-in replacement.
 namespace LLCurl = AICurlInterface;
-namespace LLCurlFF = AICurlInterface;
 typedef AICurlInterface::Request LLCurlRequest;
-typedef AICurlInterface::EasyRequest LLCurlEasyRequest;
 
 #if 0
 /** 
