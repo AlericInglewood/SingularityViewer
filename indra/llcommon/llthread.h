@@ -50,7 +50,6 @@ extern LL_COMMON_API bool is_main_thread(void);
 class LLThread;
 class LLMutex;
 class LLCondition;
-class AICurlMultiHandle;
 
 #if LL_WINDOWS
 #define ll_thread_local __declspec(thread)
@@ -74,7 +73,8 @@ public:
 	LLAPRRootPool mRootPool;
 	LLVolatileAPRPool mVolatileAPRPool;
 	LLThreadLocalDataMember* mCurlMultiHandle;	// Initialized by AICurlMultiHandle::getInstance
-	std::string mName;						// "main thread", or a copy of LLThread::mName.
+	char* mCurlErrorBuffer;						// NULL, or pointing to a buffer used by libcurl.
+	std::string mName;							// "main thread", or a copy of LLThread::mName.
 
 	static void init(void);
 	static void destroy(void* thread_local_data);

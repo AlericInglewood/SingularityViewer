@@ -1813,7 +1813,7 @@ bool LLAppViewer::initThreads()
 		LLWatchdog::getInstance()->init(watchdog_killer_callback);
 	}
 
-	AICurlInterface::startCurlThread(gSavedSettings.getBOOL("CurlUseMultipleThreads"));
+	AICurlInterface::startCurlThread();
 
 	LLImage::initClass();
 	

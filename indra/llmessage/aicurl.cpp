@@ -30,7 +30,11 @@
  *
  *   20/03/2012
  *   Added copyright notice for Linden Lab for those parts that were
- *   copied or derived from llcurl.cpp.
+ *   copied or derived from llcurl.cpp. The code of those parts are
+ *   already in their own llcurl.cpp, so they do not ever need to
+ *   even look at this file; the reason I added the copyright notice
+ *   is to make clear that I am not the author of 100% of this code
+ *   and hence I cannot change the license of it.
  */
 
 #include "linden_common.h"
@@ -44,6 +48,7 @@
 #include "llsdserialize.h"
 #include "aithreadsafe.h"
 #include "llqueuedthread.h"
+#include "lltimer.h"		// ms_sleep
 
 //==================================================================================
 // Local variables.
@@ -199,8 +204,7 @@ void ssl_cleanup(void)
 // External API
 //
 
-namespace AICurlInterface
-{
+namespace AICurlInterface {
 
 #undef AICurlPrivate
 using AICurlPrivate::check_easy_code;
@@ -286,18 +290,14 @@ void initCurl(F32 curl_request_timeout, S32 max_number_handles)
 // MAIN-THREAD
 void cleanupCurl(void)
 {
+  using AICurlPrivate::curlThreadIsRunning;
+
   DoutEntering(dc::curl, "AICurlInterface::cleanupCurl()");
 
   ssl_cleanup();
 
-  llassert(LLThread::getRunning() == 0);		// We must not call curl_global_cleanup unless we are the only thread left.
+  llassert(LLThread::getRunning() <= (curlThreadIsRunning() ? 1 : 0));		// We must not call curl_global_cleanup unless we are the only thread left.
   curl_global_cleanup();
-}
-
-// MAIN-THREAD
-void startCurlThread(bool multiple_threads)
-{
-  llassert(is_main_thread());
 }
 
 // THREAD-SAFE
@@ -430,20 +430,6 @@ void intrusive_ptr_release(Responder* responder)
   }
 }
 
-//-----------------------------------------------------------------------------
-// class Reqest
-//
-
-bool Request::getByteRange(std::string const& url, headers_t const& headers, S32 offset, S32 length, ResponderPtr responder)
-{
-  return true;
-}
-
-S32 Request::process(void)
-{
-  return 0;
-}
-
 } // namespace AICurlInterface
 //==================================================================================
 
@@ -452,37 +438,20 @@ S32 Request::process(void)
 // Local implementation.
 //
 
-class AICurlMulti {
-};
-
-class AICurlThread : public LLQueuedThread
-{
-  class CurlRequest : public LLQueuedThread::QueuedRequest
-  {
-	protected:
-	  /*virtual*/ ~CurlRequest();			// Use deleteRequest().
-	  
-	public:
-	  CurlRequest(handle_t handle, AICurlMulti* multi, AICurlThread* curl_thread);
-
-	  /*virtual*/ bool processRequest(void);
-	  /*virtual*/ void finishRequest(bool completed);
-  };
-
-  public:
-	AICurlThread(bool threaded = true);
-	virtual ~AICurlThread();
-};
-
-namespace AICurlPrivate
-{
+namespace AICurlPrivate {
 
 // THREAD-SAFE
 CURLcode check_easy_code(CURLcode code)
 {
   if (code != CURLE_OK)
   {
-	llinfos << "curl easy error detected: " << curl_easy_strerror(code) << llendl;
+	char* error_buffer = LLThreadLocalData::tldata().mCurlErrorBuffer;
+	llinfos << "curl easy error detected: " << curl_easy_strerror(code);
+	if (error_buffer && *error_buffer != '\0')
+	{
+	  llcont << ": " << error_buffer;
+	}
+	llcont << llendl;
   }
   return code;
 }
@@ -497,13 +466,16 @@ CURLMcode check_multi_code(CURLMcode code)
   return code;
 }
 
-//-----------------------------------------------------------------------------
+//=============================================================================
 // AICurlEasyRequest (base classes)
 //
 
+//-----------------------------------------------------------------------------
+// CurlEasyHandle
+
 LLAtomicU32 CurlEasyHandle::sTotalEasyHandles;
 
-CurlEasyHandle::CurlEasyHandle(void) throw(AICurlNoEasyHandle) : mActive(NULL)
+CurlEasyHandle::CurlEasyHandle(void) throw(AICurlNoEasyHandle) : mActive(NULL), mErrorBuffer(NULL)
 {
   mEasyHandle = curl_easy_init();
   if (!mEasyHandle)
@@ -520,8 +492,30 @@ CurlEasyHandle::~CurlEasyHandle()
   --sTotalEasyHandles;
 }
 
+//static
+char* CurlEasyHandle::getTLErrorBuffer(void)
+{
+  LLThreadLocalData& tldata = LLThreadLocalData::tldata();
+  if (!tldata.mCurlErrorBuffer)
+  {
+	tldata.mCurlErrorBuffer = new char[CURL_ERROR_SIZE];
+  }
+  return tldata.mCurlErrorBuffer;
+}
+
+void CurlEasyHandle::setErrorBuffer(void)
+{
+  char* error_buffer = getTLErrorBuffer();
+  if (mErrorBuffer != error_buffer)
+  {
+	curl_easy_setopt(mEasyHandle, CURLOPT_ERRORBUFFER, error_buffer);
+	mErrorBuffer = error_buffer;
+  }
+}
+
 CURLcode CurlEasyHandle::getinfo(CURLINFO info, void* data)
 {
+  setErrorBuffer();
   return check_easy_code(curl_easy_getinfo(mEasyHandle, info, data));
 }
 
@@ -538,11 +532,13 @@ char* CurlEasyHandle::unescape(char* url, int inlength , int* outlength)
 CURLcode CurlEasyHandle::perform(void)
 {
   llassert(!mActive);
+  setErrorBuffer();
   return check_easy_code(curl_easy_perform(mEasyHandle));
 }
 
 CURLcode CurlEasyHandle::pause(int bitmask)
 {
+  setErrorBuffer();
   return check_easy_code(curl_easy_pause(mEasyHandle, bitmask));
 }
 
@@ -574,64 +570,77 @@ void intrusive_ptr_release(AIThreadSafeCurlEasyRequest* threadsafe_curl_easy_req
 }
 
 //-----------------------------------------------------------------------------
-// class CurlEasyReqest
-//
+// CurlEasyReqest
 
 void CurlEasyRequest::setoptString(CURLoption option, std::string const& value)
 {
+  llassert(!gSetoptParamsNeedDup);
+  setopt(option, value.c_str());
 }
 
-void CurlEasyRequest::setPost(char* postdata, S32 size)
-{ 
+void CurlEasyRequest::setPost(char const* postdata, S32 size)
+{
+  setopt(CURLOPT_POST, 1L);
+  setopt(CURLOPT_POSTFIELDS, static_cast<void*>(const_cast<char*>(postdata)));
+  setopt(CURLOPT_POSTFIELDSIZE, size);
 }
 
 void CurlEasyRequest::setHeaderCallback(curl_write_callback callback, void* userdata)
 {
+  setopt(CURLOPT_HEADERFUNCTION, callback);
+  setopt(CURLOPT_WRITEHEADER, userdata);
 }
 
 void CurlEasyRequest::setWriteCallback(curl_write_callback callback, void* userdata)
 {
+  setopt(CURLOPT_WRITEFUNCTION, callback);
+  setopt(CURLOPT_WRITEDATA, userdata);
 }
 
 void CurlEasyRequest::setReadCallback(curl_read_callback callback, void* userdata)
 {
+  setopt(CURLOPT_READFUNCTION, callback);
+  setopt(CURLOPT_READDATA, userdata);
 }
 
 void CurlEasyRequest::setSSLCtxCallback(curl_ssl_ctx_callback callback, void* userdata)
 {
+  setopt(CURLOPT_SSL_CTX_FUNCTION, callback);
+  setopt(CURLOPT_SSL_CTX_DATA, userdata);
 }
 
-void CurlEasyRequest::slist_append(char const* str)
+void CurlEasyRequest::addHeader(char const* header)
 {
+  llassert(!mRequestFinalized);
+  mHeaders = curl_slist_append(mHeaders, header);
 }
 
-void CurlEasyRequest::sendRequest(std::string const& url)
+void CurlEasyRequest::finalizeRequest(std::string const& url)
 {
-}
-
-std::string CurlEasyRequest::getErrorString(void)
-{
-  return "";
+  llassert(!mRequestFinalized);
+  mRequestFinalized = true;
+  lldebugs << url << llendl;
+  setopt(CURLOPT_HTTPHEADER, mHeaders);
+  setoptString(CURLOPT_URL, url);
+  setopt(CURLOPT_PRIVATE, static_cast<AIThreadSafeCurlEasyRequest*>(AIThreadSafeSimpleDC<CurlEasyRequest>::wrapper_cast(this)));
 }
 
 bool CurlEasyRequest::getResult(CURLcode* result, AICurlInterface::TransferInfo* info)
 {
+  //FIXME
+  DoutEntering(dc::warning, "CurlEasyRequest::result()");
   return true;
 }
 
 bool CurlEasyRequest::wait(void) const
 {
+  //FIXME
+  DoutEntering(dc::warning, "CurlEasyRequest::wait()");
   return false;
 }
 
-bool CurlEasyRequest::isValid(void) const
-{
-  return true;
-}
-
 //-----------------------------------------------------------------------------
-// AICurlMultiHandle (base classes)
-//
+// CurlMultiHandle
 
 LLAtomicU32 CurlMultiHandle::sTotalMultiHandles;
 
@@ -647,52 +656,36 @@ CurlMultiHandle::CurlMultiHandle(void) throw(AICurlNoMultiHandle)
 
 CurlMultiHandle::~CurlMultiHandle()
 {
-  // This thread was terminated.
-  // Curl demands that all handles are removed from the multi session handle before calling curl_multi_cleanup.
-  for(addedEasyRequests_type::iterator iter = mAddedEasyRequests.begin(); iter != mAddedEasyRequests.end(); iter = mAddedEasyRequests.begin())
-  {
-	remove_easy_request(*iter);
-  }
   curl_multi_cleanup(mMultiHandle);
   --sTotalMultiHandles;
 }
 
-CURLMcode CurlMultiHandle::perform(int* running_handles)
-{
-  return check_multi_code(curl_multi_perform(mMultiHandle, running_handles));
-}
-
-CURLMsg* CurlMultiHandle::info_read(int* msgs_in_queue)
-{
-  return curl_multi_info_read(mMultiHandle, msgs_in_queue);
-}
-
-CURLMcode CurlMultiHandle::add_easy_request(AICurlEasyRequest const& easy_request)
-{
-  std::pair<addedEasyRequests_type::iterator, bool> res = mAddedEasyRequests.insert(easy_request);
-  llassert(res.second);		// May not have been added before.
-  return AICurlEasyRequest_wat(*easy_request)->add_handle_to_multi(mMultiHandle);
-}
-
-CURLMcode CurlMultiHandle::remove_easy_request(AICurlEasyRequest const& easy_request)
-{
-  addedEasyRequests_type::iterator iter = mAddedEasyRequests.find(easy_request);
-  llassert(iter != mAddedEasyRequests.end());	// Must have been added before.
-  CURLMcode res = AICurlEasyRequest_wat(**iter)->remove_handle_from_multi(mMultiHandle);
-  mAddedEasyRequests.erase(iter);
-  return res;
-}
-
 } // namespace AICurlPrivate
 
-//static
-AICurlMultiHandle& AICurlMultiHandle::getInstance(void) throw(AICurlNoMultiHandle)
+//==================================================================================
+// External API
+//
+
+namespace AICurlInterface {
+
+//-----------------------------------------------------------------------------
+// class Request
+//
+
+bool Request::getByteRange(std::string const& url, headers_t const& headers, S32 offset, S32 length, ResponderPtr responder)
 {
-  LLThreadLocalData& tldata = LLThreadLocalData::tldata();
-  if (!tldata.mCurlMultiHandle)
-  {
-	llinfos << "Creating AICurlMultiHandle for thread \"" << tldata.mName << "\"." << llendl;
-	tldata.mCurlMultiHandle = new AICurlMultiHandle;
-  }
-  return *static_cast<AICurlMultiHandle*>(tldata.mCurlMultiHandle);
+  //FIXME: needs implementation
+  llassert(false);
+  return true;
 }
+
+S32 Request::process(void)
+{
+  //FIXME: needs implementation
+  DoutEntering(dc::warning, "Request::process()");
+  return 0;
+}
+
+} // namespace AICurlInterface
+//==================================================================================
+

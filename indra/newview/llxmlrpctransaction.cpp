@@ -220,41 +220,44 @@ LLXMLRPCTransaction::Impl::Impl(const std::string& uri,
 
 void LLXMLRPCTransaction::Impl::init(XMLRPC_REQUEST request, bool useGzip)
 {
-	AICurlEasyRequest_wat curlEasyRequest_w(*mCurlEasyRequest);
-	LLProxy::getInstance()->applyProxySettings(curlEasyRequest_w);
-
-//	curlEasyRequest_w->setopt(CURLOPT_VERBOSE, 1); // usefull for debugging
-	curlEasyRequest_w->setopt(CURLOPT_NOSIGNAL, 1);
-	curlEasyRequest_w->setWriteCallback(&curlDownloadCallback, (void*)this);
-    	BOOL vefifySSLCert = !gSavedSettings.getBOOL("NoVerifySSLCert");
-	curlEasyRequest_w->setopt(CURLOPT_SSL_VERIFYPEER, vefifySSLCert);
-	curlEasyRequest_w->setopt(CURLOPT_SSL_VERIFYHOST, vefifySSLCert ? 2 : 0);
-	// Be a little impatient about establishing connections.
-	curlEasyRequest_w->setopt(CURLOPT_CONNECTTIMEOUT, 40L);
-
-	/* Setting the DNS cache timeout to -1 disables it completely.
-	   This might help with bug #503 */
-	curlEasyRequest_w->setopt(CURLOPT_DNS_CACHE_TIMEOUT, -1);
-
-    curlEasyRequest_w->slist_append("Content-Type: text/xml");
-
-	if (useGzip)
 	{
-		curlEasyRequest_w->setoptString(CURLOPT_ENCODING, "");
-	}
-	
-	mRequestText = XMLRPC_REQUEST_ToXML(request, &mRequestTextSize);
-	if (mRequestText)
-	{
-		curlEasyRequest_w->setoptString(CURLOPT_POSTFIELDS, mRequestText);
-		curlEasyRequest_w->setopt(CURLOPT_POSTFIELDSIZE, mRequestTextSize);
-	}
-	else
-	{
-		setStatus(StatusOtherError);
-	}
+		AICurlEasyRequest_wat curlEasyRequest_w(*mCurlEasyRequest);
+		LLProxy::getInstance()->applyProxySettings(curlEasyRequest_w);
 
-	curlEasyRequest_w->sendRequest(mURI);
+		//curlEasyRequest_w->setopt(CURLOPT_VERBOSE, 1); // usefull for debugging
+		curlEasyRequest_w->setopt(CURLOPT_NOSIGNAL, 1);
+		curlEasyRequest_w->setWriteCallback(&curlDownloadCallback, (void*)this);
+			BOOL vefifySSLCert = !gSavedSettings.getBOOL("NoVerifySSLCert");
+		curlEasyRequest_w->setopt(CURLOPT_SSL_VERIFYPEER, vefifySSLCert);
+		curlEasyRequest_w->setopt(CURLOPT_SSL_VERIFYHOST, vefifySSLCert ? 2 : 0);
+		// Be a little impatient about establishing connections.
+		curlEasyRequest_w->setopt(CURLOPT_CONNECTTIMEOUT, 40L);
+
+		/* Setting the DNS cache timeout to -1 disables it completely.
+		   This might help with bug #503 */
+		curlEasyRequest_w->setopt(CURLOPT_DNS_CACHE_TIMEOUT, -1);
+
+		curlEasyRequest_w->addHeader("Content-Type: text/xml");
+
+		if (useGzip)
+		{
+			curlEasyRequest_w->setoptString(CURLOPT_ENCODING, "");
+		}
+		
+		mRequestText = XMLRPC_REQUEST_ToXML(request, &mRequestTextSize);
+		if (mRequestText)
+		{
+			curlEasyRequest_w->setoptString(CURLOPT_POSTFIELDS, mRequestText);
+			curlEasyRequest_w->setopt(CURLOPT_POSTFIELDSIZE, mRequestTextSize);
+		}
+		else
+		{
+			setStatus(StatusOtherError);
+		}
+
+		curlEasyRequest_w->finalizeRequest(mURI);
+	}
+	mCurlEasyRequest.queueRequest();
 }
 
 
@@ -274,11 +277,6 @@ LLXMLRPCTransaction::Impl::~Impl()
 bool LLXMLRPCTransaction::Impl::process()
 {
 	AICurlEasyRequest_wat curlEasyRequest_w(*mCurlEasyRequest);
-	if(!curlEasyRequest_w->isValid())
-	{
-		llwarns << "transaction failed." << llendl ;
-		return true ; //failed, quit.
-	}
 
 	switch(mStatus)
 	{

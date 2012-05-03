@@ -184,7 +184,7 @@ void LLURLRequest::addHeader(const char* header)
 {
 	LLMemType m1(LLMemType::MTYPE_IO_URL_REQUEST);
 	AICurlEasyRequest_wat curlEasyRequest_w(*mDetail->mCurlEasyRequest);
-	curlEasyRequest_w->slist_append(header);
+	curlEasyRequest_w->addHeader(header);
 }
 
 void LLURLRequest::setBodyLimit(U32 size)
@@ -484,71 +484,77 @@ bool LLURLRequest::configure()
 	S32 bytes = mDetail->mResponseBuffer->countAfter(
    		mDetail->mChannels.in(),
 		NULL);
-	AICurlEasyRequest_wat curlEasyRequest_w(*mDetail->mCurlEasyRequest);
-	switch(mAction)
 	{
-	case HTTP_HEAD:
-		curlEasyRequest_w->setopt(CURLOPT_HEADER, 1);
-		curlEasyRequest_w->setopt(CURLOPT_NOBODY, 1);
-		curlEasyRequest_w->setopt(CURLOPT_FOLLOWLOCATION, 1);
-		rv = true;
-		break;
-	case HTTP_GET:
-		curlEasyRequest_w->setopt(CURLOPT_HTTPGET, 1);
-		curlEasyRequest_w->setopt(CURLOPT_FOLLOWLOCATION, 1);
+		AICurlEasyRequest_wat curlEasyRequest_w(*mDetail->mCurlEasyRequest);
+		switch(mAction)
+		{
+		case HTTP_HEAD:
+			curlEasyRequest_w->setopt(CURLOPT_HEADER, 1);
+			curlEasyRequest_w->setopt(CURLOPT_NOBODY, 1);
+			curlEasyRequest_w->setopt(CURLOPT_FOLLOWLOCATION, 1);
+			rv = true;
+			break;
+		case HTTP_GET:
+			curlEasyRequest_w->setopt(CURLOPT_HTTPGET, 1);
+			curlEasyRequest_w->setopt(CURLOPT_FOLLOWLOCATION, 1);
 
-		// Set Accept-Encoding to allow response compression
-		curlEasyRequest_w->setoptString(CURLOPT_ENCODING, "");
-		rv = true;
-		break;
+			// Set Accept-Encoding to allow response compression
+			curlEasyRequest_w->setoptString(CURLOPT_ENCODING, "");
+			rv = true;
+			break;
 
-	case HTTP_PUT:
-		// Disable the expect http 1.1 extension. POST and PUT default
-		// to turning this on, and I am not too sure what it means.
-		addHeader("Expect:");
+		case HTTP_PUT:
+			// Disable the expect http 1.1 extension. POST and PUT default
+			// to turning this on, and I am not too sure what it means.
+			addHeader("Expect:");
 
-		curlEasyRequest_w->setopt(CURLOPT_UPLOAD, 1);
-		curlEasyRequest_w->setopt(CURLOPT_INFILESIZE, bytes);
-		rv = true;
-		break;
+			curlEasyRequest_w->setopt(CURLOPT_UPLOAD, 1);
+			curlEasyRequest_w->setopt(CURLOPT_INFILESIZE, bytes);
+			rv = true;
+			break;
 
-	case HTTP_POST:
-		// Disable the expect http 1.1 extension. POST and PUT default
-		// to turning this on, and I am not too sure what it means.
-		addHeader("Expect:");
+		case HTTP_POST:
+			// Disable the expect http 1.1 extension. POST and PUT default
+			// to turning this on, and I am not too sure what it means.
+			addHeader("Expect:");
 
-		// Disable the content type http header.
-		// *FIX: what should it be?
-		addHeader("Content-Type:");
+			// Disable the content type http header.
+			// *FIX: what should it be?
+			addHeader("Content-Type:");
 
-		// Set the handle for an http post
-		curlEasyRequest_w->setPost(NULL, bytes);
+			// Set the handle for an http post
+			curlEasyRequest_w->setPost(NULL, bytes);
 
-		// Set Accept-Encoding to allow response compression
-		curlEasyRequest_w->setoptString(CURLOPT_ENCODING, "");
-		rv = true;
-		break;
+			// Set Accept-Encoding to allow response compression
+			curlEasyRequest_w->setoptString(CURLOPT_ENCODING, "");
+			rv = true;
+			break;
 
-	case HTTP_DELETE:
-		// Set the handle for an http post
-		curlEasyRequest_w->setoptString(CURLOPT_CUSTOMREQUEST, "DELETE");
-		rv = true;
-		break;
+		case HTTP_DELETE:
+			// Set the handle for an http post
+			curlEasyRequest_w->setoptString(CURLOPT_CUSTOMREQUEST, "DELETE");
+			rv = true;
+			break;
 
-	case HTTP_MOVE:
-		// Set the handle for an http post
-		curlEasyRequest_w->setoptString(CURLOPT_CUSTOMREQUEST, "MOVE");
-		// *NOTE: should we check for the Destination header?
-		rv = true;
-		break;
+		case HTTP_MOVE:
+			// Set the handle for an http post
+			curlEasyRequest_w->setoptString(CURLOPT_CUSTOMREQUEST, "MOVE");
+			// *NOTE: should we check for the Destination header?
+			rv = true;
+			break;
 
-	default:
-		llwarns << "Unhandled URLRequest action: " << mAction << llendl;
-		break;
+		default:
+			llwarns << "Unhandled URLRequest action: " << mAction << llendl;
+			break;
+		}
+		if(rv)
+		{
+			curlEasyRequest_w->finalizeRequest(mDetail->mURL);
+		}
 	}
-	if(rv)
+	if (rv)
 	{
-		curlEasyRequest_w->sendRequest(mDetail->mURL);
+		mDetail->mCurlEasyRequest.queueRequest();
 	}
 	return rv;
 }
