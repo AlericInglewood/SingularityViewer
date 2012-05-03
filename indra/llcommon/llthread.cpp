@@ -105,6 +105,11 @@ void *APR_THREAD_FUNC LLThread::staticRun(apr_thread_t *apr_threadp, void *datap
 	// the moment it happens... therefore make a copy here.
 	char const* volatile name = threadp->mName.c_str();
 	
+	// Always make sure that sRunning <= number of threads with status RUNNING,
+	// so do this before changing mStatus (meaning that once we see that we
+	// are STOPPED, then sRunning is also up to date).
+	--sRunning;
+
 	// We're done with the run function, this thread is done executing now.
 	threadp->mStatus = STOPPED;
 
@@ -115,7 +120,6 @@ void *APR_THREAD_FUNC LLThread::staticRun(apr_thread_t *apr_threadp, void *datap
 	// the critical area of the mSignal lock)].
 	lldebugs << "LLThread::staticRun() Exiting: " << name << llendl;
 
-	--sRunning;		// Would be better to do this after joining with the thread, but we don't join :/
 	return NULL;
 }
 
