@@ -267,7 +267,7 @@ void initCurl(F32 curl_request_timeout, S32 max_number_handles)
 	  }
 	  case ssl_gnutls:
 	  {
-		// FIXME. I don't think we ever get here, do we?
+		// I don't think we ever get here, do we? --Aleric
 		llassert_always(gSSLlib != ssl_gnutls);
 		// If we do, then didn't curl_global_init already call gnutls_global_init?
 		// It seems there is nothing to do for us here.
@@ -620,6 +620,7 @@ void CurlEasyRequest::finalizeRequest(std::string const& url)
   llassert(!mRequestFinalized);
   mRequestFinalized = true;
   lldebugs << url << llendl;
+  setopt(CURLOPT_VERBOSE, 1);
   setopt(CURLOPT_HTTPHEADER, mHeaders);
   setoptString(CURLOPT_URL, url);
   setopt(CURLOPT_PRIVATE, static_cast<AIThreadSafeCurlEasyRequest*>(AIThreadSafeSimpleDC<CurlEasyRequest>::wrapper_cast(this)));
@@ -675,7 +676,7 @@ namespace AICurlInterface {
 bool Request::getByteRange(std::string const& url, headers_t const& headers, S32 offset, S32 length, ResponderPtr responder)
 {
   //FIXME: needs implementation
-  llassert(false);
+  DoutEntering(dc::warning, "Request::getByteRange(" << url << ", ...)");
   return true;
 }
 

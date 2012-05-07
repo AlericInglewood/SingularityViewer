@@ -157,6 +157,9 @@ class CurlEasyRequest : public CurlEasyHandle {
 
   public:
 	CurlEasyRequest(void) : mHeaders(NULL), mRequestFinalized(false) { }
+
+	// For debugging purposes
+	bool is_finalized(void) const { return mRequestFinalized; }
 };
 
 // This class wraps CurlEasyRequest for thread-safety and adds a reference counter so we can
@@ -165,7 +168,7 @@ class CurlEasyRequest : public CurlEasyHandle {
 // As AIThreadSafeSimpleDC contains a mutex, it cannot be copied. Therefore we need a reference counter for this object.
 class AIThreadSafeCurlEasyRequest : public AIThreadSafeSimpleDC<CurlEasyRequest> {
   public:
-	AIThreadSafeCurlEasyRequest(void) throw(AICurlNoEasyHandle) { Dout(dc::curl, "Creating AIThreadSafeCurlEasyRequest with this = " << (void*)this); }
+	AIThreadSafeCurlEasyRequest(void) throw(AICurlNoEasyHandle) : mReferenceCount(0) { Dout(dc::curl, "Creating AIThreadSafeCurlEasyRequest with this = " << (void*)this); }
 	~AIThreadSafeCurlEasyRequest() { Dout(dc::curl, "Destructing AIThreadSafeCurlEasyRequest with this = " << (void*)this); }
 
   private:

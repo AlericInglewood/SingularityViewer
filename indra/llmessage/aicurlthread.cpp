@@ -41,9 +41,42 @@
 
 namespace AICurlPrivate {
 
-// Multi-threaded queue for passing AICurlEasyRequest objects from the main-thread to the curl thread.
+// The following two globals have separate locks for speed considerations (in order not
+// to block the main thread unnecessarily) but have the following correlation:
+//
+// MAIN-THREAD (AICurlEasyRequest::queueRequest)
+// * request_queue locked
+//   - A non-active (mActive is NULL) AIThreadSafeCurlEasyRequest (by means of an AICurlEasyRequest pointing to it) is added to request_queue
+// * request_queue unlocked
+//
+// If at this point queueRequest is called again, then it is detected that the AIThreadSafeCurlEasyRequest is already in the queue.
+//
+// CURL-THREAD (AICurlThread::wakeup):
+// * request_queue locked
+//   * being_removed_from_request_queue is write-locked
+//     - being_removed_from_request_queue points to the same AIThreadSafeCurlEasyRequest
+//   * being_removed_from_request_queue is unlocked
+//   - The AIThreadSafeCurlEasyRequest is removed from request_queue
+// * request_queue unlocked
+//
+// If at this point queueRequest is called again, then it is detected that the AIThreadSafeCurlEasyRequest is pointed at by being_removed_from_request_queue.
+//
+// * being_removed_from_request_queue is read-locked
+//   - mActive is set to point to the curl multi handle
+//   - The easy handle is added to the multi handle
+// * being_removed_from_request_queue is write-locked
+//   - being_removed_from_request_queue is reset
+// * being_removed_from_request_queue is unlocked
+//
+// If at this point queueRequest is called again, then it is detected that the AIThreadSafeCurlEasyRequest is active.
+
+// Multi-threaded queue for passing AICurlEasyRequest objects from the main-thread to the curl-thread.
 AIThreadSafeSimpleDC<std::deque<AICurlEasyRequest> > request_queue;
 typedef AIAccess<std::deque<AICurlEasyRequest> > request_queue_wat;
+
+AIThreadSafeDC<AICurlEasyRequestPtr> being_removed_from_request_queue;
+typedef AIWriteAccess<AICurlEasyRequestPtr> AICurlEasyRequestPtr_wat;
+typedef AIReadAccess<AICurlEasyRequestPtr> AICurlEasyRequestPtr_rat;
 
 namespace curlthread {
 // All functions in this namespace are only run by the curl thread, unless they are marked with MAIN-THREAD.
@@ -379,13 +412,15 @@ class AICurlThread : public LLThread
 
 	int mWakeUpFd_in;
 	int mWakeUpFd;
+
+	int mZeroTimeOut;
 };
 
 // Only the main thread is accessing this.
 AICurlThread* AICurlThread::sInstance = NULL;
 
 // MAIN-THREAD
-AICurlThread::AICurlThread(void) : LLThread("AICurlThread"), mWakeUpFd_in(-1), mWakeUpFd(-1)
+AICurlThread::AICurlThread(void) : LLThread("AICurlThread"), mWakeUpFd_in(-1), mWakeUpFd(-1), mZeroTimeOut(0)
 {
   create_wakeup_fds();
   sInstance = this;
@@ -498,16 +533,20 @@ void AICurlThread::wakeup(AICurlMultiHandle_wat const& multi_handle_w)
   }
 #endif
   // If we get here then the main thread called wakeup_thread() recently.
-  AICurlEasyRequestPtr ptr;
   {
     request_queue_wat request_queue_w(request_queue);
     if (!request_queue_w->empty())
 	{
-	  ptr = request_queue_w->front();
+	  *AICurlEasyRequestPtr_wat(being_removed_from_request_queue) = request_queue_w->front();
 	  request_queue_w->pop_front();
 	}
   }
-  multi_handle_w->add_easy_request(AICurlEasyRequest(ptr));
+  {
+	AICurlEasyRequestPtr_rat being_removed_from_request_queue_r(being_removed_from_request_queue);
+	multi_handle_w->add_easy_request(AICurlEasyRequest(*being_removed_from_request_queue_r));
+	AICurlEasyRequestPtr_wat being_removed_from_request_queue_w(being_removed_from_request_queue_r);
+	being_removed_from_request_queue_w->reset();
+  }
 }
 
 // The main loop of the curl thread.
@@ -541,9 +580,65 @@ void AICurlThread::run(void)
 	{
 	  struct timeval timeout;
 	  long timeout_ms = multi_handle_w->getTimeOut();
+	  // If no timeout is set, sleep 1 second.
+	  if (timeout_ms < 0)
+		timeout_ms = 1000;
+	  if (timeout_ms == 0)
+	  {
+		if (mZeroTimeOut >= 10000)
+		{
+		  if (mZeroTimeOut == 10000)
+			llwarns << "Detected more than 10000 zero-timeout calls of select() by curl thread (more than 101 seconds)!" << llendl;
+		}
+		else if (mZeroTimeOut >= 1000)
+		  timeout_ms = 10;
+		else if (mZeroTimeOut >= 100)
+		  timeout_ms = 1;
+	  }
+	  else
+	  {
+		if (mZeroTimeOut >= 10000)
+		  llinfos << "Timeout of select() call by curl thread reset (to " << timeout_ms << " ms)." << llendl;
+		mZeroTimeOut = 0;
+	  }
 	  timeout.tv_sec = timeout_ms / 1000;
 	  timeout.tv_usec = (timeout_ms % 1000) * 1000;
+#ifdef CWDEBUG
+	  static int last_nfds = -1;
+	  static long last_timeout_ms = -1;
+	  static int same_count = 0;
+	  bool same = (nfds == last_nfds && timeout_ms == last_timeout_ms);
+	  if (!same)
+	  {
+		if (same_count > 1)
+		  Dout(dc::curl, "Last select() call repeated " << same_count << " times.");
+		Dout(dc::curl|flush_cf|continued_cf, "select(" << nfds << ", ..., timeout = " << timeout_ms << " ms) = ");
+		same_count = 1;
+	  }
+	  else
+	  {
+		++same_count;
+	  }
+#endif
 	  ready = select(nfds, read_fd_set, write_fd_set, NULL, &timeout);
+#ifdef CWDEBUG
+	  static int last_ready = -2;
+	  static int last_errno = 0;
+	  if (!same)
+		Dout(dc::finish|cond_error_cf(ready == -1), ready);
+	  else if (ready != last_ready || (ready == -1 && errno != last_errno))
+	  {
+		if (same_count > 1)
+		  Dout(dc::curl, "Last select() call repeated " << same_count << " times.");
+		Dout(dc::curl|cond_error_cf(ready == -1), "select(" << last_nfds << ", ..., timeout = " << last_timeout_ms << " ms) = " << ready);
+		same_count = 1;
+	  }
+	  last_nfds = nfds;
+	  last_timeout_ms = timeout_ms;
+	  last_ready = ready;
+	  if (ready == -1)
+		last_errno = errno;
+#endif
 	}
 	// Select returns the total number of bits set in each of the fd_set's (upon return),
 	// or -1 when an error occurred. A value of 0 means that a timeout occurred.
@@ -580,7 +675,7 @@ void AICurlThread::run(void)
 //-----------------------------------------------------------------------------
 // MultiHandle
 
-MultiHandle::MultiHandle(void) throw(AICurlNoMultiHandle) : mHandleAddedOrRemoved(false), mPrevRunningHandles(0), mRunningHandles(0), mTimeOut(0)
+MultiHandle::MultiHandle(void) throw(AICurlNoMultiHandle) : mHandleAddedOrRemoved(false), mPrevRunningHandles(0), mRunningHandles(0), mTimeOut(-1)
 {
   curl_multi_setopt(mMultiHandle, CURLMOPT_SOCKETFUNCTION, &MultiHandle::socket_callback);
   curl_multi_setopt(mMultiHandle, CURLMOPT_SOCKETDATA, this);
@@ -627,6 +722,7 @@ int MultiHandle::timer_callback(CURLM* multi, long timeout_ms, void* userp)
   MultiHandle& self = *static_cast<MultiHandle*>(userp);
   llassert(multi == self.mMultiHandle);
   self.mTimeOut = timeout_ms;
+  Dout(dc::curl, "MultiHandle::timer_callback(): timeout set to " << timeout_ms << " ms.");
   return 0;
 }
 
@@ -694,6 +790,7 @@ void MultiHandle::check_run_count(void)
 #endif
 		// This invalidates msg, but not easy_request.
 		remove_easy_request(easy_request);
+		Dout(dc::curl, "Using easy_request " << (void*)easy_request.get());
 	  }
 	}
 	mHandleAddedOrRemoved = false;
@@ -743,8 +840,29 @@ void AICurlEasyRequest::queueRequest(void)
 {
   using namespace AICurlPrivate;
 
-  AIAccess<std::deque<AICurlEasyRequest> > request_queue_w(request_queue);
-  request_queue_w->push_back(*this);
+  {
+	// Write-lock the request queue.
+	AIAccess<std::deque<AICurlEasyRequest> > request_queue_w(request_queue);
+#ifdef SHOW_ASSERT
+	// This debug code checks if we aren't calling queueRequest() twice for the same object.
+	// That means that the main thread already called (and finished, this is also the
+	// main thread) this function. Since we just locked request_queue, it's certain that
+	// that a previous call left this function, too. That leaves three options:
+	// It's still in the queue, or it was removed and is currently processed by the
+	// curl thread with again two options: either it was already added to the multi session
+	// handle or not yet.
+
+	// Read-lock being_removed_from_request_queue.
+	AICurlEasyRequestPtr_rat being_removed_from_request_queue_r(being_removed_from_request_queue);
+	llassert(*this != *being_removed_from_request_queue_r);		// May not be inbetween being removed from the request queue but not added to the multi session handle yet.
+	llassert(!AICurlEasyRequest_wat(*get())->active());			// May not be already added to the multi session handle.
+	for (std::deque<AICurlEasyRequest>::iterator iter = request_queue_w->begin(); iter != request_queue_w->end(); ++iter)
+	  llassert(*this != *iter);									// May not already have been inserted.
+#endif
+	// Add the new request to the queue.
+	request_queue_w->push_back(*this);
+  }
+  // Something was added to the queue, wake up the thread to get it.
   wakeUpCurlThread();
 }
 

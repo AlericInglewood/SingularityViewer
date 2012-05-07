@@ -240,6 +240,12 @@ class AICurlEasyRequest {
 	// It's also OK to automatically convert this object to a const boost::intrusive_ptr.
 	operator AICurlEasyRequestPtr const&() const { return mCurlEasyRequest; }
 
+	// Returns true if this object points to the same CurlEasyRequest object.
+	bool operator==(AICurlEasyRequest const& cer) const { return mCurlEasyRequest == cer.mCurlEasyRequest; }
+	
+	// Returns true if this object points to a different CurlEasyRequest object.
+	bool operator!=(AICurlEasyRequest const& cer) const { return mCurlEasyRequest != cer.mCurlEasyRequest; }
+	
 	// Queue this request for insertion in the multi session.
 	void queueRequest(void);
 

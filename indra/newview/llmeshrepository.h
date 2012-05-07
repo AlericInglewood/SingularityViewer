@@ -245,7 +245,7 @@ public:
 	static S32 sActiveLODRequests;
 	static U32 sMaxConcurrentRequests;
 
-	LLCurlRequest*	mCurlRequest;
+	AICurlInterface::Request* mCurlRequest;
 	LLMutex*		mMutex;
 	LLMutex*		mHeaderMutex;
 	LLCondition*	mSignal;

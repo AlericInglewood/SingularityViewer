@@ -483,7 +483,7 @@ LLMeshRepoThread::~LLMeshRepoThread()
 
 void LLMeshRepoThread::run()
 {
-	mCurlRequest = new LLCurlRequest();
+	mCurlRequest = new AICurlInterface::Request;
 #if MESH_IMPORT
 	LLCDResult res = LLConvexDecomposition::initThread();
 	if (res != LLCD_OK)

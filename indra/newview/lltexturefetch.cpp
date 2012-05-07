@@ -2414,7 +2414,7 @@ void LLTextureFetch::shutDownImageDecodeThread()
 void LLTextureFetch::startThread()
 {
 	// Construct mCurlGetRequest from Worker Thread
-	mCurlGetRequest = new LLCurlRequest();
+	mCurlGetRequest = new AICurlInterface::Request;
 }
 
 // WORKER THREAD
