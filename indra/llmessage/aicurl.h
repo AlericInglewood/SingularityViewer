@@ -76,7 +76,7 @@ class AICurlNoMultiHandle : public AICurlError {
 // Things defined in this namespace are called from elsewhere in the viewer code.
 namespace AICurlInterface {
 
-// Output parameter of LLCurlEasyRequest::getResult.
+// Output parameter of AICurlPrivate::CurlEasyRequest::getResult.
 // Only used by LLXMLRPCTransaction::Impl.
 struct TransferInfo {
   TransferInfo() : mSizeDownload(0.0), mTotalTime(0.0), mSpeedDownload(0.0) { }
