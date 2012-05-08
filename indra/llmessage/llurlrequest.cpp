@@ -465,7 +465,6 @@ void LLURLRequest::initialize()
 
 	{
 		AICurlEasyRequest_wat curlEasyRequest_w(*mDetail->mCurlEasyRequest);
-		curlEasyRequest_w->setopt(CURLOPT_NOSIGNAL, 1);
 		curlEasyRequest_w->setWriteCallback(&downCallback, (void*)this);
 		curlEasyRequest_w->setReadCallback(&upCallback, (void*)this);
 	}

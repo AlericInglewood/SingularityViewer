@@ -134,6 +134,9 @@ class CurlEasyRequest : public CurlEasyHandle {
 	void setSSLCtxCallback(curl_ssl_ctx_callback callback, void* userdata);
 	void addHeader(char const* str);
 
+	// Set default options that we want applied to all curl easy handles.
+	void applyDefaultOptions(void);
+
 	// Prepare the request for adding it to a multi session, or calling perform.
 	// This actually adds the headers that were collected with addHeader.
 	void finalizeRequest(std::string const& url);
@@ -156,7 +159,7 @@ class CurlEasyRequest : public CurlEasyHandle {
 	bool mRequestFinalized;
 
   public:
-	CurlEasyRequest(void) : mHeaders(NULL), mRequestFinalized(false) { }
+	CurlEasyRequest(void) : mHeaders(NULL), mRequestFinalized(false) { applyDefaultOptions(); }
 
 	// For debugging purposes
 	bool is_finalized(void) const { return mRequestFinalized; }

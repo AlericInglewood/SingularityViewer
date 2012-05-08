@@ -224,10 +224,8 @@ void LLXMLRPCTransaction::Impl::init(XMLRPC_REQUEST request, bool useGzip)
 		AICurlEasyRequest_wat curlEasyRequest_w(*mCurlEasyRequest);
 		LLProxy::getInstance()->applyProxySettings(curlEasyRequest_w);
 
-		//curlEasyRequest_w->setopt(CURLOPT_VERBOSE, 1); // usefull for debugging
-		curlEasyRequest_w->setopt(CURLOPT_NOSIGNAL, 1);
 		curlEasyRequest_w->setWriteCallback(&curlDownloadCallback, (void*)this);
-			BOOL vefifySSLCert = !gSavedSettings.getBOOL("NoVerifySSLCert");
+		BOOL vefifySSLCert = !gSavedSettings.getBOOL("NoVerifySSLCert");
 		curlEasyRequest_w->setopt(CURLOPT_SSL_VERIFYPEER, vefifySSLCert);
 		curlEasyRequest_w->setopt(CURLOPT_SSL_VERIFYHOST, vefifySSLCert ? 2 : 0);
 		// Be a little impatient about establishing connections.

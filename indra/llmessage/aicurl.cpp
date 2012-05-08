@@ -615,12 +615,20 @@ void CurlEasyRequest::addHeader(char const* header)
   mHeaders = curl_slist_append(mHeaders, header);
 }
 
+void CurlEasyRequest::applyDefaultOptions(void)
+{
+  CertificateAuthority_rat CertificateAuthority_r(gCertificateAuthority);
+  setoptString(CURLOPT_CAINFO, CertificateAuthority_r->file);
+  setopt(CURLOPT_NOSIGNAL, 1);
+  //setopt(CURLOPT_DNS_CACHE_TIMEOUT, 0);
+  setopt(CURLOPT_VERBOSE, 1);					// Usefull for debugging.
+}
+
 void CurlEasyRequest::finalizeRequest(std::string const& url)
 {
   llassert(!mRequestFinalized);
   mRequestFinalized = true;
   lldebugs << url << llendl;
-  setopt(CURLOPT_VERBOSE, 1);
   setopt(CURLOPT_HTTPHEADER, mHeaders);
   setoptString(CURLOPT_URL, url);
   setopt(CURLOPT_PRIVATE, static_cast<AIThreadSafeCurlEasyRequest*>(AIThreadSafeSimpleDC<CurlEasyRequest>::wrapper_cast(this)));

@@ -443,7 +443,6 @@ static LLSD blocking_request(
 	
 	// * Set curl handle options
 	char curl_error_buffer[CURL_ERROR_SIZE] = "\0";
-	curlEasyRequest_w->setopt(CURLOPT_NOSIGNAL, 1);	// don't use SIGALRM for timeouts
 	curlEasyRequest_w->setopt(CURLOPT_TIMEOUT, timeout);	// seconds, see warning at top of function.
 	curlEasyRequest_w->setopt(CURLOPT_WRITEFUNCTION, LLHTTPBuffer::curl_write);
 	curlEasyRequest_w->setopt(CURLOPT_WRITEDATA, &http_buffer);
