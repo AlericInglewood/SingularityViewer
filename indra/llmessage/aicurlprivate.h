@@ -104,6 +104,10 @@ class CurlEasyHandle : public boost::noncopyable {
 	// Used for debugging purposes.
 	bool operator==(CURL* easy_handle) const { return mEasyHandle == easy_handle; }
 
+  protected:
+	// Return the underlaying curl easy handle.
+	CURL* getEasyHandle(void) const { return mEasyHandle; }
+
   private:
 	// Return, and possibly create, the curl (easy) error buffer used by the current thread.
 	static char* getTLErrorBuffer(void);
@@ -133,6 +137,9 @@ class CurlEasyRequest : public CurlEasyHandle {
 	void setReadCallback(curl_read_callback callback, void* userdata);
 	void setSSLCtxCallback(curl_ssl_ctx_callback callback, void* userdata);
 	void addHeader(char const* str);
+
+	// Call this if the set callbacks are about to be invalidated.
+	void revokeCallbacks(void);
 
 	// Set default options that we want applied to all curl easy handles.
 	void applyDefaultOptions(void);

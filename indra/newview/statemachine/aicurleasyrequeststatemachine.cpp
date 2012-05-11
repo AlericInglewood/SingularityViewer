@@ -51,7 +51,7 @@ char const* AICurlEasyRequestStateMachine::state_str_impl(state_type run_state) 
 void AICurlEasyRequestStateMachine::initialize_impl(void)
 {
   llassert(AICurlEasyRequest_rat(*get())->is_finalized());	// Call finalizeRequest(url) before calling run().
-  queueRequest();
+  addRequest();
   set_state(AICurlEasyRequestStateMachine_folderCompleted);
 }
 

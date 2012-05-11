@@ -49,6 +49,9 @@
 #include "aithreadsafe.h"
 #include "llqueuedthread.h"
 #include "lltimer.h"		// ms_sleep
+#ifdef CWDEBUG
+#include <libcwd/buf2str.h>
+#endif
 
 //==================================================================================
 // Local variables.
@@ -609,11 +612,96 @@ void CurlEasyRequest::setSSLCtxCallback(curl_ssl_ctx_callback callback, void* us
   setopt(CURLOPT_SSL_CTX_DATA, userdata);
 }
 
+static size_t noHeaderCallback(char* ptr, size_t size, size_t nmemb, void* userdata)
+{
+  llwarns << "Calling noHeaderCallback(); curl session aborted." << llendl;
+  return 0;							// Cause a CURL_WRITE_ERROR
+}
+
+static size_t noWriteCallback(char* ptr, size_t size, size_t nmemb, void* userdata)
+{
+  llwarns << "Calling noWriteCallback(); curl session aborted." << llendl;
+  return 0;							// Cause a CURL_WRITE_ERROR
+}
+
+static size_t noReadCallback(char* ptr, size_t size, size_t nmemb, void* userdata)
+{
+  llwarns << "Calling noReadCallback(); curl session aborted." << llendl;
+  return CURL_READFUNC_ABORT;		// Cause a CURLE_ABORTED_BY_CALLBACK
+}
+
+static CURLcode noSSLCtxCallback(CURL* curl, void* sslctx, void* parm)
+{
+  llwarns << "Calling noSSLCtxCallback(); curl session aborted." << llendl;
+  return CURLE_ABORTED_BY_CALLBACK;
+}
+
+void CurlEasyRequest::revokeCallbacks(void)
+{
+  if (active())
+  {
+	llwarns << "Revoking callbacks on a still active CurlEasyRequest object!" << llendl;
+  }
+  curl_easy_setopt(getEasyHandle(), CURLOPT_HEADERFUNCTION, &noHeaderCallback);
+  curl_easy_setopt(getEasyHandle(), CURLOPT_WRITEHEADER, &noWriteCallback);
+  curl_easy_setopt(getEasyHandle(), CURLOPT_READFUNCTION, &noReadCallback);
+  curl_easy_setopt(getEasyHandle(), CURLOPT_SSL_CTX_FUNCTION, &noSSLCtxCallback);
+}
+
 void CurlEasyRequest::addHeader(char const* header)
 {
   llassert(!mRequestFinalized);
   mHeaders = curl_slist_append(mHeaders, header);
 }
+
+#ifdef CWDEBUG
+static int curl_debug_callback(CURL*, curl_infotype infotype, char* buf, size_t size, void* user_ptr)
+{
+  using namespace ::libcwd;
+
+  CurlEasyRequest* request = (CurlEasyRequest*)user_ptr;
+  std::ostringstream marker;
+  marker << (void*)static_cast<AIThreadSafeCurlEasyRequest*>(AIThreadSafeSimpleDC<CurlEasyRequest>::wrapper_cast(request));
+  libcw_do.push_marker();
+  libcw_do.marker().assign(marker.str().data(), marker.str().size());
+  LibcwDoutScopeBegin(LIBCWD_DEBUGCHANNELS, libcw_do, dc::curl|cond_nonewline_cf(infotype == CURLINFO_TEXT))
+  switch (infotype)
+  {
+	case CURLINFO_TEXT:
+	  LibcwDoutStream << "* ";
+	  break;
+	case CURLINFO_HEADER_IN:
+	  LibcwDoutStream << "H> ";
+	  break;
+	case CURLINFO_HEADER_OUT:
+	  LibcwDoutStream << "H< ";
+	  break;
+	case CURLINFO_DATA_IN:
+	  LibcwDoutStream << "D> ";
+	  break;
+	case CURLINFO_DATA_OUT:
+	  LibcwDoutStream << "D< ";
+	  break;
+	case CURLINFO_SSL_DATA_IN:
+	  LibcwDoutStream << "S> ";
+	  break;
+	case CURLINFO_SSL_DATA_OUT:
+	  LibcwDoutStream << "S< ";
+	  break;
+	default:
+	  LibcwDoutStream << "?? ";
+  }
+  if (infotype == CURLINFO_TEXT)
+	LibcwDoutStream.write(buf, size);
+  else if (infotype == CURLINFO_HEADER_IN || infotype == CURLINFO_HEADER_OUT)
+	LibcwDoutStream << libcwd::buf2str(buf, size);
+  else
+	LibcwDoutStream << size << " bytes";
+  LibcwDoutScopeEnd;
+  libcw_do.pop_marker();
+  return 0;
+}
+#endif
 
 void CurlEasyRequest::applyDefaultOptions(void)
 {
@@ -621,7 +709,14 @@ void CurlEasyRequest::applyDefaultOptions(void)
   setoptString(CURLOPT_CAINFO, CertificateAuthority_r->file);
   setopt(CURLOPT_NOSIGNAL, 1);
   //setopt(CURLOPT_DNS_CACHE_TIMEOUT, 0);
-  setopt(CURLOPT_VERBOSE, 1);					// Usefull for debugging.
+  Debug(
+	if (dc::curl.is_on())
+	{
+	  setopt(CURLOPT_VERBOSE, 1);					// Usefull for debugging.
+	  setopt(CURLOPT_DEBUGFUNCTION, &curl_debug_callback);
+	  setopt(CURLOPT_DEBUGDATA, this);
+	}
+  );
 }
 
 void CurlEasyRequest::finalizeRequest(std::string const& url)
@@ -637,14 +732,14 @@ void CurlEasyRequest::finalizeRequest(std::string const& url)
 bool CurlEasyRequest::getResult(CURLcode* result, AICurlInterface::TransferInfo* info)
 {
   //FIXME
-  DoutEntering(dc::warning, "CurlEasyRequest::result()");
-  return true;
+  //DoutEntering(dc::warning, "CurlEasyRequest::result()");
+  return false;
 }
 
 bool CurlEasyRequest::wait(void) const
 {
   //FIXME
-  DoutEntering(dc::warning, "CurlEasyRequest::wait()");
+  //DoutEntering(dc::warning, "CurlEasyRequest::wait()");
   return false;
 }
 
@@ -691,7 +786,7 @@ bool Request::getByteRange(std::string const& url, headers_t const& headers, S32
 S32 Request::process(void)
 {
   //FIXME: needs implementation
-  DoutEntering(dc::warning, "Request::process()");
+  //DoutEntering(dc::warning, "Request::process()");
   return 0;
 }
 

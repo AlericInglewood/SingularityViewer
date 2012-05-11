@@ -164,6 +164,7 @@ LLURLRequest::LLURLRequest(
 
 LLURLRequest::~LLURLRequest()
 {
+	AICurlEasyRequest_wat(*mDetail->mCurlEasyRequest)->revokeCallbacks();
 	LLMemType m1(LLMemType::MTYPE_IO_URL_REQUEST);
 	delete mDetail;
 	mDetail = NULL ;
@@ -553,7 +554,7 @@ bool LLURLRequest::configure()
 	}
 	if (rv)
 	{
-		mDetail->mCurlEasyRequest.queueRequest();
+		mDetail->mCurlEasyRequest.addRequest();
 	}
 	return rv;
 }

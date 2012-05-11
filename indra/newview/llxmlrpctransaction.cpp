@@ -255,12 +255,14 @@ void LLXMLRPCTransaction::Impl::init(XMLRPC_REQUEST request, bool useGzip)
 
 		curlEasyRequest_w->finalizeRequest(mURI);
 	}
-	mCurlEasyRequest.queueRequest();
+	mCurlEasyRequest.addRequest();
 }
 
 
 LLXMLRPCTransaction::Impl::~Impl()
 {
+	AICurlEasyRequest_wat(*mCurlEasyRequest)->revokeCallbacks();
+
 	if (mResponse)
 	{
 		XMLRPC_RequestFree(mResponse, 1);

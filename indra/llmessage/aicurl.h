@@ -247,7 +247,10 @@ class AICurlEasyRequest {
 	bool operator!=(AICurlEasyRequest const& cer) const { return mCurlEasyRequest != cer.mCurlEasyRequest; }
 	
 	// Queue this request for insertion in the multi session.
-	void queueRequest(void);
+	void addRequest(void);
+
+	// Queue a command to remove this request from the multi session (or cancel a queued command to add it).
+	void removeRequest(void);
 
   private:
 	// The actual pointer to the AIThreadSafeCurlEasyRequest instance.

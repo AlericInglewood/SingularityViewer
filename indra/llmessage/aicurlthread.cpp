@@ -41,42 +41,73 @@
 
 namespace AICurlPrivate {
 
+enum command_st {
+  cmd_none,
+  cmd_add,
+  cmd_boost,
+  cmd_remove
+};
+
+class Command {
+  public:
+	Command(void) : mCommand(cmd_none) { }
+	Command(AICurlEasyRequest const& curlEasyRequest, command_st command) : mCurlEasyRequest(curlEasyRequest), mCommand(command) { }
+
+	command_st command(void) const { return mCommand; }
+	AICurlEasyRequestPtr const& easy_request(void) const { return mCurlEasyRequest; }
+
+	bool operator==(AICurlEasyRequest const& easy_request) const { return mCurlEasyRequest == static_cast<AICurlEasyRequestPtr const&>(easy_request); }
+
+	void reset(void);
+
+  private:
+	AICurlEasyRequestPtr mCurlEasyRequest;
+	command_st mCommand;
+};
+
+void Command::reset(void)
+{
+  mCurlEasyRequest.reset();
+  mCommand = cmd_none;
+}
+
 // The following two globals have separate locks for speed considerations (in order not
 // to block the main thread unnecessarily) but have the following correlation:
 //
-// MAIN-THREAD (AICurlEasyRequest::queueRequest)
-// * request_queue locked
-//   - A non-active (mActive is NULL) AIThreadSafeCurlEasyRequest (by means of an AICurlEasyRequest pointing to it) is added to request_queue
-// * request_queue unlocked
+// MAIN-THREAD (AICurlEasyRequest::addRequest)
+// * command_queue locked
+//   - A non-active (mActive is NULL) AIThreadSafeCurlEasyRequest (by means of an AICurlEasyRequest pointing to it) is added to command_queue with as command cmd_add.
+// * command_queue unlocked
 //
-// If at this point queueRequest is called again, then it is detected that the AIThreadSafeCurlEasyRequest is already in the queue.
+// If at this point addRequest is called again, then it is detected that the last command added to the queue
+// for this AIThreadSafeCurlEasyRequest is cmd_add.
 //
 // CURL-THREAD (AICurlThread::wakeup):
-// * request_queue locked
-//   * being_removed_from_request_queue is write-locked
-//     - being_removed_from_request_queue points to the same AIThreadSafeCurlEasyRequest
-//   * being_removed_from_request_queue is unlocked
-//   - The AIThreadSafeCurlEasyRequest is removed from request_queue
-// * request_queue unlocked
+// * command_queue locked
+//   * command_being_processed is write-locked
+//     - command_being_processed is assigned the value of the command in the queue.
+//   * command_being_processed is unlocked
+//   - The command is removed from command_queue
+// * command_queue unlocked
 //
-// If at this point queueRequest is called again, then it is detected that the AIThreadSafeCurlEasyRequest is pointed at by being_removed_from_request_queue.
+// If at this point addRequest is called again, then it is detected that command_being_processed adds the same AIThreadSafeCurlEasyRequest.
 //
-// * being_removed_from_request_queue is read-locked
+// * command_being_processed is read-locked
 //   - mActive is set to point to the curl multi handle
 //   - The easy handle is added to the multi handle
-// * being_removed_from_request_queue is write-locked
-//   - being_removed_from_request_queue is reset
-// * being_removed_from_request_queue is unlocked
+// * command_being_processed is write-locked
+//   - command_being_processed is reset
+// * command_being_processed is unlocked
 //
-// If at this point queueRequest is called again, then it is detected that the AIThreadSafeCurlEasyRequest is active.
+// If at this point addRequest is called again, then it is detected that the AIThreadSafeCurlEasyRequest is active.
 
-// Multi-threaded queue for passing AICurlEasyRequest objects from the main-thread to the curl-thread.
-AIThreadSafeSimpleDC<std::deque<AICurlEasyRequest> > request_queue;
-typedef AIAccess<std::deque<AICurlEasyRequest> > request_queue_wat;
+// Multi-threaded queue for passing Command objects from the main-thread to the curl-thread.
+AIThreadSafeSimpleDC<std::deque<Command> > command_queue;
+typedef AIAccess<std::deque<Command> > command_queue_wat;
 
-AIThreadSafeDC<AICurlEasyRequestPtr> being_removed_from_request_queue;
-typedef AIWriteAccess<AICurlEasyRequestPtr> AICurlEasyRequestPtr_wat;
-typedef AIReadAccess<AICurlEasyRequestPtr> AICurlEasyRequestPtr_rat;
+AIThreadSafeDC<Command> command_being_processed;
+typedef AIWriteAccess<Command> command_being_processed_wat;
+typedef AIReadAccess<Command> command_being_processed_rat;
 
 namespace curlthread {
 // All functions in this namespace are only run by the curl thread, unless they are marked with MAIN-THREAD.
@@ -533,19 +564,36 @@ void AICurlThread::wakeup(AICurlMultiHandle_wat const& multi_handle_w)
   }
 #endif
   // If we get here then the main thread called wakeup_thread() recently.
+  for(;;)
   {
-    request_queue_wat request_queue_w(request_queue);
-    if (!request_queue_w->empty())
+	// Access command_queue, and move command to command_being_processed.
 	{
-	  *AICurlEasyRequestPtr_wat(being_removed_from_request_queue) = request_queue_w->front();
-	  request_queue_w->pop_front();
+	  command_queue_wat command_queue_w(command_queue);
+	  if (command_queue_w->empty())
+		break;
+	  // Move the next command from the queue into command_being_processed.
+	  *command_being_processed_wat(command_being_processed) = command_queue_w->front();
+	  command_queue_w->pop_front();
 	}
-  }
-  {
-	AICurlEasyRequestPtr_rat being_removed_from_request_queue_r(being_removed_from_request_queue);
-	multi_handle_w->add_easy_request(AICurlEasyRequest(*being_removed_from_request_queue_r));
-	AICurlEasyRequestPtr_wat being_removed_from_request_queue_w(being_removed_from_request_queue_r);
-	being_removed_from_request_queue_w->reset();
+	// Access command_being_processed only.
+	{
+	  command_being_processed_rat command_being_processed_r(command_being_processed);
+	  switch(command_being_processed_r->command())
+	  {
+		case cmd_none:
+		case cmd_boost:	// FIXME: future stuff
+		  break;
+		case cmd_add:
+		  multi_handle_w->add_easy_request(AICurlEasyRequest(command_being_processed_r->easy_request()));
+		  break;
+		case cmd_remove:
+		  multi_handle_w->remove_easy_request(AICurlEasyRequest(command_being_processed_r->easy_request()));
+		  break;
+	  }
+	  // Done processing.
+	  command_being_processed_wat command_being_processed_w(command_being_processed_r);
+	  command_being_processed_w->reset();
+	}
   }
 }
 
@@ -760,7 +808,8 @@ CURLMcode MultiHandle::add_easy_request(AICurlEasyRequest const& easy_request)
 CURLMcode MultiHandle::remove_easy_request(AICurlEasyRequest const& easy_request)
 {
   addedEasyRequests_type::iterator iter = mAddedEasyRequests.find(easy_request);
-  llassert(iter != mAddedEasyRequests.end());	// Must have been added before.
+  if (iter == mAddedEasyRequests.end())
+	return (CURLMcode)-2;				// Was already removed before.
   CURLMcode res = AICurlEasyRequest_wat(**iter)->remove_handle_from_multi(mMultiHandle);
   mAddedEasyRequests.erase(iter);
   mHandleAddedOrRemoved = true;
@@ -789,8 +838,21 @@ void MultiHandle::check_run_count(void)
 		Dout(dc::curl, "Finished: " << eff_url << " (" << msg->data.result << ")");
 #endif
 		// This invalidates msg, but not easy_request.
-		remove_easy_request(easy_request);
-		Dout(dc::curl, "Using easy_request " << (void*)easy_request.get());
+		CURLMcode res = remove_easy_request(easy_request);
+		// This should hold, I think, because the handles are obviously ok and
+		// the only error we could get is when remove_easy_request() was already
+		// called before (by this thread); but if that was the case then the easy
+		// handle should not have been be returned by info_read()...
+		llassert(res == CURLM_OK);
+		// Nevertheless, if it was already removed then just ignore it.
+		if (res == CURLM_OK)
+		{
+		  Dout(dc::curl, "Using easy_request " << (void*)easy_request.get());
+		}
+		else if (res == -2)
+		{
+		  llwarns << "Curl easy handle returned by curl_multi_info_read() that is not (anymore) in MultiHandle::mAddedEasyRequests!?!" << llendl;
+		}
 	  }
 	}
 	mHandleAddedOrRemoved = false;
@@ -836,31 +898,99 @@ void wakeUpCurlThread(void)
 //-----------------------------------------------------------------------------
 // AICurlEasyRequest
 
-void AICurlEasyRequest::queueRequest(void)
+void AICurlEasyRequest::addRequest(void)
 {
   using namespace AICurlPrivate;
 
   {
-	// Write-lock the request queue.
-	AIAccess<std::deque<AICurlEasyRequest> > request_queue_w(request_queue);
+	// Write-lock the command queue.
+	command_queue_wat command_queue_w(command_queue);
 #ifdef SHOW_ASSERT
-	// This debug code checks if we aren't calling queueRequest() twice for the same object.
+	// This debug code checks if we aren't calling addRequest() twice for the same object.
 	// That means that the main thread already called (and finished, this is also the
-	// main thread) this function. Since we just locked request_queue, it's certain that
-	// that a previous call left this function, too. That leaves three options:
-	// It's still in the queue, or it was removed and is currently processed by the
-	// curl thread with again two options: either it was already added to the multi session
-	// handle or not yet.
+	// main thread) this function, which also follows from that we just locked command_queue.
+	// That leaves three options: It's still in the queue, or it was removed and is currently
+	// processed by the curl thread with again two options: either it was already added
+	// to the multi session handle or not yet.
 
-	// Read-lock being_removed_from_request_queue.
-	AICurlEasyRequestPtr_rat being_removed_from_request_queue_r(being_removed_from_request_queue);
-	llassert(*this != *being_removed_from_request_queue_r);		// May not be inbetween being removed from the request queue but not added to the multi session handle yet.
-	llassert(!AICurlEasyRequest_wat(*get())->active());			// May not be already added to the multi session handle.
-	for (std::deque<AICurlEasyRequest>::iterator iter = request_queue_w->begin(); iter != request_queue_w->end(); ++iter)
-	  llassert(*this != *iter);									// May not already have been inserted.
+	// Find the last command added.
+	command_st cmd = cmd_none;
+	for (std::deque<Command>::iterator iter = command_queue_w->begin(); iter != command_queue_w->end(); ++iter)
+	{
+	  if (*iter == *this)
+	  {
+		cmd = iter->command();
+		break;
+	  }
+	}
+	llassert(cmd == cmd_none || cmd == cmd_remove);	// Not in queue, or last command was to remove it.
+	if (cmd == cmd_none)
+	{
+	  // Read-lock command_being_processed.
+	  command_being_processed_rat command_being_processed_r(command_being_processed);
+	  if (*command_being_processed_r == *this)
+	  {
+		// May not be inbetween being removed from the command queue but not added to the multi session handle yet.
+		llassert(command_being_processed_r->command() == cmd_remove);
+	  }
+	  else
+	  {
+		// May not already be added to the multi session handle.
+		llassert(!AICurlEasyRequest_wat(*get())->active());
+	  }
+	}
 #endif
-	// Add the new request to the queue.
-	request_queue_w->push_back(*this);
+	// Add a command to add the new request to the multi session to the command queue.
+	command_queue_w->push_back(Command(*this, cmd_add));
+  }
+  // Something was added to the queue, wake up the thread to get it.
+  wakeUpCurlThread();
+}
+
+void AICurlEasyRequest::removeRequest(void)
+{
+  using namespace AICurlPrivate;
+
+  {
+	// Write-lock the command queue.
+    command_queue_wat command_queue_w(command_queue);
+#ifdef SHOW_ASSERT
+	// This debug code checks if we aren't calling removeRequest() twice for the same object.
+	// That means that the thread calling this function already finished it, following from that
+	// we just locked command_queue.
+	// That leaves three options: It's still in the queue, or it was removed and is currently
+	// processed by the curl thread with again two options: either it was already removed
+	// from the multi session handle or not yet.
+
+	// Find the last command added.
+	command_st cmd = cmd_none;
+	for (std::deque<Command>::iterator iter = command_queue_w->begin(); iter != command_queue_w->end(); ++iter)
+	{
+	  if (*iter == *this)
+	  {
+		cmd = iter->command();
+		break;
+	  }
+	}
+	llassert(cmd == cmd_none || cmd != cmd_remove);	// Not in queue, or last command was not to remove it.
+	if (cmd == cmd_none)
+	{
+	  // Read-lock command_being_processed.
+	  command_being_processed_rat command_being_processed_r(command_being_processed);
+	  if (*command_being_processed_r == *this)
+	  {
+		// May not be inbetween being removed from the command queue but not removed from the multi session handle yet.
+		llassert(command_being_processed_r->command() != cmd_remove);
+	  }
+	  else
+	  {
+		// May not already have been remove from multi session handle.
+		llassert(AICurlEasyRequest_wat(*get())->active());
+	  }
+	}
+#endif
+	// Add a command to remove this request from the multi session to the command queue.
+	command_queue_w->push_back(Command(*this, cmd_remove));
   }
   // Something was added to the queue, wake up the thread to get it.
   wakeUpCurlThread();

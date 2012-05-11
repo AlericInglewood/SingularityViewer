@@ -373,12 +373,12 @@ class LLHTTPBuffer
 public:
 	LLHTTPBuffer() { }
 
-	static size_t curl_write( void *ptr, size_t size, size_t nmemb, void *user_data)
+	static size_t curl_write(char* ptr, size_t size, size_t nmemb, void* user_data)
 	{
 		LLHTTPBuffer* self = (LLHTTPBuffer*)user_data;
 		
 		size_t bytes = (size * nmemb);
-		self->mBuffer.append((char*)ptr,bytes);
+		self->mBuffer.append(ptr,bytes);
 		return nmemb;
 	}
 
@@ -442,15 +442,10 @@ static LLSD blocking_request(
 	LLProxy::getInstance()->applyProxySettings(curlEasyRequest_w);
 	
 	// * Set curl handle options
-	char curl_error_buffer[CURL_ERROR_SIZE] = "\0";
 	curlEasyRequest_w->setopt(CURLOPT_TIMEOUT, timeout);	// seconds, see warning at top of function.
-	curlEasyRequest_w->setopt(CURLOPT_WRITEFUNCTION, LLHTTPBuffer::curl_write);
-	curlEasyRequest_w->setopt(CURLOPT_WRITEDATA, &http_buffer);
-	curlEasyRequest_w->setopt(CURLOPT_URL, url.c_str());
-	curlEasyRequest_w->setopt(CURLOPT_ERRORBUFFER, curl_error_buffer);
+	curlEasyRequest_w->setWriteCallback(&LLHTTPBuffer::curl_write, &http_buffer);
 
-	// * Setup headers (don't forget to free them after the call!)
-	curl_slist* headers_list = NULL;
+	// * Setup headers.
 	if (headers.isMap())
 	{
 		LLSD::map_const_iterator iter = headers.beginMap();
@@ -460,7 +455,7 @@ static LLSD blocking_request(
 			std::ostringstream header;
 			header << iter->first << ": " << iter->second.asString() ;
 			lldebugs << "header = " << header.str() << llendl;
-			headers_list = curl_slist_append(headers_list, header.str().c_str());
+			curlEasyRequest_w->addHeader(header.str().c_str());
 		}
 	}
 	
@@ -478,23 +473,19 @@ static LLSD blocking_request(
 		body_str = ostr.str();
 		curlEasyRequest_w->setopt(CURLOPT_POSTFIELDS, body_str.c_str());
 		//copied from PHP libs, correct?
-		headers_list = curl_slist_append(headers_list, "Content-Type: application/llsd+xml");
+		curlEasyRequest_w->addHeader("Content-Type: application/llsd+xml");
 
 		// copied from llurlrequest.cpp
 		// it appears that apache2.2.3 or django in etch is busted. If
 		// we do not clear the expect header, we get a 500. May be
 		// limited to django/mod_wsgi.
-		headers_list = curl_slist_append(headers_list, "Expect:");
+		curlEasyRequest_w->addHeader("Expect:");
 	}
 	
 	// * Do the action using curl, handle results
 	lldebugs << "HTTP body: " << body_str << llendl;
-	headers_list = curl_slist_append(headers_list, "Accept: application/llsd+xml");
-	CURLcode curl_result = curlEasyRequest_w->setopt(CURLOPT_HTTPHEADER, headers_list);
-	if ( curl_result != CURLE_OK )
-	{
-		llinfos << "Curl is hosed - can't add headers" << llendl;
-	}
+	curlEasyRequest_w->addHeader("Accept: application/llsd+xml");
+	curlEasyRequest_w->finalizeRequest(url);
 
 	LLSD response = LLSD::emptyMap();
 	S32 curl_success = curlEasyRequest_w->perform();
@@ -510,7 +501,7 @@ static LLSD blocking_request(
 		llwarns << "CURL REQ HEADERS: " << headers.asString() << llendl;
 		llwarns << "CURL REQ BODY: " << body_str << llendl;
 		llwarns << "CURL HTTP_STATUS: " << http_status << llendl;
-		llwarns << "CURL ERROR: " << curl_error_buffer << llendl;
+		llwarns << "CURL ERROR: " << curlEasyRequest_w->getErrorString() << llendl;
 		llwarns << "CURL ERROR BODY: " << http_buffer.asString() << llendl;
 		response["body"] = http_buffer.asString();
 	}
@@ -520,11 +511,6 @@ static LLSD blocking_request(
 		lldebugs << "CURL response: " << http_buffer.asString() << llendl;
 	}
 	
-	if(headers_list)
-	{	// free the header list  
-		curl_slist_free_all(headers_list); 
-	}
-
 	return response;
 }
 
