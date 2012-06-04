@@ -43,6 +43,7 @@
 #include "llappviewer.h"
 
 #include "hippogridmanager.h"
+#include "statemachine/aicurleasyrequeststatemachine.h"
 
 LLXMLRPCValue LLXMLRPCValue::operator[](const char* id) const
 {
@@ -154,7 +155,7 @@ class LLXMLRPCTransaction::Impl
 public:
 	typedef LLXMLRPCTransaction::Status	Status;
 
-	AICurlEasyRequest	mCurlEasyRequest;
+	AICurlEasyRequestStateMachine*	mCurlEasyRequestPtr;
 
 	Status		mStatus;
 	CURLcode	mCurlCode;
@@ -176,7 +177,8 @@ public:
 		 const std::string& method, LLXMLRPCValue params, bool useGzip);
 	~Impl();
 	
-	bool process();
+	bool is_finished(void) const;
+	void curlEasyRequestCallback(bool success);
 	
 	void setStatus(Status code,
 				   const std::string& message = "", const std::string& uri = "");
@@ -191,7 +193,8 @@ private:
 
 LLXMLRPCTransaction::Impl::Impl(const std::string& uri,
 		XMLRPC_REQUEST request, bool useGzip)
-	: mStatus(LLXMLRPCTransaction::StatusNotStarted),
+	: mCurlEasyRequestPtr(NULL),
+	  mStatus(LLXMLRPCTransaction::StatusNotStarted),
 	  mURI(uri),
 	  mRequestText(0), 
 	  mResponse(0)
@@ -202,7 +205,8 @@ LLXMLRPCTransaction::Impl::Impl(const std::string& uri,
 
 LLXMLRPCTransaction::Impl::Impl(const std::string& uri,
 		const std::string& method, LLXMLRPCValue params, bool useGzip)
-	: mStatus(LLXMLRPCTransaction::StatusNotStarted),
+	: mCurlEasyRequestPtr(NULL),
+	  mStatus(LLXMLRPCTransaction::StatusNotStarted),
 	  mURI(uri),
 	  mRequestText(0), 
 	  mResponse(0)
@@ -221,7 +225,8 @@ LLXMLRPCTransaction::Impl::Impl(const std::string& uri,
 void LLXMLRPCTransaction::Impl::init(XMLRPC_REQUEST request, bool useGzip)
 {
 	{
-		AICurlEasyRequest_wat curlEasyRequest_w(*mCurlEasyRequest);
+		mCurlEasyRequestPtr = new AICurlEasyRequestStateMachine;
+		AICurlEasyRequest_wat curlEasyRequest_w(**mCurlEasyRequestPtr);
 		LLProxy::getInstance()->applyProxySettings(curlEasyRequest_w);
 
 		curlEasyRequest_w->setWriteCallback(&curlDownloadCallback, (void*)this);
@@ -255,13 +260,20 @@ void LLXMLRPCTransaction::Impl::init(XMLRPC_REQUEST request, bool useGzip)
 
 		curlEasyRequest_w->finalizeRequest(mURI);
 	}
-	mCurlEasyRequest.addRequest();
+	if (mStatus == LLXMLRPCTransaction::StatusNotStarted)	// It could be LLXMLRPCTransaction::StatusOtherError.
+	{
+	  mCurlEasyRequestPtr->run(boost::bind(&LLXMLRPCTransaction::Impl::curlEasyRequestCallback, this, _1));
+	  setStatus(LLXMLRPCTransaction::StatusStarted);
+	}
 }
-
 
 LLXMLRPCTransaction::Impl::~Impl()
 {
-	AICurlEasyRequest_wat(*mCurlEasyRequest)->revokeCallbacks();
+	if (mCurlEasyRequestPtr)
+	{
+		//FIXME: shouldn't we just call abort here?
+		AICurlEasyRequest_wat(**mCurlEasyRequestPtr)->revokeCallbacks();
+	}
 
 	if (mResponse)
 	{
@@ -274,46 +286,26 @@ LLXMLRPCTransaction::Impl::~Impl()
 	}
 }
 
-bool LLXMLRPCTransaction::Impl::process()
+bool LLXMLRPCTransaction::Impl::is_finished(void) const
 {
-	AICurlEasyRequest_wat curlEasyRequest_w(*mCurlEasyRequest);
+	// Nothing to process anymore. Just wait till the statemachine finished.
+	return mStatus != LLXMLRPCTransaction::StatusNotStarted &&
+	       mStatus != LLXMLRPCTransaction::StatusStarted &&
+		   mStatus != LLXMLRPCTransaction::StatusDownloading;
+}
 
-	switch(mStatus)
+void LLXMLRPCTransaction::Impl::curlEasyRequestCallback(bool success)
+{
+	AICurlEasyRequest_wat curlEasyRequest_w(**mCurlEasyRequestPtr);
+
+	llassert(mStatus == LLXMLRPCTransaction::StatusStarted || mStatus == LLXMLRPCTransaction::StatusDownloading);
+
+	if (!success)
 	{
-		case LLXMLRPCTransaction::StatusComplete:
-		case LLXMLRPCTransaction::StatusCURLError:
-		case LLXMLRPCTransaction::StatusXMLRPCError:
-		case LLXMLRPCTransaction::StatusOtherError:
-		{
-			return true;
-		}
-		
-		case LLXMLRPCTransaction::StatusNotStarted:
-		{
-			setStatus(LLXMLRPCTransaction::StatusStarted);
-			break;
-		}
-		
-		default:
-		{
-			// continue onward
-		}
+		setStatus(LLXMLRPCTransaction::StatusOtherError, "Statemachine failed");
+		return;
 	}
-	
-	//const F32 MAX_PROCESSING_TIME = 0.05f;
-	//LLTimer timer;
-
-	curlEasyRequest_w->wait();
-
-	/*while (curlEasyRequest_w->perform() > 0)
-	{
-		if (timer.getElapsedTimeF32() >= MAX_PROCESSING_TIME)
-		{
-			return false;
-		}
-	}*/
-
-	while(1)
+	else
 	{
 		CURLcode result;
 		bool newmsg = curlEasyRequest_w->getResult(&result, &mTransferInfo);
@@ -327,7 +319,7 @@ bool LLXMLRPCTransaction::Impl::process()
 				llwarns << "LLXMLRPCTransaction request URI: "
 						<< mURI << llendl;
 					
-				return true;
+				return;
 			}
 			
 			setStatus(LLXMLRPCTransaction::StatusComplete);
@@ -365,16 +357,8 @@ bool LLXMLRPCTransaction::Impl::process()
 				llwarns << "LLXMLRPCTransaction request URI: "
 						<< mURI << llendl;
 			}
-			
-			return true;
-		}
-		else
-		{
-			break; // done
 		}
 	}
-	
-	return false;
 }
 
 void LLXMLRPCTransaction::Impl::setStatus(Status status,
@@ -500,7 +484,7 @@ LLXMLRPCTransaction::~LLXMLRPCTransaction()
 
 bool LLXMLRPCTransaction::process()
 {
-	return impl.process();
+	return impl.is_finished();
 }
 
 LLXMLRPCTransaction::Status LLXMLRPCTransaction::status(int* curlCode)

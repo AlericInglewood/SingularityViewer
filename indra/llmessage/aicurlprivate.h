@@ -55,14 +55,14 @@ class CurlEasyHandle : public boost::noncopyable {
 
   public:
 	// Reset all options of a libcurl session handle.
-	void reset(void) { llassert(!mActive); curl_easy_reset(mEasyHandle); }
+	void reset(void) { llassert(!mActiveMultiHandle); curl_easy_reset(mEasyHandle); }
 
 	// Set options for a curl easy handle.
 	template<typename BUILTIN>
 	  CURLcode setopt(CURLoption option, BUILTIN parameter);
 
 	// Clone a libcurl session handle using all the options previously set.
-	CurlEasyHandle(CurlEasyHandle const& orig) : mEasyHandle(curl_easy_duphandle(orig.mEasyHandle)), mActive(false), mErrorBuffer(NULL) { }
+	CurlEasyHandle(CurlEasyHandle const& orig) : mEasyHandle(curl_easy_duphandle(orig.mEasyHandle)), mActiveMultiHandle(NULL), mErrorBuffer(NULL) { }
 
 	// URL encode/decode the given string.
 	char* escape(char* url, int length);
@@ -77,7 +77,7 @@ class CurlEasyHandle : public boost::noncopyable {
 
   private:
 	CURL* mEasyHandle;
-	CURLM* mActive;
+	CURLM* mActiveMultiHandle;
 	char* mErrorBuffer;
 	static LLAtomicU32 sTotalEasyHandles;
 
@@ -92,7 +92,7 @@ class CurlEasyHandle : public boost::noncopyable {
 	static U32 getTotalEasyHandles(void) { return sTotalEasyHandles; }
 
 	// Returns true if this easy handle was added to a curl multi handle.
-	bool active(void) const { return mActive; }
+	bool active(void) const { return mActiveMultiHandle; }
 
 	// Call this prior to every curl_easy function whose return value is passed to check_easy_code.
 	void setErrorBuffer(void);
@@ -108,6 +108,10 @@ class CurlEasyHandle : public boost::noncopyable {
 	// Return the underlaying curl easy handle.
 	CURL* getEasyHandle(void) const { return mEasyHandle; }
 
+	// Events.
+	virtual void added_to_multi_handle(void) { }
+	virtual void removed_from_multi_handle(void) { }
+
   private:
 	// Return, and possibly create, the curl (easy) error buffer used by the current thread.
 	static char* getTLErrorBuffer(void);
@@ -116,7 +120,7 @@ class CurlEasyHandle : public boost::noncopyable {
 template<typename BUILTIN>
 CURLcode CurlEasyHandle::setopt(CURLoption option, BUILTIN parameter)
 {
-  llassert(!mActive);
+  llassert(!mActiveMultiHandle);
   setErrorBuffer();
   return check_easy_code(curl_easy_setopt(mEasyHandle, option, parameter));
 }

@@ -76,7 +76,7 @@ void Command::reset(void)
 //
 // MAIN-THREAD (AICurlEasyRequest::addRequest)
 // * command_queue locked
-//   - A non-active (mActive is NULL) AIThreadSafeCurlEasyRequest (by means of an AICurlEasyRequest pointing to it) is added to command_queue with as command cmd_add.
+//   - A non-active (mActiveMultiHandle is NULL) AIThreadSafeCurlEasyRequest (by means of an AICurlEasyRequest pointing to it) is added to command_queue with as command cmd_add.
 // * command_queue unlocked
 //
 // If at this point addRequest is called again, then it is detected that the last command added to the queue
@@ -93,7 +93,7 @@ void Command::reset(void)
 // If at this point addRequest is called again, then it is detected that command_being_processed adds the same AIThreadSafeCurlEasyRequest.
 //
 // * command_being_processed is read-locked
-//   - mActive is set to point to the curl multi handle
+//   - mActiveMultiHandle is set to point to the curl multi handle
 //   - The easy handle is added to the multi handle
 // * command_being_processed is write-locked
 //   - command_being_processed is reset
@@ -847,7 +847,6 @@ void MultiHandle::check_run_count(void)
 		// Nevertheless, if it was already removed then just ignore it.
 		if (res == CURLM_OK)
 		{
-		  Dout(dc::curl, "Using easy_request " << (void*)easy_request.get());
 		}
 		else if (res == -2)
 		{

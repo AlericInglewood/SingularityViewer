@@ -478,7 +478,7 @@ CURLMcode check_multi_code(CURLMcode code)
 
 LLAtomicU32 CurlEasyHandle::sTotalEasyHandles;
 
-CurlEasyHandle::CurlEasyHandle(void) throw(AICurlNoEasyHandle) : mActive(NULL), mErrorBuffer(NULL)
+CurlEasyHandle::CurlEasyHandle(void) throw(AICurlNoEasyHandle) : mActiveMultiHandle(NULL), mErrorBuffer(NULL)
 {
   mEasyHandle = curl_easy_init();
   if (!mEasyHandle)
@@ -490,7 +490,7 @@ CurlEasyHandle::CurlEasyHandle(void) throw(AICurlNoEasyHandle) : mActive(NULL), 
 
 CurlEasyHandle::~CurlEasyHandle()
 {
-  llassert(!mActive);
+  llassert(!mActiveMultiHandle);
   curl_easy_cleanup(mEasyHandle);
   --sTotalEasyHandles;
 }
@@ -534,7 +534,7 @@ char* CurlEasyHandle::unescape(char* url, int inlength , int* outlength)
 
 CURLcode CurlEasyHandle::perform(void)
 {
-  llassert(!mActive);
+  llassert(!mActiveMultiHandle);
   setErrorBuffer();
   return check_easy_code(curl_easy_perform(mEasyHandle));
 }
@@ -547,16 +547,20 @@ CURLcode CurlEasyHandle::pause(int bitmask)
 
 CURLMcode CurlEasyHandle::add_handle_to_multi(CURLM* multi)
 {
-  llassert_always(!mActive && multi);
-  mActive = multi;
-  return check_multi_code(curl_multi_add_handle(multi, mEasyHandle));
+  llassert_always(!mActiveMultiHandle && multi);
+  mActiveMultiHandle = multi;
+  CURLMcode res = check_multi_code(curl_multi_add_handle(multi, mEasyHandle));
+  added_to_multi_handle();
+  return res;
 }
 
 CURLMcode CurlEasyHandle::remove_handle_from_multi(CURLM* multi)
 {
-  llassert_always(mActive && mActive == multi);
-  mActive = NULL;
-  return check_multi_code(curl_multi_remove_handle(multi, mEasyHandle));
+  llassert_always(mActiveMultiHandle && mActiveMultiHandle == multi);
+  mActiveMultiHandle = NULL;
+  CURLMcode res = check_multi_code(curl_multi_remove_handle(multi, mEasyHandle));
+  removed_from_multi_handle();
+  return res;
 }
 
 void intrusive_ptr_add_ref(AIThreadSafeCurlEasyRequest* threadsafe_curl_easy_request)
@@ -732,14 +736,16 @@ void CurlEasyRequest::finalizeRequest(std::string const& url)
 bool CurlEasyRequest::getResult(CURLcode* result, AICurlInterface::TransferInfo* info)
 {
   //FIXME
-  //DoutEntering(dc::warning, "CurlEasyRequest::result()");
+  DoutEntering(dc::warning, "CurlEasyRequest::result()");
+  assert(false);
   return false;
 }
 
 bool CurlEasyRequest::wait(void) const
 {
   //FIXME
-  //DoutEntering(dc::warning, "CurlEasyRequest::wait()");
+  DoutEntering(dc::warning, "CurlEasyRequest::wait()");
+  assert(false);
   return false;
 }
 

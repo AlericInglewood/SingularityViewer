@@ -111,7 +111,7 @@ public:
 	} Status;
 
 	bool process();
-		// run the request a little, returns true when done
+		// Returns true when done.
 		
 	Status status(int* curlCode);
 		// return status, and extended CURL code, if code isn't null

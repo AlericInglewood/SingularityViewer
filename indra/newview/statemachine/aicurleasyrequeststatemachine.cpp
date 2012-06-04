@@ -32,18 +32,18 @@
 #include "aicurleasyrequeststatemachine.h"
 
 enum curleasyrequeststatemachine_state_type {
-  AICurlEasyRequestStateMachine_checkFolderExists = AIStateMachine::max_state,
-  AICurlEasyRequestStateMachine_fetchDescendents,
-  AICurlEasyRequestStateMachine_folderCompleted
+  AICurlEasyRequestStateMachine_addRequest = AIStateMachine::max_state,
+  AICurlEasyRequestStateMachine_addedToMultiHandle,
+  AICurlEasyRequestStateMachine_removedFromMultiHandle
 };
 
 char const* AICurlEasyRequestStateMachine::state_str_impl(state_type run_state) const
 {
   switch(run_state)
   {
-	AI_CASE_RETURN(AICurlEasyRequestStateMachine_checkFolderExists);
-	AI_CASE_RETURN(AICurlEasyRequestStateMachine_fetchDescendents);
-	AI_CASE_RETURN(AICurlEasyRequestStateMachine_folderCompleted);
+	AI_CASE_RETURN(AICurlEasyRequestStateMachine_addRequest);
+	AI_CASE_RETURN(AICurlEasyRequestStateMachine_addedToMultiHandle);
+	AI_CASE_RETURN(AICurlEasyRequestStateMachine_removedFromMultiHandle);
   }
   return "UNKNOWN STATE";
 }
@@ -51,22 +51,34 @@ char const* AICurlEasyRequestStateMachine::state_str_impl(state_type run_state) 
 void AICurlEasyRequestStateMachine::initialize_impl(void)
 {
   llassert(AICurlEasyRequest_rat(*get())->is_finalized());	// Call finalizeRequest(url) before calling run().
-  addRequest();
-  set_state(AICurlEasyRequestStateMachine_folderCompleted);
+  set_state(AICurlEasyRequestStateMachine_addRequest);
+}
+
+void AICurlEasyRequestStateMachine::added_to_multi_handle(void)
+{
+  set_state(AICurlEasyRequestStateMachine_addedToMultiHandle);
+}
+
+void AICurlEasyRequestStateMachine::removed_from_multi_handle(void)
+{
+  set_state(AICurlEasyRequestStateMachine_removedFromMultiHandle);
 }
 
 void AICurlEasyRequestStateMachine::multiplex_impl(void)
 {
   switch (mRunState)
   {
-	case AICurlEasyRequestStateMachine_checkFolderExists:
+	case AICurlEasyRequestStateMachine_addRequest:
 	{
+	  addRequest();
+	  idle();			// Wait till added_to_multi_handle() is called.
+	  break;
 	}
-	case AICurlEasyRequestStateMachine_fetchDescendents:
+	case AICurlEasyRequestStateMachine_addedToMultiHandle:
 	{
 	  break;
 	}
-	case AICurlEasyRequestStateMachine_folderCompleted:
+	case AICurlEasyRequestStateMachine_removedFromMultiHandle:
 	{
 	  finish();
 	  break;
