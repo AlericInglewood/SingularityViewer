@@ -177,6 +177,6 @@ class AICurlMultiHandle : public AIThreadSafeSingleThreadDC<AICurlPrivate::curlt
 typedef AISTAccessConst<AICurlPrivate::curlthread::MultiHandle> AICurlMultiHandle_rat;
 typedef AISTAccess<AICurlPrivate::curlthread::MultiHandle> AICurlMultiHandle_wat;
 
-#define AICurlPrivate DONTUSETHIS
+#define AICurlPrivate DONTUSE_AICurlPrivate
 
 #endif

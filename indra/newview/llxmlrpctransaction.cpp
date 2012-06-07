@@ -45,6 +45,10 @@
 #include "hippogridmanager.h"
 #include "statemachine/aicurleasyrequeststatemachine.h"
 
+#ifdef CWDEBUG
+#include <libcwd/buf2str.h>
+#endif
+
 LLXMLRPCValue LLXMLRPCValue::operator[](const char* id) const
 {
 	return LLXMLRPCValue(XMLRPC_VectorGetValueWithID(mV, id));
@@ -250,8 +254,9 @@ void LLXMLRPCTransaction::Impl::init(XMLRPC_REQUEST request, bool useGzip)
 		mRequestText = XMLRPC_REQUEST_ToXML(request, &mRequestTextSize);
 		if (mRequestText)
 		{
-			curlEasyRequest_w->setoptString(CURLOPT_POSTFIELDS, mRequestText);
-			curlEasyRequest_w->setopt(CURLOPT_POSTFIELDSIZE, mRequestTextSize);
+			Dout(dc::curl, "Writing " << mRequestTextSize << " bytes: \"" << libcwd::buf2str(mRequestText, mRequestTextSize) << "\".");;
+			curlEasyRequest_w->setopt(CURLOPT_POSTFIELDSIZE_LARGE, (curl_off_t)mRequestTextSize);
+			curlEasyRequest_w->setoptString(CURLOPT_COPYPOSTFIELDS, mRequestText);
 		}
 		else
 		{
@@ -308,55 +313,53 @@ void LLXMLRPCTransaction::Impl::curlEasyRequestCallback(bool success)
 	else
 	{
 		CURLcode result;
-		bool newmsg = curlEasyRequest_w->getResult(&result, &mTransferInfo);
-		if (newmsg)
+		curlEasyRequest_w->getResult(&result, &mTransferInfo);
+
+		if (result != CURLE_OK)
 		{
-			if (result != CURLE_OK)
-			{
-				setCurlStatus(result);
-				llwarns << "LLXMLRPCTransaction CURL error "
-						<< mCurlCode << ": " << curlEasyRequest_w->getErrorString() << llendl;
-				llwarns << "LLXMLRPCTransaction request URI: "
-						<< mURI << llendl;
-					
-				return;
-			}
-			
-			setStatus(LLXMLRPCTransaction::StatusComplete);
-
-			mResponse = XMLRPC_REQUEST_FromXML(
-					mResponseText.data(), mResponseText.size(), NULL);
-
-			bool		hasError = false;
-			bool		hasFault = false;
-			int			faultCode = 0;
-			std::string	faultString;
-
-			LLXMLRPCValue error(XMLRPC_RequestGetError(mResponse));
-			if (error.isValid())
-			{
-				hasError = true;
-				faultCode = error["faultCode"].asInt();
-				faultString = error["faultString"].asString();
-			}
-			else if (XMLRPC_ResponseIsFault(mResponse))
-			{
-				hasFault = true;
-				faultCode = XMLRPC_GetResponseFaultCode(mResponse);
-				faultString = XMLRPC_GetResponseFaultString(mResponse);
-			}
-
-			if (hasError || hasFault)
-			{
-				setStatus(LLXMLRPCTransaction::StatusXMLRPCError);
+			setCurlStatus(result);
+			llwarns << "LLXMLRPCTransaction CURL error "
+					<< mCurlCode << ": " << curlEasyRequest_w->getErrorString() << llendl;
+			llwarns << "LLXMLRPCTransaction request URI: "
+					<< mURI << llendl;
 				
-				llwarns << "LLXMLRPCTransaction XMLRPC "
-						<< (hasError ? "error " : "fault ")
-						<< faultCode << ": "
-						<< faultString << llendl;
-				llwarns << "LLXMLRPCTransaction request URI: "
-						<< mURI << llendl;
-			}
+			return;
+		}
+		
+		setStatus(LLXMLRPCTransaction::StatusComplete);
+
+		mResponse = XMLRPC_REQUEST_FromXML(
+				mResponseText.data(), mResponseText.size(), NULL);
+
+		bool		hasError = false;
+		bool		hasFault = false;
+		int			faultCode = 0;
+		std::string	faultString;
+
+		LLXMLRPCValue error(XMLRPC_RequestGetError(mResponse));
+		if (error.isValid())
+		{
+			hasError = true;
+			faultCode = error["faultCode"].asInt();
+			faultString = error["faultString"].asString();
+		}
+		else if (XMLRPC_ResponseIsFault(mResponse))
+		{
+			hasFault = true;
+			faultCode = XMLRPC_GetResponseFaultCode(mResponse);
+			faultString = XMLRPC_GetResponseFaultString(mResponse);
+		}
+
+		if (hasError || hasFault)
+		{
+			setStatus(LLXMLRPCTransaction::StatusXMLRPCError);
+			
+			llwarns << "LLXMLRPCTransaction XMLRPC "
+					<< (hasError ? "error " : "fault ")
+					<< faultCode << ": "
+					<< faultString << llendl;
+			llwarns << "LLXMLRPCTransaction request URI: "
+					<< mURI << llendl;
 		}
 	}
 }
@@ -450,6 +453,8 @@ void LLXMLRPCTransaction::Impl::setCurlStatus(CURLcode code)
 size_t LLXMLRPCTransaction::Impl::curlDownloadCallback(
 		char* data, size_t size, size_t nmemb, void* user_data)
 {
+	DoutEntering(dc::curl, "LLXMLRPCTransaction::Impl::curlDownloadCallback(\"" << buf2str(data, size * nmemb) << "\", " << size << ", " << nmemb << ", " << user_data << ")");
+
 	Impl& impl(*(Impl*)user_data);
 	
 	size_t n = size * nmemb;

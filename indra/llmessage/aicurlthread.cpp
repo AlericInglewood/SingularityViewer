@@ -837,6 +837,11 @@ void MultiHandle::check_run_count(void)
 		curl_easy_getinfo(easy, CURLINFO_EFFECTIVE_URL, &eff_url);
 		Dout(dc::curl, "Finished: " << eff_url << " (" << msg->data.result << ")");
 #endif
+		// Store the result and transfer info in the easy handle.
+		{
+		  AICurlEasyRequest_wat easy_request_w(*easy_request);
+		  easy_request_w->store_result(msg->data.result);
+		}
 		// This invalidates msg, but not easy_request.
 		CURLMcode res = remove_easy_request(easy_request);
 		// This should hold, I think, because the handles are obviously ok and

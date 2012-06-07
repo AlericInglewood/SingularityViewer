@@ -699,6 +699,8 @@ static int curl_debug_callback(CURL*, curl_infotype infotype, char* buf, size_t 
 	LibcwDoutStream.write(buf, size);
   else if (infotype == CURLINFO_HEADER_IN || infotype == CURLINFO_HEADER_OUT)
 	LibcwDoutStream << libcwd::buf2str(buf, size);
+  else if (infotype == CURLINFO_DATA_IN || infotype == CURLINFO_DATA_OUT)
+	LibcwDoutStream << size << " bytes: \"" << libcwd::buf2str(buf, size) << '"';
   else
 	LibcwDoutStream << size << " bytes";
   LibcwDoutScopeEnd;
@@ -711,6 +713,15 @@ void CurlEasyRequest::applyDefaultOptions(void)
 {
   CertificateAuthority_rat CertificateAuthority_r(gCertificateAuthority);
   setoptString(CURLOPT_CAINFO, CertificateAuthority_r->file);
+  // This option forces openssl to use TLS version 1.
+  // The Linden Lab servers don't support later TLS versions, and libopenssl-1.0.1c has
+  // a bug were renegotion fails (see http://rt.openssl.org/Ticket/Display.html?id=2828),
+  // causing the connection to fail completely without this hack.
+  // For a commandline test of the same, observe the difference between:
+  // openssl s_client       -connect login.agni.lindenlab.com:443 -CAfile packaged/app_settings/CA.pem -debug
+  // and
+  // openssl s_client -tls1 -connect login.agni.lindenlab.com:443 -CAfile packaged/app_settings/CA.pem -debug
+  setopt(CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1);
   setopt(CURLOPT_NOSIGNAL, 1);
   //setopt(CURLOPT_DNS_CACHE_TIMEOUT, 0);
   Debug(
@@ -726,6 +737,7 @@ void CurlEasyRequest::applyDefaultOptions(void)
 void CurlEasyRequest::finalizeRequest(std::string const& url)
 {
   llassert(!mRequestFinalized);
+  mResult = CURLE_FAILED_INIT;		// General error code, the final code is written here in MultiHandle::check_run_count when msg is CURLMSG_DONE.
   mRequestFinalized = true;
   lldebugs << url << llendl;
   setopt(CURLOPT_HTTPHEADER, mHeaders);
@@ -733,12 +745,20 @@ void CurlEasyRequest::finalizeRequest(std::string const& url)
   setopt(CURLOPT_PRIVATE, static_cast<AIThreadSafeCurlEasyRequest*>(AIThreadSafeSimpleDC<CurlEasyRequest>::wrapper_cast(this)));
 }
 
-bool CurlEasyRequest::getResult(CURLcode* result, AICurlInterface::TransferInfo* info)
+void CurlEasyRequest::getTransferInfo(AICurlInterface::TransferInfo* info)
 {
-  //FIXME
-  DoutEntering(dc::warning, "CurlEasyRequest::result()");
-  assert(false);
-  return false;
+  getinfo(CURLINFO_SIZE_DOWNLOAD, &info->mSizeDownload);
+  getinfo(CURLINFO_TOTAL_TIME, &info->mTotalTime);
+  getinfo(CURLINFO_SPEED_DOWNLOAD, &info->mSpeedDownload);
+}
+
+void CurlEasyRequest::getResult(CURLcode* result, AICurlInterface::TransferInfo* info)
+{
+  *result = mResult;
+  if (info && mResult != CURLE_FAILED_INIT)
+  {
+	getTransferInfo(info);
+  }
 }
 
 bool CurlEasyRequest::wait(void) const

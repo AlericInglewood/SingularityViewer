@@ -51,6 +51,7 @@ char const* AICurlEasyRequestStateMachine::state_str_impl(state_type run_state) 
 void AICurlEasyRequestStateMachine::initialize_impl(void)
 {
   llassert(AICurlEasyRequest_rat(*get())->is_finalized());	// Call finalizeRequest(url) before calling run().
+  get_events();
   set_state(AICurlEasyRequestStateMachine_addRequest);
 }
 
@@ -76,6 +77,7 @@ void AICurlEasyRequestStateMachine::multiplex_impl(void)
 	}
 	case AICurlEasyRequestStateMachine_addedToMultiHandle:
 	{
+	  idle();			// Wait till removed_from_multi_handle() is called.
 	  break;
 	}
 	case AICurlEasyRequestStateMachine_removedFromMultiHandle:

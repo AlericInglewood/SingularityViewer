@@ -127,7 +127,7 @@ public:
 		// retains ownership of the result object, don't free it
 	
 	F64 transferRate();
-		// only valid if StsatusComplete, otherwise 0.0
+		// only valid if StatusComplete, otherwise 0.0
 		
 private:
 	class Impl;

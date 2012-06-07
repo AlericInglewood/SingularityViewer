@@ -223,7 +223,7 @@ typedef boost::intrusive_ptr<AICurlPrivate::AIThreadSafeCurlEasyRequest> AICurlE
 // Therefore we use the following trick: we wrap the boost::intrusive_ptr too, and only allow read accesses on it.
 
 // Thread safe, reference counting, auto cleaning curl easy handle.
-class AICurlEasyRequest {
+class AICurlEasyRequest : protected CurlEasyHandleEvents {
   public:
 	// Initial construction is allowed (thread-safe).
 	// Note: If AIThreadSafeCurlEasyRequest() throws then the memory allocated is still freed.
@@ -256,6 +256,11 @@ class AICurlEasyRequest {
 	// The actual pointer to the AIThreadSafeCurlEasyRequest instance.
 	AICurlEasyRequestPtr mCurlEasyRequest;
 
+  protected:
+	void get_events(void) { AICurlEasyRequest_wat(*mCurlEasyRequest)->set_parent(this); }
+	/*virtual*/ void added_to_multi_handle(void) { Dout(dc::warning, "Unhandled event added_to_multi_handle()"); }
+	/*virtual*/ void removed_from_multi_handle(void) { Dout(dc::warning, "Unhandled event removed_from_multi_handle()"); }
+
   private:
 	// Assignment would not be thread-safe; we may create this object and read from it.
 	// Note: Destruction is implicitly assumed thread-safe, as it would be a logic error to
@@ -263,6 +268,6 @@ class AICurlEasyRequest {
 	AICurlEasyRequest& operator=(AICurlEasyRequest const&) { return *this; }
 };
 
-#define AICurlPrivate DONTUSE
+#define AICurlPrivate DONTUSE_AICurlPrivate
 
 #endif

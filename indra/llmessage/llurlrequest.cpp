@@ -29,6 +29,10 @@
 #include "linden_common.h"
 #include "llurlrequest.h"
 
+#ifdef CWDEBUG
+#include <libcwd/buf2str.h>
+#endif
+
 #include <algorithm>
 #include <openssl/x509_vfy.h>
 #include <openssl/ssl.h>
@@ -53,8 +57,6 @@ const std::string CONTEXT_TRANSFERED_BYTES("transfered_bytes");
 
 
 static size_t headerCallback(char* data, size_t size, size_t nmemb, void* user);
-
-
 
 /**
  * class LLURLRequestDetail
@@ -285,6 +287,15 @@ LLIOPipe::EStatus LLURLRequest::handleError(
 	return status;
 }
 
+void LLURLRequest::added_to_multi_handle(void)
+{
+}
+
+void LLURLRequest::removed_from_multi_handle(void)
+{
+	mRemoved = true;
+}
+
 static LLFastTimer::DeclareTimer FTM_PROCESS_URL_REQUEST("URL Request");
 
 // virtual
@@ -345,46 +356,36 @@ LLIOPipe::EStatus LLURLRequest::process_impl(
 		{
 			return STATUS_ERROR;
 		}
+		mRemoved = false;
 		mState = STATE_WAITING_FOR_RESPONSE;
+		mDetail->mCurlEasyRequest.addRequest();		// Add easy handle to multi handle.
 
-		// *FIX: Maybe we should just go to the next state now...
 		return STATUS_BREAK;
 	}
 	case STATE_WAITING_FOR_RESPONSE:
 	case STATE_PROCESSING_RESPONSE:
 	{
-		PUMP_DEBUG;
-		LLIOPipe::EStatus status = STATUS_BREAK;
-		AICurlEasyRequest_wat curlEasyRequest_w(*mDetail->mCurlEasyRequest);
-
-		static LLFastTimer::DeclareTimer FTM_URL_PERFORM("Perform");
+		if (!mRemoved)								// Not removed from multi handle yet?
 		{
-			LLFastTimer t(FTM_URL_PERFORM);
-			if(!curlEasyRequest_w->wait())
-			{
-				return status ;
-			}
+			// Easy handle is still being processed.
+			return STATUS_BREAK;
 		}
+		// Curl thread finished with this easy handle.
+		mState = STATE_CURL_FINISHED;
+	}
+	case STATE_CURL_FINISHED:
+	{
+		PUMP_DEBUG;
+		LLIOPipe::EStatus status = STATUS_NO_CONNECTION;	// Catch-all failure code.
 
-		while(1)
+		// Left braces in order not to change indentation.
 		{
 			CURLcode result;
 
 			static LLFastTimer::DeclareTimer FTM_PROCESS_URL_REQUEST_GET_RESULT("Get Result");
 
-			bool newmsg = false;
-			{
-				LLFastTimer t(FTM_PROCESS_URL_REQUEST_GET_RESULT);
-				newmsg = curlEasyRequest_w->getResult(&result);
-			}
+			AICurlEasyRequest_wat(*mDetail->mCurlEasyRequest)->getResult(&result);
 		
-			if(!newmsg)
-			{
-				// keep processing
-				break;
-			}
-		
-
 			mState = STATE_HAVE_RESPONSE;
 			context[CONTEXT_REQUEST][CONTEXT_TRANSFERED_BYTES] = mRequestTransferedBytes;
 			context[CONTEXT_RESPONSE][CONTEXT_TRANSFERED_BYTES] = mResponseTransferedBytes;
@@ -416,6 +417,7 @@ LLIOPipe::EStatus LLURLRequest::process_impl(
 						}
 						mCompletionCallback = NULL;
 					}
+					status = STATUS_BREAK;		// This is what the old code returned. Does it make sense?
 					break;
 				case CURLE_FAILED_INIT:
 				case CURLE_COULDNT_CONNECT:
@@ -550,11 +552,8 @@ bool LLURLRequest::configure()
 		if(rv)
 		{
 			curlEasyRequest_w->finalizeRequest(mDetail->mURL);
+			curlEasyRequest_w->set_parent(this);
 		}
-	}
-	if (rv)
-	{
-		mDetail->mCurlEasyRequest.addRequest();
 	}
 	return rv;
 }
@@ -602,6 +601,8 @@ size_t LLURLRequest::upCallback(
 	size_t nmemb,
 	void* user)
 {
+	DoutEntering(dc::curl, "LLURLRequest::upCallback(" << (void*)data << ", " << size << ", " << nmemb << ", " << user << ")");
+
 	LLMemType m1(LLMemType::MTYPE_IO_URL_REQUEST);
 	LLURLRequest* req = (LLURLRequest*)user;
 	S32 bytes = llmin(
@@ -614,6 +615,7 @@ size_t LLURLRequest::upCallback(
 		req->mDetail->mLastRead,
 		(U8*)data,
 		bytes);
+	Dout(dc::curl, "Wrote: \"" << libcwd::buf2str(data, (bytes > 0) ? bytes : 0) << "\".");
 	req->mRequestTransferedBytes += bytes;
 	return bytes;
 }
