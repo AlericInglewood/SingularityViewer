@@ -183,14 +183,6 @@ class CurlEasyRequest : public CurlEasyHandle {
 	// If result != CURLE_FAILED_INIT then also info was filled.
 	void getResult(CURLcode* result, AICurlInterface::TransferInfo* info = NULL);
 
-	// This is called when the viewer can't do much else without this being finished.
-	// It could even block in the old implementation. The caller expects it to return
-	// true when the transaction completed (possibly with an error).
-	// If it returns false, you have to call it again, basically (the difference with
-	// getResult() is that in this case the priority is boosted to the max, so it
-	// will finish as soon as possible).
-	bool wait(void) const;
-
   private:
 	curl_slist* mHeaders;
 	bool mRequestFinalized;

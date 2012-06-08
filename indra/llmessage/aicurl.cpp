@@ -809,14 +809,6 @@ void CurlEasyRequest::getResult(CURLcode* result, AICurlInterface::TransferInfo*
   }
 }
 
-bool CurlEasyRequest::wait(void) const
-{
-  //FIXME
-  DoutEntering(dc::warning, "CurlEasyRequest::wait()");
-  assert(false);
-  return false;
-}
-
 //-----------------------------------------------------------------------------
 // CurlMultiHandle
 
