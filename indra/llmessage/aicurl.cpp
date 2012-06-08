@@ -592,28 +592,72 @@ void CurlEasyRequest::setPost(char const* postdata, S32 size)
   setopt(CURLOPT_POSTFIELDSIZE, size);
 }
 
+//static
+size_t CurlEasyRequest::headerCallback(char* ptr, size_t size, size_t nmemb, void* userdata)
+{
+  CurlEasyRequest* self = static_cast<CurlEasyRequest*>(userdata);
+  AIThreadSafeCurlEasyRequest* lockobj = static_cast<AIThreadSafeCurlEasyRequest*>(AIThreadSafeCurlEasyRequest::wrapper_cast(self));
+  AICurlEasyRequest_wat lock_self(*lockobj);
+  return self->mHeaderCallback(ptr, size, nmemb, self->mHeaderCallbackUserData);
+}
+
 void CurlEasyRequest::setHeaderCallback(curl_write_callback callback, void* userdata)
 {
-  setopt(CURLOPT_HEADERFUNCTION, callback);
-  setopt(CURLOPT_WRITEHEADER, userdata);
+  mHeaderCallback = callback;
+  mHeaderCallbackUserData = userdata;
+  setopt(CURLOPT_HEADERFUNCTION, callback ? &CurlEasyRequest::headerCallback : NULL);
+  setopt(CURLOPT_WRITEHEADER, userdata ? this : NULL);
+}
+
+//static
+size_t CurlEasyRequest::writeCallback(char* ptr, size_t size, size_t nmemb, void* userdata)
+{
+  CurlEasyRequest* self = static_cast<CurlEasyRequest*>(userdata);
+  AIThreadSafeCurlEasyRequest* lockobj = static_cast<AIThreadSafeCurlEasyRequest*>(AIThreadSafeCurlEasyRequest::wrapper_cast(self));
+  AICurlEasyRequest_wat lock_self(*lockobj);
+  return self->mWriteCallback(ptr, size, nmemb, self->mWriteCallbackUserData);
 }
 
 void CurlEasyRequest::setWriteCallback(curl_write_callback callback, void* userdata)
 {
-  setopt(CURLOPT_WRITEFUNCTION, callback);
-  setopt(CURLOPT_WRITEDATA, userdata);
+  mWriteCallback = callback;
+  mWriteCallbackUserData = userdata;
+  setopt(CURLOPT_WRITEFUNCTION, callback ? &CurlEasyRequest::writeCallback : NULL);
+  setopt(CURLOPT_WRITEDATA, userdata ? this : NULL);
+}
+
+//static
+size_t CurlEasyRequest::readCallback(char* ptr, size_t size, size_t nmemb, void* userdata)
+{
+  CurlEasyRequest* self = static_cast<CurlEasyRequest*>(userdata);
+  AIThreadSafeCurlEasyRequest* lockobj = static_cast<AIThreadSafeCurlEasyRequest*>(AIThreadSafeCurlEasyRequest::wrapper_cast(self));
+  AICurlEasyRequest_wat lock_self(*lockobj);
+  return self->mReadCallback(ptr, size, nmemb, self->mReadCallbackUserData);
 }
 
 void CurlEasyRequest::setReadCallback(curl_read_callback callback, void* userdata)
 {
-  setopt(CURLOPT_READFUNCTION, callback);
-  setopt(CURLOPT_READDATA, userdata);
+  mReadCallback = callback;
+  mReadCallbackUserData = userdata;
+  setopt(CURLOPT_READFUNCTION, callback ? &CurlEasyRequest::readCallback : NULL);
+  setopt(CURLOPT_READDATA, userdata ? this : NULL);
+}
+
+//static
+CURLcode CurlEasyRequest::SSLCtxCallback(CURL* curl, void* sslctx, void* userdata)
+{
+  CurlEasyRequest* self = static_cast<CurlEasyRequest*>(userdata);
+  AIThreadSafeCurlEasyRequest* lockobj = static_cast<AIThreadSafeCurlEasyRequest*>(AIThreadSafeCurlEasyRequest::wrapper_cast(self));
+  AICurlEasyRequest_wat lock_self(*lockobj);
+  return self->mSSLCtxCallback(curl, sslctx, self->mSSLCtxCallbackUserData);
 }
 
 void CurlEasyRequest::setSSLCtxCallback(curl_ssl_ctx_callback callback, void* userdata)
 {
-  setopt(CURLOPT_SSL_CTX_FUNCTION, callback);
-  setopt(CURLOPT_SSL_CTX_DATA, userdata);
+  mSSLCtxCallback = callback;
+  mSSLCtxCallbackUserData = userdata;
+  setopt(CURLOPT_SSL_CTX_FUNCTION, callback ? &CurlEasyRequest::SSLCtxCallback : NULL);
+  setopt(CURLOPT_SSL_CTX_DATA, userdata ? this : NULL);
 }
 
 static size_t noHeaderCallback(char* ptr, size_t size, size_t nmemb, void* userdata)
@@ -642,6 +686,10 @@ static CURLcode noSSLCtxCallback(CURL* curl, void* sslctx, void* parm)
 
 void CurlEasyRequest::revokeCallbacks(void)
 {
+  mHeaderCallback = &noHeaderCallback;
+  mWriteCallback = &noWriteCallback;
+  mReadCallback = &noReadCallback;
+  mSSLCtxCallback = &noSSLCtxCallback;
   if (active())
   {
 	llwarns << "Revoking callbacks on a still active CurlEasyRequest object!" << llendl;

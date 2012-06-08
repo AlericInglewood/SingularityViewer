@@ -258,6 +258,7 @@ class AICurlEasyRequest : protected CurlEasyHandleEvents {
 
   protected:
 	void get_events(void) { AICurlEasyRequest_wat(*mCurlEasyRequest)->set_parent(this); }
+	void kill_events(void) { AICurlEasyRequest_wat(*mCurlEasyRequest)->set_parent(NULL); }
 	/*virtual*/ void added_to_multi_handle(void) { Dout(dc::warning, "Unhandled event added_to_multi_handle()"); }
 	/*virtual*/ void removed_from_multi_handle(void) { Dout(dc::warning, "Unhandled event removed_from_multi_handle()"); }
 

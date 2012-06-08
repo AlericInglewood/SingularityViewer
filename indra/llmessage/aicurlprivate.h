@@ -139,15 +139,34 @@ class CurlEasyRequest : public CurlEasyHandle {
   public:
 	void setoptString(CURLoption option, std::string const& value);
 	void setPost(char const* postdata, S32 size);
+	void addHeader(char const* str);
+
+  private:
+	// Call back stubs.
+	static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* userdata);
+	static size_t writeCallback(char* ptr, size_t size, size_t nmemb, void* userdata);
+	static size_t readCallback(char* ptr, size_t size, size_t nmemb, void* userdata);
+	static CURLcode SSLCtxCallback(CURL* curl, void* sslctx, void* userdata);
+
+	curl_write_callback mHeaderCallback;
+	void* mHeaderCallbackUserData;
+	curl_write_callback mWriteCallback;
+	void* mWriteCallbackUserData;
+	curl_read_callback mReadCallback;
+	void* mReadCallbackUserData;
+	curl_ssl_ctx_callback mSSLCtxCallback;
+	void* mSSLCtxCallbackUserData;
+
+  public:
 	void setHeaderCallback(curl_write_callback callback, void* userdata);
 	void setWriteCallback(curl_write_callback callback, void* userdata);
 	void setReadCallback(curl_read_callback callback, void* userdata);
 	void setSSLCtxCallback(curl_ssl_ctx_callback callback, void* userdata);
-	void addHeader(char const* str);
 
 	// Call this if the set callbacks are about to be invalidated.
 	void revokeCallbacks(void);
 
+  public:
 	// Set default options that we want applied to all curl easy handles.
 	void applyDefaultOptions(void);
 

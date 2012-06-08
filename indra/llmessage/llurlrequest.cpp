@@ -166,7 +166,11 @@ LLURLRequest::LLURLRequest(
 
 LLURLRequest::~LLURLRequest()
 {
-	AICurlEasyRequest_wat(*mDetail->mCurlEasyRequest)->revokeCallbacks();
+	{
+		AICurlEasyRequest_wat curlEasyRequest_w(*mDetail->mCurlEasyRequest);
+		curlEasyRequest_w->revokeCallbacks();
+		curlEasyRequest_w->set_parent(NULL);	// Events are also callbacks.
+	}
 	LLMemType m1(LLMemType::MTYPE_IO_URL_REQUEST);
 	delete mDetail;
 	mDetail = NULL ;

@@ -90,6 +90,7 @@ void AICurlEasyRequestStateMachine::multiplex_impl(void)
 
 void AICurlEasyRequestStateMachine::abort_impl(void)
 {
+  kill_events();
 }
 
 void AICurlEasyRequestStateMachine::finish_impl(void)
