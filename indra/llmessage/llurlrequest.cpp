@@ -78,6 +78,7 @@ public:
 };
 
 LLURLRequestDetail::LLURLRequestDetail() :
+	mCurlEasyRequest(false),
 	mLastRead(NULL),
 	mBodyLimit(0),
 	mByteAccumulator(0),
@@ -291,11 +292,15 @@ LLIOPipe::EStatus LLURLRequest::handleError(
 	return status;
 }
 
-void LLURLRequest::added_to_multi_handle(void)
+void LLURLRequest::added_to_multi_handle(AICurlEasyRequest_wat&)
 {
 }
 
-void LLURLRequest::removed_from_multi_handle(void)
+void LLURLRequest::finished(AICurlEasyRequest_wat&)
+{
+}
+
+void LLURLRequest::removed_from_multi_handle(AICurlEasyRequest_wat&)
 {
 	mRemoved = true;
 }
@@ -316,7 +321,7 @@ LLIOPipe::EStatus LLURLRequest::process_impl(
 	//llinfos << "LLURLRequest::process_impl()" << llendl;
 	if (!buffer) return STATUS_ERROR;
 	
-	// we're still waiting or prcessing, check how many
+	// we're still waiting or processing, check how many
 	// bytes we have accumulated.
 	const S32 MIN_ACCUMULATION = 100000;
 	if(pump && (mDetail->mByteAccumulator > MIN_ACCUMULATION))
@@ -605,8 +610,6 @@ size_t LLURLRequest::upCallback(
 	size_t nmemb,
 	void* user)
 {
-	DoutEntering(dc::curl, "LLURLRequest::upCallback(" << (void*)data << ", " << size << ", " << nmemb << ", " << user << ")");
-
 	LLMemType m1(LLMemType::MTYPE_IO_URL_REQUEST);
 	LLURLRequest* req = (LLURLRequest*)user;
 	S32 bytes = llmin(
@@ -619,7 +622,6 @@ size_t LLURLRequest::upCallback(
 		req->mDetail->mLastRead,
 		(U8*)data,
 		bytes);
-	Dout(dc::curl, "Wrote: \"" << libcwd::buf2str(data, (bytes > 0) ? bytes : 0) << "\".");
 	req->mRequestTransferedBytes += bytes;
 	return bytes;
 }

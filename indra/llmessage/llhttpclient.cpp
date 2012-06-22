@@ -430,7 +430,7 @@ static LLSD blocking_request(
 {
 	lldebugs << "blockingRequest of " << url << llendl;
 
-	AICurlEasyRequest curlEasyRequest;
+	AICurlEasyRequest curlEasyRequest(false);
 	AICurlEasyRequest_wat curlEasyRequest_w(*curlEasyRequest);
 
 	LLHTTPBuffer http_buffer;

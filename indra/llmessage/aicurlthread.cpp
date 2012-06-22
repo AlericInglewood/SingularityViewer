@@ -117,7 +117,7 @@ namespace curlthread {
 
 // A PollSet can store at least 1024 file descriptors, or FD_SETSIZE if that is larger than 1024 [MAXSIZE].
 // The number of stored file descriptors is mNrFds [0 <= mNrFds <= MAXSIZE].
-// The largest file descriptor that is stored is mMaxFd, which is -1 iff mNrFds == 0.
+// The largest file descriptor is stored is mMaxFd, which is -1 iff mNrFds == 0.
 // The file descriptors are stored contiguous in mFileDescriptors[i], with 0 <= i < mNrFds.
 // File descriptors with the highest priority should be stored first (low index).
 //
@@ -184,6 +184,14 @@ void PollSet::remove(curl_socket_t s)
   }
   if (mNext == mNrFds)
 	mNext = 0;
+}
+
+bool PollSet::contains(curl_socket_t fd) const
+{
+  for (int i = 0; i < mNrFds; ++i)
+	if (mFileDescriptors[i] == fd)
+	  return true;
+  return false;
 }
 
 inline bool PollSet::is_set(curl_socket_t fd) const
@@ -386,8 +394,8 @@ CurlSocketInfo::CurlSocketInfo(MultiHandle& multi_handle, CURL* easy, curl_socke
     mMultiHandle(multi_handle), mEasy(easy), mSocketFd(s), mAction(CURL_POLL_NONE)
 {
   mMultiHandle.assign(s, this);
-  llassert(!mMultiHandle.mReadPollSet.is_set(s));
-  llassert(!mMultiHandle.mWritePollSet.is_set(s));
+  llassert(!mMultiHandle.mReadPollSet.contains(s));
+  llassert(!mMultiHandle.mWritePollSet.contains(s));
   set_action(action);
 }
 
@@ -741,9 +749,27 @@ MultiHandle::~MultiHandle()
   }
 }
 
+#ifdef CWDEBUG
+#undef AI_CASE_RETURN
+#define AI_CASE_RETURN(x) do { case x: return #x; } while(0)
+char const* action_str(int action)
+{
+  switch(action)
+  {
+	AI_CASE_RETURN(CURL_POLL_NONE);
+	AI_CASE_RETURN(CURL_POLL_IN);
+	AI_CASE_RETURN(CURL_POLL_OUT);
+	AI_CASE_RETURN(CURL_POLL_INOUT);
+	AI_CASE_RETURN(CURL_POLL_REMOVE);
+  }
+  return "<unknown action>";
+}
+#endif
+
 //static
 int MultiHandle::socket_callback(CURL* easy, curl_socket_t s, int action, void* userp, void* socketp)
 {
+  DoutEntering(dc::curl, "MultiHandle::socket_callback(" << (void*)easy << ", " << s << ", " << action_str(action) << ", " << (void*)userp << ", " << (void*)socketp << ")");
   MultiHandle& self = *static_cast<MultiHandle*>(userp);
   CurlSocketInfo* sock_info = static_cast<CurlSocketInfo*>(socketp);
   if (action == CURL_POLL_REMOVE)
@@ -799,7 +825,11 @@ CURLMcode MultiHandle::add_easy_request(AICurlEasyRequest const& easy_request)
 {
   std::pair<addedEasyRequests_type::iterator, bool> res = mAddedEasyRequests.insert(easy_request);
   llassert(res.second);							// May not have been added before.
-  CURLMcode ret = AICurlEasyRequest_wat(*easy_request)->add_handle_to_multi(mMultiHandle);
+  CURLMcode ret;
+  {
+	AICurlEasyRequest_wat curl_easy_request_w(*easy_request);
+	ret = curl_easy_request_w->add_handle_to_multi(curl_easy_request_w, mMultiHandle);
+  }
   mHandleAddedOrRemoved = true;
   Dout(dc::curl, "MultiHandle::add_easy_request: Added AICurlEasyRequest " << (void*)easy_request.get() << "; now processing " << mAddedEasyRequests.size() << " easy handles.");
   return ret;
@@ -810,7 +840,11 @@ CURLMcode MultiHandle::remove_easy_request(AICurlEasyRequest const& easy_request
   addedEasyRequests_type::iterator iter = mAddedEasyRequests.find(easy_request);
   if (iter == mAddedEasyRequests.end())
 	return (CURLMcode)-2;				// Was already removed before.
-  CURLMcode res = AICurlEasyRequest_wat(**iter)->remove_handle_from_multi(mMultiHandle);
+  CURLMcode res;
+  {
+	AICurlEasyRequest_wat curl_easy_request_w(**iter);
+	res = curl_easy_request_w->remove_handle_from_multi(curl_easy_request_w, mMultiHandle);
+  }
   mAddedEasyRequests.erase(iter);
   mHandleAddedOrRemoved = true;
   Dout(dc::curl, "MultiHandle::remove_easy_request: Removed AICurlEasyRequest " << (void*)easy_request.get() << "; now processing " << mAddedEasyRequests.size() << " easy handles.");
@@ -832,15 +866,17 @@ void MultiHandle::check_run_count(void)
 		curl_easy_getinfo(easy, CURLINFO_PRIVATE, &ptr);
 		AICurlEasyRequest easy_request = AICurlEasyRequestPtr(ptr);
 		llassert(*AICurlEasyRequest_wat(*easy_request) == easy);
-#ifdef CWDEBUG
-		char* eff_url;
-		curl_easy_getinfo(easy, CURLINFO_EFFECTIVE_URL, &eff_url);
-		Dout(dc::curl, "Finished: " << eff_url << " (" << msg->data.result << ")");
-#endif
 		// Store the result and transfer info in the easy handle.
 		{
-		  AICurlEasyRequest_wat easy_request_w(*easy_request);
-		  easy_request_w->store_result(msg->data.result);
+		  AICurlEasyRequest_wat curl_easy_request_w(*easy_request);
+		  curl_easy_request_w->store_result(msg->data.result);
+#ifdef CWDEBUG
+		  char* eff_url;
+		  curl_easy_request_w->getinfo(CURLINFO_EFFECTIVE_URL, &eff_url);
+		  Dout(dc::curl, "Finished: " << eff_url << " (" << msg->data.result << ")");
+#endif
+		  // Signal that this easy handle finished.
+		  curl_easy_request_w->done(curl_easy_request_w);
 		}
 		// This invalidates msg, but not easy_request.
 		CURLMcode res = remove_easy_request(easy_request);

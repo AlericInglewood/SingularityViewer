@@ -231,8 +231,9 @@ protected:
 	// Set to false before adding curl request and then only tested.
 	// Reset in removed_from_multi_handle (by another thread), this is thread-safe.
 	bool mRemoved;
-	/*virtual*/ void added_to_multi_handle(void);
-	/*virtual*/ void removed_from_multi_handle(void);
+	/*virtual*/ void added_to_multi_handle(AICurlEasyRequest_wat&);
+	/*virtual*/ void finished(AICurlEasyRequest_wat&);
+	/*virtual*/ void removed_from_multi_handle(AICurlEasyRequest_wat&);
 
 private:
 	/** 

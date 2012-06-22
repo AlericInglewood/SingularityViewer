@@ -51,17 +51,20 @@ class AICurlEasyRequestStateMachine : public AIStateMachine, public AICurlEasyRe
   private:
 
   public:
-	AICurlEasyRequestStateMachine(void) throw(AICurlNoEasyHandle)
+	AICurlEasyRequestStateMachine(void) throw(AICurlNoEasyHandle) : AICurlEasyRequest(false)
         { Dout(dc::statemachine, "Calling AICurlEasyRequestStateMachine constructor [" << (void*)this << "]"); }
 
   protected:
 	// AICurlEasyRequest Events.
 
 	// Called when this curl easy handle was added to a multi handle.
-	/*virtual*/ void added_to_multi_handle(void);
+	/*virtual*/ void added_to_multi_handle(AICurlEasyRequest_wat&);
+
+	// Called when this curl easy handle finished processing (right before it is removed from the multi handle).
+	/*virtual*/ void finished(AICurlEasyRequest_wat&);
 
 	// Called after this curl easy handle was removed from a multi handle.
-	/*virtual*/ void removed_from_multi_handle(void);
+	/*virtual*/ void removed_from_multi_handle(AICurlEasyRequest_wat&);
 
   protected:
 	// AIStateMachine implementations.

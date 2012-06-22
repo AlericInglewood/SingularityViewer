@@ -150,6 +150,10 @@ class Responder {
 	// This means that if a derived class overrides completedRaw() it now STILL has to override completed() to catch this error.
 	void fatalError(std::string const& reason);
 
+	// A derived class should return true if curl should follow redirections.
+	// The default is not to follow redirections.
+	virtual bool followRedir(void) { return false; }
+
   protected:
 	// ... or, derived classes can override this to get the LLSD content when the message is completed.
 	// The default is to call result() (or errorWithContent() in case of a HTML status indicating an error).
@@ -166,10 +170,6 @@ class Responder {
 	// ... or, derived classes can override this to get informed when a bad HTML statis code is received.
 	// The default prints the error to llinfos.
 	virtual void error(U32 status, std::string const& reason);
-
-	// A derived class should return true if curl should follow redirections.
-	// The default is not to follow redirections.
-	virtual bool followRedir(void) { return false; }
 
   public:
 	// Called from LLSDMessage::ResponderAdapter::listener.
@@ -188,13 +188,17 @@ class Responder {
 };
 
 // A Responder is passed around as ResponderPtr, which causes it to automatically
-// destruct when the last of such pointers is destructed.
+// destruct when there are no pointers left pointing to it.
 typedef boost::intrusive_ptr<Responder> ResponderPtr;
 
 class Request {
   public:
 	typedef std::vector<std::string> headers_t;
-	bool getByteRange(std::string const& url, headers_t const& headers, S32 offset, S32 length, AICurlInterface::ResponderPtr responder);
+	
+	void get(std::string const& url, ResponderPtr responder);
+	bool getByteRange(std::string const& url, headers_t const& headers, S32 offset, S32 length, ResponderPtr responder);
+	bool post(std::string const& url, headers_t const& headers, std::string const& data, ResponderPtr responder, S32 time_out = 0);
+	bool post(std::string const& url, headers_t const& headers,        LLSD const& data, ResponderPtr responder, S32 time_out = 0);
 
 	S32  process(void);
 };
@@ -228,7 +232,8 @@ class AICurlEasyRequest : protected CurlEasyHandleEvents {
 	// Initial construction is allowed (thread-safe).
 	// Note: If AIThreadSafeCurlEasyRequest() throws then the memory allocated is still freed.
 	// 'new' never returned however and the constructor nor destructor of mCurlEasyRequest is called in this case.
-	AICurlEasyRequest() throw(AICurlNoEasyHandle) : mCurlEasyRequest(new AICurlPrivate::AIThreadSafeCurlEasyRequest) { }
+	AICurlEasyRequest(bool buffered) throw(AICurlNoEasyHandle) :
+	    mCurlEasyRequest(buffered ? new AICurlPrivate::AIThreadSafeBufferedCurlEasyRequest : new AICurlPrivate::AIThreadSafeCurlEasyRequest) { }
 	AICurlEasyRequest(AICurlEasyRequest const& orig) : mCurlEasyRequest(orig.mCurlEasyRequest) { }
 	AICurlEasyRequest(AICurlEasyRequestPtr const& ptr) : mCurlEasyRequest(ptr) { }
 
@@ -259,14 +264,23 @@ class AICurlEasyRequest : protected CurlEasyHandleEvents {
   protected:
 	void get_events(void) { AICurlEasyRequest_wat(*mCurlEasyRequest)->set_parent(this); }
 	void kill_events(void) { AICurlEasyRequest_wat(*mCurlEasyRequest)->set_parent(NULL); }
-	/*virtual*/ void added_to_multi_handle(void) { Dout(dc::warning, "Unhandled event added_to_multi_handle()"); }
-	/*virtual*/ void removed_from_multi_handle(void) { Dout(dc::warning, "Unhandled event removed_from_multi_handle()"); }
+	/*virtual*/ void added_to_multi_handle(AICurlEasyRequest_wat&) { Dout(dc::warning, "Unhandled event added_to_multi_handle()"); }
+	/*virtual*/ void finished(AICurlEasyRequest_wat&) { Dout(dc::warning, "Unhandled event finished()"); }
+	/*virtual*/ void removed_from_multi_handle(AICurlEasyRequest_wat&) { Dout(dc::warning, "Unhandled event removed_from_multi_handle()"); }
 
   private:
 	// Assignment would not be thread-safe; we may create this object and read from it.
 	// Note: Destruction is implicitly assumed thread-safe, as it would be a logic error to
 	// destruct it while another thread still needs it, concurrent or not.
 	AICurlEasyRequest& operator=(AICurlEasyRequest const&) { return *this; }
+};
+
+// Write Access Type for the buffer.
+struct AICurlResponderBuffer_wat : public AIAccess<AICurlPrivate::CurlResponderBuffer> {
+  explicit AICurlResponderBuffer_wat(AICurlPrivate::AIThreadSafeBufferedCurlEasyRequest& lockobj) :
+	  AIAccess<AICurlPrivate::CurlResponderBuffer>(lockobj) { }
+  AICurlResponderBuffer_wat(AIThreadSafeSimple<AICurlPrivate::CurlEasyRequest>& lockobj) :
+	  AIAccess<AICurlPrivate::CurlResponderBuffer>(static_cast<AICurlPrivate::AIThreadSafeBufferedCurlEasyRequest&>(lockobj)) { }
 };
 
 #define AICurlPrivate DONTUSE_AICurlPrivate

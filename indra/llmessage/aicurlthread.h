@@ -75,6 +75,9 @@ class PollSet
 	// Return the largest fd set in mFdSet by refresh.
 	int get_max_fd(void) const { return mMaxFdSet; }
 
+	// Return true if a filedescriptor is set in mFileDescriptors (used for debugging).
+	bool contains(curl_socket_t s) const;
+
 	// Return true if a filedescriptor is set in mFdSet.
 	bool is_set(curl_socket_t s) const;
 

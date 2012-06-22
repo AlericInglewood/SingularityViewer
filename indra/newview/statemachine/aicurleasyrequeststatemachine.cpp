@@ -34,7 +34,7 @@
 enum curleasyrequeststatemachine_state_type {
   AICurlEasyRequestStateMachine_addRequest = AIStateMachine::max_state,
   AICurlEasyRequestStateMachine_addedToMultiHandle,
-  AICurlEasyRequestStateMachine_removedFromMultiHandle
+  AICurlEasyRequestStateMachine_finished
 };
 
 char const* AICurlEasyRequestStateMachine::state_str_impl(state_type run_state) const
@@ -43,7 +43,7 @@ char const* AICurlEasyRequestStateMachine::state_str_impl(state_type run_state) 
   {
 	AI_CASE_RETURN(AICurlEasyRequestStateMachine_addRequest);
 	AI_CASE_RETURN(AICurlEasyRequestStateMachine_addedToMultiHandle);
-	AI_CASE_RETURN(AICurlEasyRequestStateMachine_removedFromMultiHandle);
+	AI_CASE_RETURN(AICurlEasyRequestStateMachine_finished);
   }
   return "UNKNOWN STATE";
 }
@@ -55,14 +55,18 @@ void AICurlEasyRequestStateMachine::initialize_impl(void)
   set_state(AICurlEasyRequestStateMachine_addRequest);
 }
 
-void AICurlEasyRequestStateMachine::added_to_multi_handle(void)
+void AICurlEasyRequestStateMachine::added_to_multi_handle(AICurlEasyRequest_wat&)
 {
   set_state(AICurlEasyRequestStateMachine_addedToMultiHandle);
 }
 
-void AICurlEasyRequestStateMachine::removed_from_multi_handle(void)
+void AICurlEasyRequestStateMachine::finished(AICurlEasyRequest_wat&)
 {
-  set_state(AICurlEasyRequestStateMachine_removedFromMultiHandle);
+  set_state(AICurlEasyRequestStateMachine_finished);
+}
+
+void AICurlEasyRequestStateMachine::removed_from_multi_handle(AICurlEasyRequest_wat&)
+{
 }
 
 void AICurlEasyRequestStateMachine::multiplex_impl(void)
@@ -77,10 +81,10 @@ void AICurlEasyRequestStateMachine::multiplex_impl(void)
 	}
 	case AICurlEasyRequestStateMachine_addedToMultiHandle:
 	{
-	  idle();			// Wait till removed_from_multi_handle() is called.
+	  idle();			// Wait till done() is called.
 	  break;
 	}
-	case AICurlEasyRequestStateMachine_removedFromMultiHandle:
+	case AICurlEasyRequestStateMachine_finished:
 	{
 	  finish();
 	  break;

@@ -338,7 +338,7 @@ int HippoRestRequest::getBlocking(const std::string &url, std::string *result)
 
 	*result = "";
 	S32 curlSuccess = curl_easy_perform(curlp);
-	S32 httpStatus = 499;
+	long httpStatus = 499L;		// curl_easy_getinfo demands pointer to long.
 	curl_easy_getinfo(curlp, CURLINFO_RESPONSE_CODE, &httpStatus);
 
 	if (curlSuccess != 0) {
