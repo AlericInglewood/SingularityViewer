@@ -205,7 +205,10 @@ class Request {
 
 } // namespace AICurlInterface
 
-#include "aicurlprivate.h"
+// Forward declaration (see aicurlprivate.h).
+namespace AICurlPrivate {
+  class CurlEasyRequest;
+} // namespace AICurlPrivate
 
 // Define access types (_crat = Const Read Access Type, _rat = Read Access Type, _wat = Write Access Type).
 // Typical usage is:
@@ -220,8 +223,10 @@ class Request {
 typedef AIAccessConst<AICurlPrivate::CurlEasyRequest> AICurlEasyRequest_rat;
 typedef AIAccess<AICurlPrivate::CurlEasyRequest> AICurlEasyRequest_wat;
 
+#include "aicurlprivate.h"
+
 // The curl easy request type wrapped in a reference counting pointer.
-typedef boost::intrusive_ptr<AICurlPrivate::AIThreadSafeCurlEasyRequest> AICurlEasyRequestPtr;
+typedef boost::intrusive_ptr<AICurlPrivate::ThreadSafeCurlEasyRequest> AICurlEasyRequestPtr;
 
 // boost::intrusive_ptr is no more threadsafe than a builtin type, but wrapping it in AIThreadSafe is obviously not going to help here.
 // Therefore we use the following trick: we wrap the boost::intrusive_ptr too, and only allow read accesses on it.
@@ -230,10 +235,10 @@ typedef boost::intrusive_ptr<AICurlPrivate::AIThreadSafeCurlEasyRequest> AICurlE
 class AICurlEasyRequest : protected CurlEasyHandleEvents {
   public:
 	// Initial construction is allowed (thread-safe).
-	// Note: If AIThreadSafeCurlEasyRequest() throws then the memory allocated is still freed.
+	// Note: If ThreadSafeCurlEasyRequest() throws then the memory allocated is still freed.
 	// 'new' never returned however and the constructor nor destructor of mCurlEasyRequest is called in this case.
 	AICurlEasyRequest(bool buffered) throw(AICurlNoEasyHandle) :
-	    mCurlEasyRequest(buffered ? new AICurlPrivate::AIThreadSafeBufferedCurlEasyRequest : new AICurlPrivate::AIThreadSafeCurlEasyRequest) { }
+	    mCurlEasyRequest(buffered ? new AICurlPrivate::ThreadSafeBufferedCurlEasyRequest : new AICurlPrivate::ThreadSafeCurlEasyRequest) { }
 	AICurlEasyRequest(AICurlEasyRequest const& orig) : mCurlEasyRequest(orig.mCurlEasyRequest) { }
 	AICurlEasyRequest(AICurlEasyRequestPtr const& ptr) : mCurlEasyRequest(ptr) { }
 
@@ -258,12 +263,12 @@ class AICurlEasyRequest : protected CurlEasyHandleEvents {
 	void removeRequest(void);
 
   private:
-	// The actual pointer to the AIThreadSafeCurlEasyRequest instance.
+	// The actual pointer to the ThreadSafeCurlEasyRequest instance.
 	AICurlEasyRequestPtr mCurlEasyRequest;
 
   protected:
-	void get_events(void) { AICurlEasyRequest_wat(*mCurlEasyRequest)->set_parent(this); }
-	void kill_events(void) { AICurlEasyRequest_wat(*mCurlEasyRequest)->set_parent(NULL); }
+	void get_events(void) { AICurlEasyRequest_wat(*mCurlEasyRequest)->send_events_to(this); }
+	void kill_events(void) { AICurlEasyRequest_wat(*mCurlEasyRequest)->send_events_to(NULL); }
 	/*virtual*/ void added_to_multi_handle(AICurlEasyRequest_wat&) { Dout(dc::warning, "Unhandled event added_to_multi_handle()"); }
 	/*virtual*/ void finished(AICurlEasyRequest_wat&) { Dout(dc::warning, "Unhandled event finished()"); }
 	/*virtual*/ void removed_from_multi_handle(AICurlEasyRequest_wat&) { Dout(dc::warning, "Unhandled event removed_from_multi_handle()"); }
@@ -277,10 +282,10 @@ class AICurlEasyRequest : protected CurlEasyHandleEvents {
 
 // Write Access Type for the buffer.
 struct AICurlResponderBuffer_wat : public AIAccess<AICurlPrivate::CurlResponderBuffer> {
-  explicit AICurlResponderBuffer_wat(AICurlPrivate::AIThreadSafeBufferedCurlEasyRequest& lockobj) :
+  explicit AICurlResponderBuffer_wat(AICurlPrivate::ThreadSafeBufferedCurlEasyRequest& lockobj) :
 	  AIAccess<AICurlPrivate::CurlResponderBuffer>(lockobj) { }
   AICurlResponderBuffer_wat(AIThreadSafeSimple<AICurlPrivate::CurlEasyRequest>& lockobj) :
-	  AIAccess<AICurlPrivate::CurlResponderBuffer>(static_cast<AICurlPrivate::AIThreadSafeBufferedCurlEasyRequest&>(lockobj)) { }
+	  AIAccess<AICurlPrivate::CurlResponderBuffer>(static_cast<AICurlPrivate::ThreadSafeBufferedCurlEasyRequest&>(lockobj)) { }
 };
 
 #define AICurlPrivate DONTUSE_AICurlPrivate

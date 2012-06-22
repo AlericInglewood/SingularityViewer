@@ -111,7 +111,6 @@ public:
 		}
 
 		virtual void deleteRequest(); // Only method to delete a request
-		bool is_curl_request(void) const { return false; }
 
 	protected:
 		status_t setStatus(status_t newstatus)

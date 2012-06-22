@@ -76,11 +76,11 @@ void Command::reset(void)
 //
 // MAIN-THREAD (AICurlEasyRequest::addRequest)
 // * command_queue locked
-//   - A non-active (mActiveMultiHandle is NULL) AIThreadSafeCurlEasyRequest (by means of an AICurlEasyRequest pointing to it) is added to command_queue with as command cmd_add.
+//   - A non-active (mActiveMultiHandle is NULL) ThreadSafeCurlEasyRequest (by means of an AICurlEasyRequest pointing to it) is added to command_queue with as command cmd_add.
 // * command_queue unlocked
 //
 // If at this point addRequest is called again, then it is detected that the last command added to the queue
-// for this AIThreadSafeCurlEasyRequest is cmd_add.
+// for this ThreadSafeCurlEasyRequest is cmd_add.
 //
 // CURL-THREAD (AICurlThread::wakeup):
 // * command_queue locked
@@ -90,7 +90,7 @@ void Command::reset(void)
 //   - The command is removed from command_queue
 // * command_queue unlocked
 //
-// If at this point addRequest is called again, then it is detected that command_being_processed adds the same AIThreadSafeCurlEasyRequest.
+// If at this point addRequest is called again, then it is detected that command_being_processed adds the same ThreadSafeCurlEasyRequest.
 //
 // * command_being_processed is read-locked
 //   - mActiveMultiHandle is set to point to the curl multi handle
@@ -99,7 +99,7 @@ void Command::reset(void)
 //   - command_being_processed is reset
 // * command_being_processed is unlocked
 //
-// If at this point addRequest is called again, then it is detected that the AIThreadSafeCurlEasyRequest is active.
+// If at this point addRequest is called again, then it is detected that the ThreadSafeCurlEasyRequest is active.
 
 // Multi-threaded queue for passing Command objects from the main-thread to the curl-thread.
 AIThreadSafeSimpleDC<std::deque<Command> > command_queue;
@@ -862,7 +862,7 @@ void MultiHandle::check_run_count(void)
 	  if (msg->msg == CURLMSG_DONE)
 	  {
 		CURL* easy = msg->easy_handle;
-		AICurlPrivate::AIThreadSafeCurlEasyRequest* ptr;
+		ThreadSafeCurlEasyRequest* ptr;
 		curl_easy_getinfo(easy, CURLINFO_PRIVATE, &ptr);
 		AICurlEasyRequest easy_request = AICurlEasyRequestPtr(ptr);
 		llassert(*AICurlEasyRequest_wat(*easy_request) == easy);

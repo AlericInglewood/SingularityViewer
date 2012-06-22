@@ -50,6 +50,7 @@
 #include "llqueuedthread.h"
 #include "lltimer.h"		// ms_sleep
 #include "llproxy.h"
+#include "llhttpstatuscodes.h"
 #ifdef CWDEBUG
 #include <libcwd/buf2str.h>
 #endif
@@ -563,12 +564,12 @@ CURLMcode CurlEasyHandle::remove_handle_from_multi(AICurlEasyRequest_wat& curl_e
   return res;
 }
 
-void intrusive_ptr_add_ref(AIThreadSafeCurlEasyRequest* threadsafe_curl_easy_request)
+void intrusive_ptr_add_ref(ThreadSafeCurlEasyRequest* threadsafe_curl_easy_request)
 {
   threadsafe_curl_easy_request->mReferenceCount++;
 }
 
-void intrusive_ptr_release(AIThreadSafeCurlEasyRequest* threadsafe_curl_easy_request)
+void intrusive_ptr_release(ThreadSafeCurlEasyRequest* threadsafe_curl_easy_request)
 {
   if (--threadsafe_curl_easy_request->mReferenceCount == 0)
   {
@@ -592,16 +593,16 @@ void CurlEasyRequest::setPost(char const* postdata, S32 size)
   setopt(CURLOPT_POSTFIELDSIZE, size);
 }
 
-AIThreadSafeCurlEasyRequest* CurlEasyRequest::get_lockobj(void)
+ThreadSafeCurlEasyRequest* CurlEasyRequest::get_lockobj(void)
 {
-  return static_cast<AIThreadSafeCurlEasyRequest*>(AIThreadSafeSimpleDC<CurlEasyRequest>::wrapper_cast(this));
+  return static_cast<ThreadSafeCurlEasyRequest*>(AIThreadSafeSimpleDC<CurlEasyRequest>::wrapper_cast(this));
 }
 
 //static
 size_t CurlEasyRequest::headerCallback(char* ptr, size_t size, size_t nmemb, void* userdata)
 {
   CurlEasyRequest* self = static_cast<CurlEasyRequest*>(userdata);
-  AIThreadSafeCurlEasyRequest* lockobj = self->get_lockobj();
+  ThreadSafeCurlEasyRequest* lockobj = self->get_lockobj();
   AICurlEasyRequest_wat lock_self(*lockobj);
   return self->mHeaderCallback(ptr, size, nmemb, self->mHeaderCallbackUserData);
 }
@@ -618,7 +619,7 @@ void CurlEasyRequest::setHeaderCallback(curl_write_callback callback, void* user
 size_t CurlEasyRequest::writeCallback(char* ptr, size_t size, size_t nmemb, void* userdata)
 {
   CurlEasyRequest* self = static_cast<CurlEasyRequest*>(userdata);
-  AIThreadSafeCurlEasyRequest* lockobj = self->get_lockobj();
+  ThreadSafeCurlEasyRequest* lockobj = self->get_lockobj();
   AICurlEasyRequest_wat lock_self(*lockobj);
   return self->mWriteCallback(ptr, size, nmemb, self->mWriteCallbackUserData);
 }
@@ -635,7 +636,7 @@ void CurlEasyRequest::setWriteCallback(curl_write_callback callback, void* userd
 size_t CurlEasyRequest::readCallback(char* ptr, size_t size, size_t nmemb, void* userdata)
 {
   CurlEasyRequest* self = static_cast<CurlEasyRequest*>(userdata);
-  AIThreadSafeCurlEasyRequest* lockobj = self->get_lockobj();
+  ThreadSafeCurlEasyRequest* lockobj = self->get_lockobj();
   AICurlEasyRequest_wat lock_self(*lockobj);
   return self->mReadCallback(ptr, size, nmemb, self->mReadCallbackUserData);
 }
@@ -652,7 +653,7 @@ void CurlEasyRequest::setReadCallback(curl_read_callback callback, void* userdat
 CURLcode CurlEasyRequest::SSLCtxCallback(CURL* curl, void* sslctx, void* userdata)
 {
   CurlEasyRequest* self = static_cast<CurlEasyRequest*>(userdata);
-  AIThreadSafeCurlEasyRequest* lockobj = self->get_lockobj();
+  ThreadSafeCurlEasyRequest* lockobj = self->get_lockobj();
   AICurlEasyRequest_wat lock_self(*lockobj);
   return self->mSSLCtxCallback(curl, sslctx, self->mSSLCtxCallbackUserData);
 }
@@ -712,7 +713,7 @@ void CurlEasyRequest::resetState(void)
   curl_slist_free_all(mHeaders);
   mHeaders = NULL;
   mRequestFinalized = false;
-  mParent = NULL;
+  mEventsTarget = NULL;
   mResult = CURLE_FAILED_INIT;
   applyDefaultOptions();
 }
@@ -788,6 +789,7 @@ void CurlEasyRequest::applyDefaultOptions(void)
   // openssl s_client -tls1 -connect login.agni.lindenlab.com:443 -CAfile packaged/app_settings/CA.pem -debug
   setopt(CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1);
   setopt(CURLOPT_NOSIGNAL, 1);
+  // The old code did this for the 'buffered' version, but I think it's nonsense.
   //setopt(CURLOPT_DNS_CACHE_TIMEOUT, 0);
   Debug(
 	if (dc::curl.is_on())
@@ -832,6 +834,24 @@ void CurlEasyRequest::getResult(CURLcode* result, AICurlInterface::TransferInfo*
   }
 }
 
+void CurlEasyRequest::added_to_multi_handle(AICurlEasyRequest_wat& curl_easy_request_w)
+{
+  if (mEventsTarget)
+	mEventsTarget->added_to_multi_handle(curl_easy_request_w);
+}
+
+void CurlEasyRequest::finished(AICurlEasyRequest_wat& curl_easy_request_w)
+{
+  if (mEventsTarget)
+	mEventsTarget->finished(curl_easy_request_w);
+}
+
+void CurlEasyRequest::removed_from_multi_handle(AICurlEasyRequest_wat& curl_easy_request_w)
+{
+  if (mEventsTarget)
+	mEventsTarget->removed_from_multi_handle(curl_easy_request_w);
+}
+
 //-----------------------------------------------------------------------------
 // CurlResponderBuffer
 
@@ -840,8 +860,29 @@ static S32 const CURL_REQUEST_TIMEOUT = 30;		// Seconds per operation.
 
 LLChannelDescriptors const CurlResponderBuffer::sChannels;
 
+CurlResponderBuffer::~CurlResponderBuffer()
+{
+  if (mResponder)
+  {	
+	llwarns << "Calling ~CurlResponderBuffer() with active responder!" << llendl;
+	llassert(false);	// Does this ever happen? And if so, what does it mean?
+	// FIXME: Does this really mean it timed out?
+	mResponder->completedRaw(HTTP_REQUEST_TIME_OUT, "Request timeout, aborted.", sChannels, mOutput);
+	mResponder = NULL;
+  }
+}
+
 void CurlResponderBuffer::resetState(AICurlEasyRequest_wat& curl_easy_request_w)
 {
+  if (mResponder)
+  {	
+	llwarns << "Calling CurlResponderBuffer::resetState() for active easy handle!" << llendl;
+	llassert(false);	// Does this ever happen? And if so, what does it mean?
+	// FIXME: Does this really mean it timed out?
+	mResponder->completedRaw(HTTP_REQUEST_TIME_OUT, "Request timeout, aborted.", sChannels, mOutput);
+	mResponder = NULL;
+  }
+
   curl_easy_request_w->resetState();
 
   mOutput.reset();
@@ -853,9 +894,9 @@ void CurlResponderBuffer::resetState(AICurlEasyRequest_wat& curl_easy_request_w)
   mHeaderOutput.clear();
 }
 
-AIThreadSafeBufferedCurlEasyRequest* CurlResponderBuffer::get_lockobj(void)
+ThreadSafeBufferedCurlEasyRequest* CurlResponderBuffer::get_lockobj(void)
 {
-  return static_cast<AIThreadSafeBufferedCurlEasyRequest*>(AIThreadSafeSimple<CurlResponderBuffer>::wrapper_cast(this));
+  return static_cast<ThreadSafeBufferedCurlEasyRequest*>(AIThreadSafeSimple<CurlResponderBuffer>::wrapper_cast(this));
 }
 
 void CurlResponderBuffer::prepRequest(AICurlEasyRequest_wat& curl_easy_request_w, std::vector<std::string> const& headers, AICurlInterface::ResponderPtr responder, S32 time_out, bool post)
@@ -874,7 +915,7 @@ void CurlResponderBuffer::prepRequest(AICurlEasyRequest_wat& curl_easy_request_w
   mOutput.reset(new LLBufferArray);
   mOutput->setThreaded(true);
 
-  AIThreadSafeBufferedCurlEasyRequest* lockobj = get_lockobj();
+  ThreadSafeBufferedCurlEasyRequest* lockobj = get_lockobj();
   curl_easy_request_w->setWriteCallback(&curlWriteCallback, lockobj);
   curl_easy_request_w->setReadCallback(&curlReadCallback, lockobj);
   curl_easy_request_w->setHeaderCallback(&curlHeaderCallback, lockobj);
@@ -892,6 +933,7 @@ void CurlResponderBuffer::prepRequest(AICurlEasyRequest_wat& curl_easy_request_w
 
   curl_easy_request_w->setopt(CURLOPT_TIMEOUT, llmax(time_out, CURL_REQUEST_TIMEOUT));
 
+  // Keep responder alive.
   mResponder = responder;
 
   if (!post)
@@ -906,13 +948,13 @@ void CurlResponderBuffer::prepRequest(AICurlEasyRequest_wat& curl_easy_request_w
   }
 
   // Register for events.
-  curl_easy_request_w->set_parent(this);
+  curl_easy_request_w->send_events_to(this);
 }
 
 //static
 size_t CurlResponderBuffer::curlWriteCallback(char* data, size_t size, size_t nmemb, void* user_data)
 {
-  AIThreadSafeBufferedCurlEasyRequest* lockobj = static_cast<AIThreadSafeBufferedCurlEasyRequest*>(user_data);
+  ThreadSafeBufferedCurlEasyRequest* lockobj = static_cast<ThreadSafeBufferedCurlEasyRequest*>(user_data);
 
   // We need to lock the curl easy request object too, because that lock is used
   // to make sure that callbacks and destruction aren't done simulaneously.
@@ -927,7 +969,7 @@ size_t CurlResponderBuffer::curlWriteCallback(char* data, size_t size, size_t nm
 //static
 size_t CurlResponderBuffer::curlReadCallback(char* data, size_t size, size_t nmemb, void* user_data)
 {
-  AIThreadSafeBufferedCurlEasyRequest* lockobj = static_cast<AIThreadSafeBufferedCurlEasyRequest*>(user_data);
+  ThreadSafeBufferedCurlEasyRequest* lockobj = static_cast<ThreadSafeBufferedCurlEasyRequest*>(user_data);
 
   // We need to lock the curl easy request object too, because that lock is used
   // to make sure that callbacks and destruction aren't done simulaneously.
@@ -948,7 +990,7 @@ size_t CurlResponderBuffer::curlReadCallback(char* data, size_t size, size_t nme
 //static
 size_t CurlResponderBuffer::curlHeaderCallback(char* data, size_t size, size_t nmemb, void* user_data)
 {
-  AIThreadSafeBufferedCurlEasyRequest* lockobj = static_cast<AIThreadSafeBufferedCurlEasyRequest*>(user_data);
+  ThreadSafeBufferedCurlEasyRequest* lockobj = static_cast<ThreadSafeBufferedCurlEasyRequest*>(user_data);
 
   // We need to lock the curl easy request object too, because that lock is used
   // to make sure that callbacks and destruction aren't done simulaneously.
@@ -975,10 +1017,10 @@ void CurlResponderBuffer::removed_from_multi_handle(AICurlEasyRequest_wat& curl_
   Dout(dc::curl, "Calling CurlResponderBuffer::removed_from_multi_handle(@" << (void*)&*curl_easy_request_w << ") for this = " << (void*)this);
 
   // Lock self.
-  AIThreadSafeBufferedCurlEasyRequest* lockobj = get_lockobj();
+  ThreadSafeBufferedCurlEasyRequest* lockobj = get_lockobj();
   AICurlResponderBuffer_wat buffer_w(*lockobj);
 
-  llassert(dynamic_cast<AIThreadSafeBufferedCurlEasyRequest*>(static_cast<AIThreadSafeCurlEasyRequest*>(AIThreadSafeCurlEasyRequest::wrapper_cast(&*curl_easy_request_w))) == lockobj);
+  llassert(dynamic_cast<ThreadSafeBufferedCurlEasyRequest*>(static_cast<ThreadSafeCurlEasyRequest*>(ThreadSafeCurlEasyRequest::wrapper_cast(&*curl_easy_request_w))) == lockobj);
   llassert(&*buffer_w == this);
 
   U32 responseCode = 0;	

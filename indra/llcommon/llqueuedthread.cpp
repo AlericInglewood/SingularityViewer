@@ -238,12 +238,6 @@ bool LLQueuedThread::addRequest(QueuedRequest* req)
 	req->setStatus(STATUS_QUEUED);
 	mRequestQueue.insert(req);
 	mRequestHash.insert(req);
-#ifdef CWDEBUG
-	if (req->is_curl_request())
-	{
-		Dout(dc::curl, "LLQueuedThread::addRequest: added handle " << req->getHashKey());
-	}
-#endif
 #if _DEBUG
 // 	llinfos << llformat("LLQueuedThread::Added req [%08d]",handle) << llendl;
 #endif

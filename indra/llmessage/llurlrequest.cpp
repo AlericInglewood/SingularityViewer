@@ -170,7 +170,7 @@ LLURLRequest::~LLURLRequest()
 	{
 		AICurlEasyRequest_wat curlEasyRequest_w(*mDetail->mCurlEasyRequest);
 		curlEasyRequest_w->revokeCallbacks();
-		curlEasyRequest_w->set_parent(NULL);	// Events are also callbacks.
+		curlEasyRequest_w->send_events_to(NULL);	// Events are also callbacks.
 	}
 	LLMemType m1(LLMemType::MTYPE_IO_URL_REQUEST);
 	delete mDetail;
@@ -561,7 +561,7 @@ bool LLURLRequest::configure()
 		if(rv)
 		{
 			curlEasyRequest_w->finalizeRequest(mDetail->mURL);
-			curlEasyRequest_w->set_parent(this);
+			curlEasyRequest_w->send_events_to(this);
 		}
 	}
 	return rv;
