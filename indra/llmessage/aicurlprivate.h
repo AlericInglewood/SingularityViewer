@@ -209,6 +209,8 @@ class CurlEasyRequest : public CurlEasyHandle {
 	// This class may only be created by constructing a ThreadSafeCurlEasyRequest.
 	friend class ThreadSafeCurlEasyRequest;
 	CurlEasyRequest(void) : mHeaders(NULL), mRequestFinalized(false), mEventsTarget(NULL), mResult(CURLE_FAILED_INIT) { applyDefaultOptions(); }
+  public:
+	~CurlEasyRequest();
 
   public:
 	// Post initialization, set the parent to which to pass the events to.
@@ -294,6 +296,8 @@ class ThreadSafeCurlEasyRequest : public AIThreadSafeSimple<CurlEasyRequest> {
 // what class it is part of: ThreadSafeCurlEasyRequest or ThreadSafeBufferedCurlEasyRequest.
 // The virtual destructor of ThreadSafeCurlEasyRequest allows to treat each easy handle transparently
 // as a ThreadSafeCurlEasyRequest object, or optionally dynamic_cast it to a ThreadSafeBufferedCurlEasyRequest.
+// Note: the order of these base classes is important: AIThreadSafeSimple<CurlResponderBuffer> is now
+// destructed before ThreadSafeCurlEasyRequest is.
 class ThreadSafeBufferedCurlEasyRequest : public ThreadSafeCurlEasyRequest, public AIThreadSafeSimple<CurlResponderBuffer> {
   public:
 	ThreadSafeBufferedCurlEasyRequest(void) throw(AICurlNoEasyHandle) { new (AIThreadSafeSimple<CurlResponderBuffer>::ptr()) CurlResponderBuffer; }

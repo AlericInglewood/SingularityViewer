@@ -94,6 +94,7 @@ LLURLRequestDetail::~LLURLRequestDetail()
 
 void LLURLRequest::setSSLVerifyCallback(SSLCertVerifyCallback callback, void *param)
 {
+	LLMemType m1(LLMemType::MTYPE_IO_URL_REQUEST);
 	mDetail->mSSLVerifyCallback = callback;
 	AICurlEasyRequest_wat curlEasyRequest_w(*mDetail->mCurlEasyRequest);
 	curlEasyRequest_w->setSSLCtxCallback(LLURLRequest::_sslCtxCallback, (void *)this);
@@ -167,19 +168,13 @@ LLURLRequest::LLURLRequest(
 
 LLURLRequest::~LLURLRequest()
 {
-	{
-		AICurlEasyRequest_wat curlEasyRequest_w(*mDetail->mCurlEasyRequest);
-		curlEasyRequest_w->revokeCallbacks();
-		curlEasyRequest_w->send_events_to(NULL);	// Events are also callbacks.
-	}
 	LLMemType m1(LLMemType::MTYPE_IO_URL_REQUEST);
+	AICurlEasyRequest_wat(*mDetail->mCurlEasyRequest)->revokeCallbacks();
 	delete mDetail;
-	mDetail = NULL ;
 }
 
 void LLURLRequest::setURL(const std::string& url)
 {
-	LLMemType m1(LLMemType::MTYPE_IO_URL_REQUEST);
 	mDetail->mURL = url;
 }
 

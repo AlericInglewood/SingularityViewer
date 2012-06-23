@@ -240,7 +240,7 @@ class AICurlEasyRequest : protected CurlEasyHandleEvents {
 	AICurlEasyRequest(bool buffered) throw(AICurlNoEasyHandle) :
 	    mCurlEasyRequest(buffered ? new AICurlPrivate::ThreadSafeBufferedCurlEasyRequest : new AICurlPrivate::ThreadSafeCurlEasyRequest) { }
 	AICurlEasyRequest(AICurlEasyRequest const& orig) : mCurlEasyRequest(orig.mCurlEasyRequest) { }
-	AICurlEasyRequest(AICurlEasyRequestPtr const& ptr) : mCurlEasyRequest(ptr) { }
+	explicit AICurlEasyRequest(AICurlEasyRequestPtr const& ptr) : mCurlEasyRequest(ptr) { }
 
 	// For the rest, only allow read operations.
 	AIThreadSafeSimple<AICurlPrivate::CurlEasyRequest>& operator*(void) const { return *mCurlEasyRequest; }

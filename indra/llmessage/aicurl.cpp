@@ -692,6 +692,16 @@ static CURLcode noSSLCtxCallback(CURL* curl, void* sslctx, void* parm)
 
 void CurlEasyRequest::revokeCallbacks(void)
 {
+  if (mEventsTarget == NULL &&
+	  mHeaderCallback == &noHeaderCallback &&
+	  mWriteCallback == &noWriteCallback &&
+	  mReadCallback == &noReadCallback &&
+	  mSSLCtxCallback == &noSSLCtxCallback)
+  {
+	// Already revoked.
+	return;
+  }
+  send_events_to(NULL);
   mHeaderCallback = &noHeaderCallback;
   mWriteCallback = &noWriteCallback;
   mReadCallback = &noReadCallback;
@@ -704,6 +714,14 @@ void CurlEasyRequest::revokeCallbacks(void)
   curl_easy_setopt(getEasyHandle(), CURLOPT_WRITEHEADER, &noWriteCallback);
   curl_easy_setopt(getEasyHandle(), CURLOPT_READFUNCTION, &noReadCallback);
   curl_easy_setopt(getEasyHandle(), CURLOPT_SSL_CTX_FUNCTION, &noSSLCtxCallback);
+}
+
+CurlEasyRequest::~CurlEasyRequest()
+{
+  // If the CurlEasyRequest object is destructed then we need to revoke all callbacks, because
+  // we can't set the lock anymore, and neither will mHeaderCallback, mWriteCallback etc,
+  // be available anymore.
+  revokeCallbacks();
 }
 
 void CurlEasyRequest::resetState(void)
@@ -860,8 +878,14 @@ static S32 const CURL_REQUEST_TIMEOUT = 30;		// Seconds per operation.
 
 LLChannelDescriptors const CurlResponderBuffer::sChannels;
 
+// The callbacks need to be revoked when the CurlResponderBuffer is destructed (because that is what the callbacks use).
+// The AIThreadSafeSimple<CurlResponderBuffer> is destructed first (right to left), so when we get here then the
+// ThreadSafeCurlEasyRequest base class of ThreadSafeBufferedCurlEasyRequest is still intact and we can create
+// and use curl_easy_request_w.
 CurlResponderBuffer::~CurlResponderBuffer()
 {
+  ThreadSafeBufferedCurlEasyRequest* lockobj = get_lockobj();
+  AICurlEasyRequest_wat curl_easy_request_w(*lockobj);				// Wait till possible callbacks have returned.
   if (mResponder)
   {	
 	llwarns << "Calling ~CurlResponderBuffer() with active responder!" << llendl;
@@ -870,6 +894,7 @@ CurlResponderBuffer::~CurlResponderBuffer()
 	mResponder->completedRaw(HTTP_REQUEST_TIME_OUT, "Request timeout, aborted.", sChannels, mOutput);
 	mResponder = NULL;
   }
+  curl_easy_request_w->revokeCallbacks();
 }
 
 void CurlResponderBuffer::resetState(AICurlEasyRequest_wat& curl_easy_request_w)

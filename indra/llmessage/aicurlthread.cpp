@@ -864,7 +864,7 @@ void MultiHandle::check_run_count(void)
 		CURL* easy = msg->easy_handle;
 		ThreadSafeCurlEasyRequest* ptr;
 		curl_easy_getinfo(easy, CURLINFO_PRIVATE, &ptr);
-		AICurlEasyRequest easy_request = AICurlEasyRequestPtr(ptr);
+		AICurlEasyRequest easy_request(static_cast<AICurlEasyRequestPtr const&>(AICurlEasyRequestPtr(ptr)));
 		llassert(*AICurlEasyRequest_wat(*easy_request) == easy);
 		// Store the result and transfer info in the easy handle.
 		{
