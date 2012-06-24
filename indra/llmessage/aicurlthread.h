@@ -113,7 +113,7 @@ class PollSet
 class MultiHandle : public CurlMultiHandle
 {
   public:
-	MultiHandle(void) throw(AICurlNoMultiHandle);
+	MultiHandle(void);
 	~MultiHandle();
 
 	// Add/remove an easy handle to/from a multi session.
@@ -171,10 +171,10 @@ class MultiHandle : public CurlMultiHandle
 // not allowed by libcurl.
 class AICurlMultiHandle : public AIThreadSafeSingleThreadDC<AICurlPrivate::curlthread::MultiHandle>, public LLThreadLocalDataMember {
   public:
-	static AICurlMultiHandle& getInstance(void) throw(AICurlNoMultiHandle);
+	static AICurlMultiHandle& getInstance(void);
   private:
 	// Use getInstance().
-	AICurlMultiHandle(void) throw(AICurlNoMultiHandle) { }
+	AICurlMultiHandle(void) { }
 };
 
 typedef AISTAccessConst<AICurlPrivate::curlthread::MultiHandle> AICurlMultiHandle_rat;

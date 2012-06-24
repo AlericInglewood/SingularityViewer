@@ -465,11 +465,6 @@ void LLURLRequest::initialize()
 	mState = STATE_INITIALIZED;
 	mDetail = new LLURLRequestDetail;
 
-	if(!isValid())
-	{
-		return ;
-	}
-
 	{
 		AICurlEasyRequest_wat curlEasyRequest_w(*mDetail->mCurlEasyRequest);
 		curlEasyRequest_w->setWriteCallback(&downCallback, (void*)this);

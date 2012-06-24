@@ -47,12 +47,15 @@
 //
 // Objects of this type can be reused multiple times, see
 // also the documentation of AIStateMachine.
-class AICurlEasyRequestStateMachine : public AIStateMachine, public AICurlEasyRequest {
-  private:
-
+//
+// Construction of a AICurlEasyRequestStateMachine might throw AICurlNoEasyHandle.
+class AICurlEasyRequestStateMachine : public AIStateMachine, public AICurlEasyHandleEvents {
   public:
-	AICurlEasyRequestStateMachine(void) throw(AICurlNoEasyHandle) : AICurlEasyRequest(false)
+	AICurlEasyRequestStateMachine(void) : mCurlEasyRequest(false)
         { Dout(dc::statemachine, "Calling AICurlEasyRequestStateMachine constructor [" << (void*)this << "]"); }
+
+	// Transparent access.
+	AICurlEasyRequest mCurlEasyRequest;
 
   protected:
 	// AICurlEasyRequest Events.

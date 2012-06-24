@@ -430,87 +430,95 @@ static LLSD blocking_request(
 {
 	lldebugs << "blockingRequest of " << url << llendl;
 
-	AICurlEasyRequest curlEasyRequest(false);
-	AICurlEasyRequest_wat curlEasyRequest_w(*curlEasyRequest);
+	S32 http_status = 499;
+	LLSD response = LLSD::emptyMap();
 
-	LLHTTPBuffer http_buffer;
-	std::string body_str;
-	
-	// other request method checks root cert first, we skip?
-
-	// Apply configured proxy settings
-	LLProxy::getInstance()->applyProxySettings(curlEasyRequest_w);
-	
-	// * Set curl handle options
-	curlEasyRequest_w->setopt(CURLOPT_TIMEOUT, timeout);	// seconds, see warning at top of function.
-	curlEasyRequest_w->setWriteCallback(&LLHTTPBuffer::curl_write, &http_buffer);
-
-	// * Setup headers.
-	if (headers.isMap())
+	try
 	{
-		LLSD::map_const_iterator iter = headers.beginMap();
-		LLSD::map_const_iterator end  = headers.endMap();
-		for (; iter != end; ++iter)
+		AICurlEasyRequest easy_request(false);
+		AICurlEasyRequest_wat curlEasyRequest_w(*easy_request);
+
+		LLHTTPBuffer http_buffer;
+		std::string body_str;
+		
+		// other request method checks root cert first, we skip?
+
+		// Apply configured proxy settings
+		LLProxy::getInstance()->applyProxySettings(curlEasyRequest_w);
+		
+		// * Set curl handle options
+		curlEasyRequest_w->setopt(CURLOPT_TIMEOUT, timeout);	// seconds, see warning at top of function.
+		curlEasyRequest_w->setWriteCallback(&LLHTTPBuffer::curl_write, &http_buffer);
+
+		// * Setup headers.
+		if (headers.isMap())
 		{
-			std::ostringstream header;
-			header << iter->first << ": " << iter->second.asString() ;
-			lldebugs << "header = " << header.str() << llendl;
-			curlEasyRequest_w->addHeader(header.str().c_str());
+			LLSD::map_const_iterator iter = headers.beginMap();
+			LLSD::map_const_iterator end  = headers.endMap();
+			for (; iter != end; ++iter)
+			{
+				std::ostringstream header;
+				header << iter->first << ": " << iter->second.asString() ;
+				lldebugs << "header = " << header.str() << llendl;
+				curlEasyRequest_w->addHeader(header.str().c_str());
+			}
+		}
+		
+		// * Setup specific method / "verb" for the URI (currently only GET and POST supported + poppy)
+		if (method == LLURLRequest::HTTP_GET)
+		{
+			curlEasyRequest_w->setopt(CURLOPT_HTTPGET, 1);
+		}
+		else if (method == LLURLRequest::HTTP_POST)
+		{
+			curlEasyRequest_w->setopt(CURLOPT_POST, 1);
+			//serialize to ostr then copy to str - need to because ostr ptr is unstable :(
+			std::ostringstream ostr;
+			LLSDSerialize::toXML(body, ostr);
+			body_str = ostr.str();
+			curlEasyRequest_w->setopt(CURLOPT_POSTFIELDS, body_str.c_str());
+			//copied from PHP libs, correct?
+			curlEasyRequest_w->addHeader("Content-Type: application/llsd+xml");
+
+			// copied from llurlrequest.cpp
+			// it appears that apache2.2.3 or django in etch is busted. If
+			// we do not clear the expect header, we get a 500. May be
+			// limited to django/mod_wsgi.
+			curlEasyRequest_w->addHeader("Expect:");
+		}
+		
+		// * Do the action using curl, handle results
+		lldebugs << "HTTP body: " << body_str << llendl;
+		curlEasyRequest_w->addHeader("Accept: application/llsd+xml");
+		curlEasyRequest_w->finalizeRequest(url);
+
+		S32 curl_success = curlEasyRequest_w->perform();
+		curlEasyRequest_w->getinfo(CURLINFO_RESPONSE_CODE, &http_status);
+		// if we get a non-404 and it's not a 200 OR maybe it is but you have error bits,
+		if ( http_status != 404 && (http_status != 200 || curl_success != 0) )
+		{
+			// We expect 404s, don't spam for them.
+			llwarns << "CURL REQ URL: " << url << llendl;
+			llwarns << "CURL REQ METHOD TYPE: " << method << llendl;
+			llwarns << "CURL REQ HEADERS: " << headers.asString() << llendl;
+			llwarns << "CURL REQ BODY: " << body_str << llendl;
+			llwarns << "CURL HTTP_STATUS: " << http_status << llendl;
+			llwarns << "CURL ERROR: " << curlEasyRequest_w->getErrorString() << llendl;
+			llwarns << "CURL ERROR BODY: " << http_buffer.asString() << llendl;
+			response["body"] = http_buffer.asString();
+		}
+		else
+		{
+			response["body"] = http_buffer.asLLSD();
+			lldebugs << "CURL response: " << http_buffer.asString() << llendl;
 		}
 	}
-	
-	// * Setup specific method / "verb" for the URI (currently only GET and POST supported + poppy)
-	if (method == LLURLRequest::HTTP_GET)
+	catch(AICurlNoEasyHandle const& error)
 	{
-		curlEasyRequest_w->setopt(CURLOPT_HTTPGET, 1);
+		response["body"] = error.what();
 	}
-	else if (method == LLURLRequest::HTTP_POST)
-	{
-		curlEasyRequest_w->setopt(CURLOPT_POST, 1);
-		//serialize to ostr then copy to str - need to because ostr ptr is unstable :(
-		std::ostringstream ostr;
-		LLSDSerialize::toXML(body, ostr);
-		body_str = ostr.str();
-		curlEasyRequest_w->setopt(CURLOPT_POSTFIELDS, body_str.c_str());
-		//copied from PHP libs, correct?
-		curlEasyRequest_w->addHeader("Content-Type: application/llsd+xml");
 
-		// copied from llurlrequest.cpp
-		// it appears that apache2.2.3 or django in etch is busted. If
-		// we do not clear the expect header, we get a 500. May be
-		// limited to django/mod_wsgi.
-		curlEasyRequest_w->addHeader("Expect:");
-	}
-	
-	// * Do the action using curl, handle results
-	lldebugs << "HTTP body: " << body_str << llendl;
-	curlEasyRequest_w->addHeader("Accept: application/llsd+xml");
-	curlEasyRequest_w->finalizeRequest(url);
-
-	LLSD response = LLSD::emptyMap();
-	S32 curl_success = curlEasyRequest_w->perform();
-	S32 http_status = 499;
-	curlEasyRequest_w->getinfo(CURLINFO_RESPONSE_CODE, &http_status);
 	response["status"] = http_status;
-	// if we get a non-404 and it's not a 200 OR maybe it is but you have error bits,
-	if ( http_status != 404 && (http_status != 200 || curl_success != 0) )
-	{
-		// We expect 404s, don't spam for them.
-		llwarns << "CURL REQ URL: " << url << llendl;
-		llwarns << "CURL REQ METHOD TYPE: " << method << llendl;
-		llwarns << "CURL REQ HEADERS: " << headers.asString() << llendl;
-		llwarns << "CURL REQ BODY: " << body_str << llendl;
-		llwarns << "CURL HTTP_STATUS: " << http_status << llendl;
-		llwarns << "CURL ERROR: " << curlEasyRequest_w->getErrorString() << llendl;
-		llwarns << "CURL ERROR BODY: " << http_buffer.asString() << llendl;
-		response["body"] = http_buffer.asString();
-	}
-	else
-	{
-		response["body"] = http_buffer.asLLSD();
-		lldebugs << "CURL response: " << http_buffer.asString() << llendl;
-	}
-	
 	return response;
 }
 

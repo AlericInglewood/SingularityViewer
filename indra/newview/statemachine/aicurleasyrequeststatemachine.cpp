@@ -50,8 +50,11 @@ char const* AICurlEasyRequestStateMachine::state_str_impl(state_type run_state) 
 
 void AICurlEasyRequestStateMachine::initialize_impl(void)
 {
-  llassert(AICurlEasyRequest_rat(*get())->is_finalized());	// Call finalizeRequest(url) before calling run().
-  get_events();
+  {
+	AICurlEasyRequest_wat curlEasyRequest_w(*mCurlEasyRequest);
+	llassert(curlEasyRequest_w->is_finalized());	// Call finalizeRequest(url) before calling run().
+	curlEasyRequest_w->send_events_to(this);
+  }
   set_state(AICurlEasyRequestStateMachine_addRequest);
 }
 
@@ -75,7 +78,7 @@ void AICurlEasyRequestStateMachine::multiplex_impl(void)
   {
 	case AICurlEasyRequestStateMachine_addRequest:
 	{
-	  addRequest();
+	  mCurlEasyRequest.addRequest();
 	  idle();			// Wait till added_to_multi_handle() is called.
 	  break;
 	}
@@ -94,10 +97,10 @@ void AICurlEasyRequestStateMachine::multiplex_impl(void)
 
 void AICurlEasyRequestStateMachine::abort_impl(void)
 {
-  kill_events();
+  AICurlEasyRequest_wat(*mCurlEasyRequest)->send_events_to(NULL);
 }
 
 void AICurlEasyRequestStateMachine::finish_impl(void)
 {
-  Dout(dc::curl, "AICurlEasyRequestStateMachine::finish_impl called for = " << (void*)get());
+  Dout(dc::curl, "AICurlEasyRequestStateMachine::finish_impl called for = " << (void*)mCurlEasyRequest.get());
 }

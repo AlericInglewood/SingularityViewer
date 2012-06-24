@@ -51,17 +51,17 @@ enum command_st {
 class Command {
   public:
 	Command(void) : mCommand(cmd_none) { }
-	Command(AICurlEasyRequest const& curlEasyRequest, command_st command) : mCurlEasyRequest(curlEasyRequest), mCommand(command) { }
+	Command(AICurlEasyRequest const& easy_request, command_st command) : mCurlEasyRequest(easy_request.get_ptr()), mCommand(command) { }
 
 	command_st command(void) const { return mCommand; }
-	AICurlEasyRequestPtr const& easy_request(void) const { return mCurlEasyRequest; }
+	CurlEasyRequestPtr const& easy_request(void) const { return mCurlEasyRequest; }
 
-	bool operator==(AICurlEasyRequest const& easy_request) const { return mCurlEasyRequest == static_cast<AICurlEasyRequestPtr const&>(easy_request); }
+	bool operator==(AICurlEasyRequest const& easy_request) const { return mCurlEasyRequest == easy_request.get_ptr(); }
 
 	void reset(void);
 
   private:
-	AICurlEasyRequestPtr mCurlEasyRequest;
+	CurlEasyRequestPtr mCurlEasyRequest;
 	command_st mCommand;
 };
 
@@ -600,7 +600,7 @@ void AICurlThread::wakeup(AICurlMultiHandle_wat const& multi_handle_w)
 	  }
 	  // Done processing.
 	  command_being_processed_wat command_being_processed_w(command_being_processed_r);
-	  command_being_processed_w->reset();
+	  command_being_processed_w->reset();		// This destroys the CurlEasyRequest in case of a cmd_remove.
 	}
   }
 }
@@ -731,7 +731,7 @@ void AICurlThread::run(void)
 //-----------------------------------------------------------------------------
 // MultiHandle
 
-MultiHandle::MultiHandle(void) throw(AICurlNoMultiHandle) : mHandleAddedOrRemoved(false), mPrevRunningHandles(0), mRunningHandles(0), mTimeOut(-1)
+MultiHandle::MultiHandle(void) : mHandleAddedOrRemoved(false), mPrevRunningHandles(0), mRunningHandles(0), mTimeOut(-1)
 {
   curl_multi_setopt(mMultiHandle, CURLMOPT_SOCKETFUNCTION, &MultiHandle::socket_callback);
   curl_multi_setopt(mMultiHandle, CURLMOPT_SOCKETDATA, this);
@@ -864,7 +864,7 @@ void MultiHandle::check_run_count(void)
 		CURL* easy = msg->easy_handle;
 		ThreadSafeCurlEasyRequest* ptr;
 		curl_easy_getinfo(easy, CURLINFO_PRIVATE, &ptr);
-		AICurlEasyRequest easy_request(static_cast<AICurlEasyRequestPtr const&>(AICurlEasyRequestPtr(ptr)));
+		AICurlEasyRequest easy_request(ptr);
 		llassert(*AICurlEasyRequest_wat(*easy_request) == easy);
 		// Store the result and transfer info in the easy handle.
 		{
@@ -893,6 +893,7 @@ void MultiHandle::check_run_count(void)
 		{
 		  llwarns << "Curl easy handle returned by curl_multi_info_read() that is not (anymore) in MultiHandle::mAddedEasyRequests!?!" << llendl;
 		}
+		// Destruction of easy_request at this point, causes the CurlEasyRequest to be deleted.
 	  }
 	}
 	mHandleAddedOrRemoved = false;
@@ -907,7 +908,7 @@ void MultiHandle::check_run_count(void)
 // MAIN-THREAD (needing to access the above declarations).
 
 //static
-AICurlMultiHandle& AICurlMultiHandle::getInstance(void) throw(AICurlNoMultiHandle)
+AICurlMultiHandle& AICurlMultiHandle::getInstance(void)
 {
   LLThreadLocalData& tldata = LLThreadLocalData::tldata();
   if (!tldata.mCurlMultiHandle)
@@ -1012,7 +1013,7 @@ void AICurlEasyRequest::removeRequest(void)
 		break;
 	  }
 	}
-	llassert(cmd == cmd_none || cmd != cmd_remove);	// Not in queue, or last command was not to remove it.
+	llassert(cmd == cmd_none || cmd != cmd_remove);	// Not in queue, or last command was not a remove command.
 	if (cmd == cmd_none)
 	{
 	  // Read-lock command_being_processed.
@@ -1024,7 +1025,7 @@ void AICurlEasyRequest::removeRequest(void)
 	  }
 	  else
 	  {
-		// May not already have been remove from multi session handle.
+		// May not already have been removed from multi session handle.
 		llassert(AICurlEasyRequest_wat(*get())->active());
 	  }
 	}

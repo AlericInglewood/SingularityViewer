@@ -64,7 +64,7 @@ class LLURLRequestComplete;
  * worth the time and effort to eventually port this to a raw client
  * socket.
  */
-class LLURLRequest : public LLIOPipe, protected CurlEasyHandleEvents
+class LLURLRequest : public LLIOPipe, protected AICurlEasyHandleEvents
 {
 	LOG_CLASS(LLURLRequest);
 public:

@@ -479,7 +479,7 @@ CURLMcode check_multi_code(CURLMcode code)
 
 LLAtomicU32 CurlEasyHandle::sTotalEasyHandles;
 
-CurlEasyHandle::CurlEasyHandle(void) throw(AICurlNoEasyHandle) : mActiveMultiHandle(NULL), mErrorBuffer(NULL)
+CurlEasyHandle::CurlEasyHandle(void) : mActiveMultiHandle(NULL), mErrorBuffer(NULL)
 {
   mEasyHandle = curl_easy_init();
   if (!mEasyHandle)
@@ -827,6 +827,20 @@ void CurlEasyRequest::finalizeRequest(std::string const& url)
   lldebugs << url << llendl;
   setopt(CURLOPT_HTTPHEADER, mHeaders);
   setoptString(CURLOPT_URL, url);
+  // The following line is a bit tricky: we store a pointer to the object without increasing it's reference count.
+  // Of course we could increment the reference count, but that doesn't help much: if then this pointer would
+  // get "lost" we'd have a memory leak. Either way we must make sure that it is impossible that this pointer
+  // will be used if the object is deleted [In fact, since this is finalizeRequest() and not addRequest(),
+  // incrementing the reference counter would be wrong: if addRequest is never called then the object is
+  // destroyed shortly after and this pointer is never even used.]
+  // This pointer is used in MultiHandle::check_run_count, which means that addRequest() was called and
+  // the reference counter was increased and the object is being kept alive, see the comments above
+  // command_queue in aicurlthread.cpp. In fact, this object survived until MultiHandle::add_easy_request
+  // was called and is kept alive by MultiHandle::mAddedEasyRequests. The only way to get deleted after
+  // that is when MultiHandle::remove_easy_request is called, which first removes the easy handle from
+  // the multi handle. So that it's (hopefully) no longer possible that info_read() in
+  // MultiHandle::check_run_count returns this easy handle, after the object is destroyed by deleting
+  // it from MultiHandle::mAddedEasyRequests.
   setopt(CURLOPT_PRIVATE, get_lockobj());
 }
 
@@ -1087,7 +1101,7 @@ void CurlResponderBuffer::removed_from_multi_handle(AICurlEasyRequest_wat& curl_
 
 LLAtomicU32 CurlMultiHandle::sTotalMultiHandles;
 
-CurlMultiHandle::CurlMultiHandle(void) throw(AICurlNoMultiHandle)
+CurlMultiHandle::CurlMultiHandle(void)
 {
   mMultiHandle = curl_multi_init();
   if (!mMultiHandle)
@@ -1114,6 +1128,11 @@ namespace AICurlInterface {
 //-----------------------------------------------------------------------------
 // class Request
 //
+
+bool Request::get(std::string const& url, ResponderPtr responder)
+{
+  return getByteRange(url, headers_t(), 0, -1, responder);
+}
 
 bool Request::getByteRange(std::string const& url, headers_t const& headers, S32 offset, S32 length, ResponderPtr responder)
 {

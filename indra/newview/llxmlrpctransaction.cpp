@@ -159,7 +159,7 @@ class LLXMLRPCTransaction::Impl
 public:
 	typedef LLXMLRPCTransaction::Status	Status;
 
-	AICurlEasyRequestStateMachine*	mCurlEasyRequestPtr;
+	AICurlEasyRequestStateMachine*	mCurlEasyRequestStateMachinePtr;
 
 	Status		mStatus;
 	CURLcode	mCurlCode;
@@ -197,7 +197,7 @@ private:
 
 LLXMLRPCTransaction::Impl::Impl(const std::string& uri,
 		XMLRPC_REQUEST request, bool useGzip)
-	: mCurlEasyRequestPtr(NULL),
+	: mCurlEasyRequestStateMachinePtr(NULL),
 	  mStatus(LLXMLRPCTransaction::StatusNotStarted),
 	  mURI(uri),
 	  mRequestText(0), 
@@ -209,7 +209,7 @@ LLXMLRPCTransaction::Impl::Impl(const std::string& uri,
 
 LLXMLRPCTransaction::Impl::Impl(const std::string& uri,
 		const std::string& method, LLXMLRPCValue params, bool useGzip)
-	: mCurlEasyRequestPtr(NULL),
+	: mCurlEasyRequestStateMachinePtr(NULL),
 	  mStatus(LLXMLRPCTransaction::StatusNotStarted),
 	  mURI(uri),
 	  mRequestText(0), 
@@ -229,8 +229,8 @@ LLXMLRPCTransaction::Impl::Impl(const std::string& uri,
 void LLXMLRPCTransaction::Impl::init(XMLRPC_REQUEST request, bool useGzip)
 {
 	{
-		mCurlEasyRequestPtr = new AICurlEasyRequestStateMachine;
-		AICurlEasyRequest_wat curlEasyRequest_w(**mCurlEasyRequestPtr);
+		mCurlEasyRequestStateMachinePtr = new AICurlEasyRequestStateMachine;
+		AICurlEasyRequest_wat curlEasyRequest_w(*mCurlEasyRequestStateMachinePtr->mCurlEasyRequest);
 		LLProxy::getInstance()->applyProxySettings(curlEasyRequest_w);
 
 		curlEasyRequest_w->setWriteCallback(&curlDownloadCallback, (void*)this);
@@ -267,17 +267,17 @@ void LLXMLRPCTransaction::Impl::init(XMLRPC_REQUEST request, bool useGzip)
 	}
 	if (mStatus == LLXMLRPCTransaction::StatusNotStarted)	// It could be LLXMLRPCTransaction::StatusOtherError.
 	{
-	  mCurlEasyRequestPtr->run(boost::bind(&LLXMLRPCTransaction::Impl::curlEasyRequestCallback, this, _1));
+	  mCurlEasyRequestStateMachinePtr->run(boost::bind(&LLXMLRPCTransaction::Impl::curlEasyRequestCallback, this, _1));
 	  setStatus(LLXMLRPCTransaction::StatusStarted);
 	}
 }
 
 LLXMLRPCTransaction::Impl::~Impl()
 {
-	if (mCurlEasyRequestPtr)
+	if (mCurlEasyRequestStateMachinePtr)
 	{
 		//FIXME: shouldn't we just call abort here?
-		AICurlEasyRequest_wat(**mCurlEasyRequestPtr)->revokeCallbacks();
+		AICurlEasyRequest_wat(*mCurlEasyRequestStateMachinePtr->mCurlEasyRequest)->revokeCallbacks();
 	}
 
 	if (mResponse)
@@ -301,7 +301,7 @@ bool LLXMLRPCTransaction::Impl::is_finished(void) const
 
 void LLXMLRPCTransaction::Impl::curlEasyRequestCallback(bool success)
 {
-	AICurlEasyRequest_wat curlEasyRequest_w(**mCurlEasyRequestPtr);
+	AICurlEasyRequest_wat curlEasyRequest_w(*mCurlEasyRequestStateMachinePtr->mCurlEasyRequest);
 
 	llassert(mStatus == LLXMLRPCTransaction::StatusStarted || mStatus == LLXMLRPCTransaction::StatusDownloading);
 
