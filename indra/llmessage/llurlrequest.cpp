@@ -153,6 +153,7 @@ LLURLRequest::LLURLRequest(LLURLRequest::ERequestAction action) :
 	mAction(action)
 {
 	LLMemType m1(LLMemType::MTYPE_IO_URL_REQUEST);
+	// This might throw AICurlNoEasyHandle.
 	initialize();
 }
 
@@ -162,6 +163,7 @@ LLURLRequest::LLURLRequest(
 	mAction(action)
 {
 	LLMemType m1(LLMemType::MTYPE_IO_URL_REQUEST);
+	// This might throw AICurlNoEasyHandle.
 	initialize();
 	setURL(url);
 }
@@ -463,6 +465,7 @@ void LLURLRequest::initialize()
 {
 	LLMemType m1(LLMemType::MTYPE_IO_URL_REQUEST);
 	mState = STATE_INITIALIZED;
+	// This might throw AICurlNoEasyHandle.
 	mDetail = new LLURLRequestDetail;
 
 	{

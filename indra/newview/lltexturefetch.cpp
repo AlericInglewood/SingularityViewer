@@ -1319,8 +1319,15 @@ bool LLTextureFetchWorker::doWork(S32 param)
 				// Will call callbackHttpGet when curl request completes
 				std::vector<std::string> headers;
 				headers.push_back("Accept: image/x-j2c");
-				res = mFetcher->mCurlGetRequest->getByteRange(mUrl, headers, offset, mRequestedSize,
-															  new HTTPGetResponder(mFetcher, mID, LLTimer::getTotalTime(), mRequestedSize, offset, true));
+				try
+				{
+					res = mFetcher->mCurlGetRequest->getByteRange(mUrl, headers, offset, mRequestedSize,
+																  new HTTPGetResponder(mFetcher, mID, LLTimer::getTotalTime(), mRequestedSize, offset, true));
+				}
+				catch(AICurlNoEasyHandle const& error)
+				{
+					llwarns << error.what() << llendl;
+				}
 			}
 			if (!res)
 			{

@@ -205,6 +205,7 @@ class CurlEasyRequest : public CurlEasyHandle {
   private:
 	// This class may only be created by constructing a ThreadSafeCurlEasyRequest.
 	friend class ThreadSafeCurlEasyRequest;
+	// Throws AICurlNoEasyHandle.
 	CurlEasyRequest(void) :
 	    mHeaders(NULL), mRequestFinalized(false), mEventsTarget(NULL), mResult(CURLE_FAILED_INIT)
       { applyDefaultOptions(); }
@@ -245,8 +246,8 @@ class CurlEasyRequest : public CurlEasyHandle {
 // is deleted and the CurlResponderBuffer destructed.
 class CurlResponderBuffer : protected AICurlEasyHandleEvents {
   public:
-	void resetState(AIAccess<CurlEasyRequest>& curl_easy_request_w);
-	void prepRequest(AIAccess<CurlEasyRequest>& buffered_curl_easy_request_w, std::vector<std::string> const& headers, AICurlInterface::ResponderPtr responder, S32 time_out = 0, bool post = false);
+	void resetState(AICurlEasyRequest_wat& curl_easy_request_w);
+	void prepRequest(AICurlEasyRequest_wat& buffered_curl_easy_request_w, std::vector<std::string> const& headers, AICurlInterface::ResponderPtr responder, S32 time_out = 0, bool post = false);
 
 	std::stringstream& getInput() { return mInput; }
 	std::stringstream& getHeaderOutput() { return mHeaderOutput; }
@@ -289,6 +290,7 @@ class CurlResponderBuffer : protected AICurlEasyHandleEvents {
 // As AIThreadSafeSimpleDC contains a mutex, it cannot be copied. Therefore we need a reference counter for this object.
 class ThreadSafeCurlEasyRequest : public AIThreadSafeSimple<CurlEasyRequest> {
   public:
+	// Throws AICurlNoEasyHandle.
 	ThreadSafeCurlEasyRequest(void) : mReferenceCount(0)
         { new (ptr()) CurlEasyRequest;
 		  Dout(dc::curl, "Creating ThreadSafeCurlEasyRequest with this = " << (void*)this); }
@@ -311,6 +313,7 @@ class ThreadSafeCurlEasyRequest : public AIThreadSafeSimple<CurlEasyRequest> {
 // destructed before ThreadSafeCurlEasyRequest is.
 class ThreadSafeBufferedCurlEasyRequest : public ThreadSafeCurlEasyRequest, public AIThreadSafeSimple<CurlResponderBuffer> {
   public:
+	// Throws AICurlNoEasyHandle.
 	ThreadSafeBufferedCurlEasyRequest(void) { new (AIThreadSafeSimple<CurlResponderBuffer>::ptr()) CurlResponderBuffer; }
 };
 

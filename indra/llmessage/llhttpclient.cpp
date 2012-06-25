@@ -233,10 +233,15 @@ static void request(
 	}
 	LLPumpIO::chain_t chain;
 
-	LLURLRequest* req = new LLURLRequest(method, url);
-	if(!req->isValid())//failed
+	LLURLRequest* req;
+	try
 	{
-		delete req ;
+		req = new LLURLRequest(method, url);
+	}
+	catch(AICurlNoEasyHandle& error)
+	{
+		llwarns << "Failed to create LLURLRequest: " << error.what() << llendl;
+		// This is what the old LL code did: no recovery whatsoever (but also no leaks or crash).
 		return ;
 	}
 
@@ -334,7 +339,7 @@ void LLHTTPClient::getByteRange(
 		std::string range = llformat("bytes=%d-%d", offset, offset+bytes-1);
 		headers["Range"] = range;
 	}
-    request(url,LLURLRequest::HTTP_GET, NULL, responder, timeout, headers);
+    request(url, LLURLRequest::HTTP_GET, NULL, responder, timeout, headers);
 }
 
 void LLHTTPClient::head(

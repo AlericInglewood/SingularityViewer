@@ -229,7 +229,16 @@ LLXMLRPCTransaction::Impl::Impl(const std::string& uri,
 void LLXMLRPCTransaction::Impl::init(XMLRPC_REQUEST request, bool useGzip)
 {
 	{
-		mCurlEasyRequestStateMachinePtr = new AICurlEasyRequestStateMachine;
+		try
+		{
+			mCurlEasyRequestStateMachinePtr = new AICurlEasyRequestStateMachine;
+		}
+		catch(AICurlNoEasyHandle const& error)
+		{
+			llwarns << "Failed to initialize LLXMLRPCTransaction: " << error.what() << llendl;
+			setStatus(StatusOtherError, "No curl easy handle");
+			return;
+		}
 		AICurlEasyRequest_wat curlEasyRequest_w(*mCurlEasyRequestStateMachinePtr->mCurlEasyRequest);
 		LLProxy::getInstance()->applyProxySettings(curlEasyRequest_w);
 

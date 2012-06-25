@@ -264,13 +264,14 @@ class AICurlEasyRequest {
 	// Initial construction is allowed (thread-safe).
 	// Note: If ThreadSafeCurlEasyRequest() throws then the memory allocated is still freed.
 	// 'new' never returned however and the constructor nor destructor of mCurlEasyRequest is called in this case.
+	// This might throw AICurlNoEasyHandle.
 	AICurlEasyRequest(bool buffered) :
 	    mCurlEasyRequest(buffered ? new AICurlPrivate::ThreadSafeBufferedCurlEasyRequest : new AICurlPrivate::ThreadSafeCurlEasyRequest) { }
 	AICurlEasyRequest(AICurlEasyRequest const& orig) : mCurlEasyRequest(orig.mCurlEasyRequest) { }
 
 	// For the rest, only allow read operations.
-	AIThreadSafeSimple<AICurlPrivate::CurlEasyRequest>& operator*(void) const { return *mCurlEasyRequest; }
-	AIThreadSafeSimple<AICurlPrivate::CurlEasyRequest>* operator->(void) const { return mCurlEasyRequest.get(); }
+	AIThreadSafeSimple<AICurlPrivate::CurlEasyRequest>& operator*(void) const { llassert(mCurlEasyRequest.get()); return *mCurlEasyRequest; }
+	AIThreadSafeSimple<AICurlPrivate::CurlEasyRequest>* operator->(void) const { llassert(mCurlEasyRequest.get()); return mCurlEasyRequest.get(); }
 	AIThreadSafeSimple<AICurlPrivate::CurlEasyRequest>* get(void) const { return mCurlEasyRequest.get(); }
 
 	// Returns true if this object points to the same CurlEasyRequest object.

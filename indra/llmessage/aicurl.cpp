@@ -479,9 +479,19 @@ CURLMcode check_multi_code(CURLMcode code)
 
 LLAtomicU32 CurlEasyHandle::sTotalEasyHandles;
 
+// Throws AICurlNoEasyHandle.
 CurlEasyHandle::CurlEasyHandle(void) : mActiveMultiHandle(NULL), mErrorBuffer(NULL)
 {
   mEasyHandle = curl_easy_init();
+#if 0
+  //FIXME: for debugging, throw once every 10 times.
+  static int c = 0;
+  if (++c % 10 == 5)
+  {
+    curl_easy_cleanup(mEasyHandle);
+	mEasyHandle = NULL;
+  }
+#endif
   if (!mEasyHandle)
   {
 	throw AICurlNoEasyHandle("curl_easy_init() returned NULL");

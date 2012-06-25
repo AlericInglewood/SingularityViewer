@@ -255,7 +255,16 @@ static void request(const std::string &url,
 	}
 	LLPumpIO::chain_t chain;
 
-	LLURLRequest *req = new LLURLRequest(method, url);
+	LLURLRequest *req;
+	try
+	{
+		req = new LLURLRequest(method, url);
+	}
+	catch(AICurlNoEasyHandle const& error)
+	{
+		llwarns << "Failed to create LLURLRequest: " << error.what() << llendl;
+		return;
+	}
 	req->setSSLVerifyCallback(LLHTTPClient::getCertVerifyCallback(), (void *)req);
 
 	/*

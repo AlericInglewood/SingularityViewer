@@ -33,7 +33,8 @@
 
 enum curleasyrequeststatemachine_state_type {
   AICurlEasyRequestStateMachine_addRequest = AIStateMachine::max_state,
-  AICurlEasyRequestStateMachine_addedToMultiHandle,
+  AICurlEasyRequestStateMachine_waitAdded,
+  AICurlEasyRequestStateMachine_waitDone,
   AICurlEasyRequestStateMachine_finished
 };
 
@@ -42,7 +43,8 @@ char const* AICurlEasyRequestStateMachine::state_str_impl(state_type run_state) 
   switch(run_state)
   {
 	AI_CASE_RETURN(AICurlEasyRequestStateMachine_addRequest);
-	AI_CASE_RETURN(AICurlEasyRequestStateMachine_addedToMultiHandle);
+	AI_CASE_RETURN(AICurlEasyRequestStateMachine_waitAdded);
+	AI_CASE_RETURN(AICurlEasyRequestStateMachine_waitDone);
 	AI_CASE_RETURN(AICurlEasyRequestStateMachine_finished);
   }
   return "UNKNOWN STATE";
@@ -60,7 +62,7 @@ void AICurlEasyRequestStateMachine::initialize_impl(void)
 
 void AICurlEasyRequestStateMachine::added_to_multi_handle(AICurlEasyRequest_wat&)
 {
-  set_state(AICurlEasyRequestStateMachine_addedToMultiHandle);
+  set_state(AICurlEasyRequestStateMachine_waitDone);
 }
 
 void AICurlEasyRequestStateMachine::finished(AICurlEasyRequest_wat&)
@@ -79,10 +81,14 @@ void AICurlEasyRequestStateMachine::multiplex_impl(void)
 	case AICurlEasyRequestStateMachine_addRequest:
 	{
 	  mCurlEasyRequest.addRequest();
+	  set_state(AICurlEasyRequestStateMachine_waitAdded);
+	}
+	case AICurlEasyRequestStateMachine_waitAdded:
+	{
 	  idle();			// Wait till added_to_multi_handle() is called.
 	  break;
 	}
-	case AICurlEasyRequestStateMachine_addedToMultiHandle:
+	case AICurlEasyRequestStateMachine_waitDone:
 	{
 	  idle();			// Wait till done() is called.
 	  break;
@@ -104,3 +110,19 @@ void AICurlEasyRequestStateMachine::finish_impl(void)
 {
   Dout(dc::curl, "AICurlEasyRequestStateMachine::finish_impl called for = " << (void*)mCurlEasyRequest.get());
 }
+
+AICurlEasyRequestStateMachine::~AICurlEasyRequestStateMachine()
+{
+  Dout(dc::statemachine, "Calling ~AICurlEasyRequestStateMachine() [" << (void*)this << "]");
+  switch (mRunState)
+  {
+	case AICurlEasyRequestStateMachine_waitAdded:
+	case AICurlEasyRequestStateMachine_waitDone:
+	case AICurlEasyRequestStateMachine_finished:
+	  mCurlEasyRequest.removeRequest();
+	  break;
+	default:
+	  break;
+  }
+}
+

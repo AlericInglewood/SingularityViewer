@@ -73,7 +73,7 @@ class AICurlEasyRequestStateMachine : public AIStateMachine, public AICurlEasyHa
 	// AIStateMachine implementations.
 
 	// Call finish() (or abort()), not delete.
-	/*virtual*/ ~AICurlEasyRequestStateMachine() { Dout(dc::statemachine, "Calling ~AICurlEasyRequestStateMachine() [" << (void*)this << "]"); }
+	/*virtual*/ ~AICurlEasyRequestStateMachine();
 
 	// Handle initializing the object.
 	/*virtual*/ void initialize_impl(void);
