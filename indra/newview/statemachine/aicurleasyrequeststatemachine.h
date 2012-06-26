@@ -51,11 +51,13 @@
 // Construction of a AICurlEasyRequestStateMachine might throw AICurlNoEasyHandle.
 class AICurlEasyRequestStateMachine : public AIStateMachine, public AICurlEasyHandleEvents {
   public:
-	AICurlEasyRequestStateMachine(void) : mCurlEasyRequest(false)
-        { Dout(dc::statemachine, "Calling AICurlEasyRequestStateMachine constructor [" << (void*)this << "]"); }
+	AICurlEasyRequestStateMachine(bool buffered);
 
 	// Transparent access.
 	AICurlEasyRequest mCurlEasyRequest;
+
+  private:
+	bool mBuffered;		// Argument used for construction of mCurlEasyRequest.
 
   protected:
 	// AICurlEasyRequest Events.

@@ -171,7 +171,11 @@ LLURLRequest::LLURLRequest(
 LLURLRequest::~LLURLRequest()
 {
 	LLMemType m1(LLMemType::MTYPE_IO_URL_REQUEST);
-	AICurlEasyRequest_wat(*mDetail->mCurlEasyRequest)->revokeCallbacks();
+	{
+		AICurlEasyRequest_wat curl_easy_request_w(*mDetail->mCurlEasyRequest);
+		curl_easy_request_w->revokeCallbacks();
+		curl_easy_request_w->send_events_to(NULL);
+	}
 	delete mDetail;
 }
 

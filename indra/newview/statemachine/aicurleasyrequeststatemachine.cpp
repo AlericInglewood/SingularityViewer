@@ -34,7 +34,7 @@
 enum curleasyrequeststatemachine_state_type {
   AICurlEasyRequestStateMachine_addRequest = AIStateMachine::max_state,
   AICurlEasyRequestStateMachine_waitAdded,
-  AICurlEasyRequestStateMachine_waitDone,
+  AICurlEasyRequestStateMachine_waitFinished,
   AICurlEasyRequestStateMachine_finished
 };
 
@@ -44,7 +44,7 @@ char const* AICurlEasyRequestStateMachine::state_str_impl(state_type run_state) 
   {
 	AI_CASE_RETURN(AICurlEasyRequestStateMachine_addRequest);
 	AI_CASE_RETURN(AICurlEasyRequestStateMachine_waitAdded);
-	AI_CASE_RETURN(AICurlEasyRequestStateMachine_waitDone);
+	AI_CASE_RETURN(AICurlEasyRequestStateMachine_waitFinished);
 	AI_CASE_RETURN(AICurlEasyRequestStateMachine_finished);
   }
   return "UNKNOWN STATE";
@@ -60,18 +60,21 @@ void AICurlEasyRequestStateMachine::initialize_impl(void)
   set_state(AICurlEasyRequestStateMachine_addRequest);
 }
 
+// CURL-THREAD
 void AICurlEasyRequestStateMachine::added_to_multi_handle(AICurlEasyRequest_wat&)
 {
-  set_state(AICurlEasyRequestStateMachine_waitDone);
+  set_state(AICurlEasyRequestStateMachine_waitFinished);
 }
 
+// CURL-THREAD
 void AICurlEasyRequestStateMachine::finished(AICurlEasyRequest_wat&)
 {
-  set_state(AICurlEasyRequestStateMachine_finished);
 }
 
+// CURL-THREAD
 void AICurlEasyRequestStateMachine::removed_from_multi_handle(AICurlEasyRequest_wat&)
 {
+  set_state(AICurlEasyRequestStateMachine_finished);
 }
 
 void AICurlEasyRequestStateMachine::multiplex_impl(void)
@@ -85,16 +88,22 @@ void AICurlEasyRequestStateMachine::multiplex_impl(void)
 	}
 	case AICurlEasyRequestStateMachine_waitAdded:
 	{
-	  idle();			// Wait till added_to_multi_handle() is called.
+	  idle();			// Wait till AICurlEasyRequestStateMachine::added_to_multi_handle() is called.
 	  break;
 	}
-	case AICurlEasyRequestStateMachine_waitDone:
+	case AICurlEasyRequestStateMachine_waitFinished:
 	{
-	  idle();			// Wait till done() is called.
+	  idle();			// Wait till AICurlEasyRequestStateMachine::finished() is called.
 	  break;
 	}
 	case AICurlEasyRequestStateMachine_finished:
 	{
+	  if (mBuffered)
+	  {
+		AICurlEasyRequest_wat easy_request_w(*mCurlEasyRequest);
+		AICurlResponderBuffer_wat buffered_easy_request_w(*mCurlEasyRequest);
+		buffered_easy_request_w->processOutput(easy_request_w);
+	  }
 	  finish();
 	  break;
 	}
@@ -103,26 +112,41 @@ void AICurlEasyRequestStateMachine::multiplex_impl(void)
 
 void AICurlEasyRequestStateMachine::abort_impl(void)
 {
-  AICurlEasyRequest_wat(*mCurlEasyRequest)->send_events_to(NULL);
+  Dout(dc::curl, "AICurlEasyRequestStateMachine::abort_impl called for = " << (void*)mCurlEasyRequest.get());
+  // We must first revoke the events, or the curl thread might change mRunState still.
+  {
+    AICurlEasyRequest_wat curl_easy_request_w(*mCurlEasyRequest);
+	curl_easy_request_w->send_events_to(NULL);
+	curl_easy_request_w->revokeCallbacks();
+  }
+  if (mRunState >= AICurlEasyRequestStateMachine_waitAdded && mRunState < AICurlEasyRequestStateMachine_finished)
+  {
+	// Revert call to addRequest().
+	// Note that it's safe to call this even if the curl thread already removed it, or will removes it
+	// after we called this, before processing the remove command; only the curl thread calls
+	// MultiHandle::remove_easy_request, which is a no-op when called twice for the same easy request.
+	mCurlEasyRequest.removeRequest();
+  }
 }
 
 void AICurlEasyRequestStateMachine::finish_impl(void)
 {
   Dout(dc::curl, "AICurlEasyRequestStateMachine::finish_impl called for = " << (void*)mCurlEasyRequest.get());
+  if (!aborted())
+  {
+    AICurlEasyRequest_wat curl_easy_request_w(*mCurlEasyRequest);
+	curl_easy_request_w->send_events_to(NULL);
+	curl_easy_request_w->revokeCallbacks();
+  }
+}
+
+AICurlEasyRequestStateMachine::AICurlEasyRequestStateMachine(bool buffered) : mBuffered(buffered), mCurlEasyRequest(buffered)
+{
+  Dout(dc::statemachine, "Calling AICurlEasyRequestStateMachine(" << (buffered ? "true" : "false") << ") [" << (void*)this << "] [" << (void*)mCurlEasyRequest.get() << "]");
 }
 
 AICurlEasyRequestStateMachine::~AICurlEasyRequestStateMachine()
 {
-  Dout(dc::statemachine, "Calling ~AICurlEasyRequestStateMachine() [" << (void*)this << "]");
-  switch (mRunState)
-  {
-	case AICurlEasyRequestStateMachine_waitAdded:
-	case AICurlEasyRequestStateMachine_waitDone:
-	case AICurlEasyRequestStateMachine_finished:
-	  mCurlEasyRequest.removeRequest();
-	  break;
-	default:
-	  break;
-  }
+  Dout(dc::statemachine, "Calling ~AICurlEasyRequestStateMachine() [" << (void*)this << "] [" << (void*)mCurlEasyRequest.get() << "]");
 }
 

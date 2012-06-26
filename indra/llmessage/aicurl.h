@@ -211,18 +211,6 @@ class Responder {
 // destruct when there are no pointers left pointing to it.
 typedef boost::intrusive_ptr<Responder> ResponderPtr;
 
-class Request {
-  public:
-	typedef std::vector<std::string> headers_t;
-	
-	bool get(std::string const& url, ResponderPtr responder);
-	bool getByteRange(std::string const& url, headers_t const& headers, S32 offset, S32 length, ResponderPtr responder);
-	bool post(std::string const& url, headers_t const& headers, std::string const& data, ResponderPtr responder, S32 time_out = 0);
-	bool post(std::string const& url, headers_t const& headers,        LLSD const& data, ResponderPtr responder, S32 time_out = 0);
-
-	S32  process(void);
-};
-
 } // namespace AICurlInterface
 
 // Forward declaration (see aicurlprivate.h).

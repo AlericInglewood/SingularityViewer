@@ -32,6 +32,7 @@
 #include "lluuid.h"
 #include "llviewertexture.h"
 #include "llvolume.h"
+#include "llcurlrequest.h"
 
 #if MESH_IMPORT
 #define LLCONVEXDECOMPINTER_STATIC 1

@@ -231,7 +231,7 @@ void LLXMLRPCTransaction::Impl::init(XMLRPC_REQUEST request, bool useGzip)
 	{
 		try
 		{
-			mCurlEasyRequestStateMachinePtr = new AICurlEasyRequestStateMachine;
+			mCurlEasyRequestStateMachinePtr = new AICurlEasyRequestStateMachine(false);
 		}
 		catch(AICurlNoEasyHandle const& error)
 		{
@@ -283,10 +283,10 @@ void LLXMLRPCTransaction::Impl::init(XMLRPC_REQUEST request, bool useGzip)
 
 LLXMLRPCTransaction::Impl::~Impl()
 {
-	if (mCurlEasyRequestStateMachinePtr)
+	if (mCurlEasyRequestStateMachinePtr && mCurlEasyRequestStateMachinePtr->running())
 	{
-		//FIXME: shouldn't we just call abort here?
-		AICurlEasyRequest_wat(*mCurlEasyRequestStateMachinePtr->mCurlEasyRequest)->revokeCallbacks();
+		llwarns << "Calling LLXMLRPCTransaction::Impl::~Impl while mCurlEasyRequestStateMachinePtr is still running" << llendl;
+		mCurlEasyRequestStateMachinePtr->abort();
 	}
 
 	if (mResponse)
@@ -310,8 +310,6 @@ bool LLXMLRPCTransaction::Impl::is_finished(void) const
 
 void LLXMLRPCTransaction::Impl::curlEasyRequestCallback(bool success)
 {
-	AICurlEasyRequest_wat curlEasyRequest_w(*mCurlEasyRequestStateMachinePtr->mCurlEasyRequest);
-
 	llassert(mStatus == LLXMLRPCTransaction::StatusStarted || mStatus == LLXMLRPCTransaction::StatusDownloading);
 
 	if (!success)
@@ -319,57 +317,56 @@ void LLXMLRPCTransaction::Impl::curlEasyRequestCallback(bool success)
 		setStatus(LLXMLRPCTransaction::StatusOtherError, "Statemachine failed");
 		return;
 	}
-	else
+
+	AICurlEasyRequest_wat curlEasyRequest_w(*mCurlEasyRequestStateMachinePtr->mCurlEasyRequest);
+	CURLcode result;
+	curlEasyRequest_w->getResult(&result, &mTransferInfo);
+
+	if (result != CURLE_OK)
 	{
-		CURLcode result;
-		curlEasyRequest_w->getResult(&result, &mTransferInfo);
-
-		if (result != CURLE_OK)
-		{
-			setCurlStatus(result);
-			llwarns << "LLXMLRPCTransaction CURL error "
-					<< mCurlCode << ": " << curlEasyRequest_w->getErrorString() << llendl;
-			llwarns << "LLXMLRPCTransaction request URI: "
-					<< mURI << llendl;
-				
-			return;
-		}
-		
-		setStatus(LLXMLRPCTransaction::StatusComplete);
-
-		mResponse = XMLRPC_REQUEST_FromXML(
-				mResponseText.data(), mResponseText.size(), NULL);
-
-		bool		hasError = false;
-		bool		hasFault = false;
-		int			faultCode = 0;
-		std::string	faultString;
-
-		LLXMLRPCValue error(XMLRPC_RequestGetError(mResponse));
-		if (error.isValid())
-		{
-			hasError = true;
-			faultCode = error["faultCode"].asInt();
-			faultString = error["faultString"].asString();
-		}
-		else if (XMLRPC_ResponseIsFault(mResponse))
-		{
-			hasFault = true;
-			faultCode = XMLRPC_GetResponseFaultCode(mResponse);
-			faultString = XMLRPC_GetResponseFaultString(mResponse);
-		}
-
-		if (hasError || hasFault)
-		{
-			setStatus(LLXMLRPCTransaction::StatusXMLRPCError);
+		setCurlStatus(result);
+		llwarns << "LLXMLRPCTransaction CURL error "
+				<< mCurlCode << ": " << curlEasyRequest_w->getErrorString() << llendl;
+		llwarns << "LLXMLRPCTransaction request URI: "
+				<< mURI << llendl;
 			
-			llwarns << "LLXMLRPCTransaction XMLRPC "
-					<< (hasError ? "error " : "fault ")
-					<< faultCode << ": "
-					<< faultString << llendl;
-			llwarns << "LLXMLRPCTransaction request URI: "
-					<< mURI << llendl;
-		}
+		return;
+	}
+	
+	setStatus(LLXMLRPCTransaction::StatusComplete);
+
+	mResponse = XMLRPC_REQUEST_FromXML(
+			mResponseText.data(), mResponseText.size(), NULL);
+
+	bool		hasError = false;
+	bool		hasFault = false;
+	int			faultCode = 0;
+	std::string	faultString;
+
+	LLXMLRPCValue error(XMLRPC_RequestGetError(mResponse));
+	if (error.isValid())
+	{
+		hasError = true;
+		faultCode = error["faultCode"].asInt();
+		faultString = error["faultString"].asString();
+	}
+	else if (XMLRPC_ResponseIsFault(mResponse))
+	{
+		hasFault = true;
+		faultCode = XMLRPC_GetResponseFaultCode(mResponse);
+		faultString = XMLRPC_GetResponseFaultString(mResponse);
+	}
+
+	if (hasError || hasFault)
+	{
+		setStatus(LLXMLRPCTransaction::StatusXMLRPCError);
+		
+		llwarns << "LLXMLRPCTransaction XMLRPC "
+				<< (hasError ? "error " : "fault ")
+				<< faultCode << ": "
+				<< faultString << llendl;
+		llwarns << "LLXMLRPCTransaction request URI: "
+				<< mURI << llendl;
 	}
 }
 

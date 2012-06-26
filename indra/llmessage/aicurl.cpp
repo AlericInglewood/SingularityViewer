@@ -702,8 +702,7 @@ static CURLcode noSSLCtxCallback(CURL* curl, void* sslctx, void* parm)
 
 void CurlEasyRequest::revokeCallbacks(void)
 {
-  if (mEventsTarget == NULL &&
-	  mHeaderCallback == &noHeaderCallback &&
+  if (mHeaderCallback == &noHeaderCallback &&
 	  mWriteCallback == &noWriteCallback &&
 	  mReadCallback == &noReadCallback &&
 	  mSSLCtxCallback == &noSSLCtxCallback)
@@ -711,7 +710,6 @@ void CurlEasyRequest::revokeCallbacks(void)
 	// Already revoked.
 	return;
   }
-  send_events_to(NULL);
   mHeaderCallback = &noHeaderCallback;
   mWriteCallback = &noWriteCallback;
   mReadCallback = &noReadCallback;
@@ -731,11 +729,13 @@ CurlEasyRequest::~CurlEasyRequest()
   // If the CurlEasyRequest object is destructed then we need to revoke all callbacks, because
   // we can't set the lock anymore, and neither will mHeaderCallback, mWriteCallback etc,
   // be available anymore.
+  send_events_to(NULL);
   revokeCallbacks();
 }
 
 void CurlEasyRequest::resetState(void)
 {
+  // This function does not revoke any event call backs!
   revokeCallbacks();
   reset();
   curl_slist_free_all(mHeaders);
@@ -902,6 +902,13 @@ static S32 const CURL_REQUEST_TIMEOUT = 30;		// Seconds per operation.
 
 LLChannelDescriptors const CurlResponderBuffer::sChannels;
 
+CurlResponderBuffer::CurlResponderBuffer()
+{
+  ThreadSafeBufferedCurlEasyRequest* lockobj = get_lockobj();
+  AICurlEasyRequest_wat curl_easy_request_w(*lockobj);
+  curl_easy_request_w->send_events_to(this);
+}
+
 // The callbacks need to be revoked when the CurlResponderBuffer is destructed (because that is what the callbacks use).
 // The AIThreadSafeSimple<CurlResponderBuffer> is destructed first (right to left), so when we get here then the
 // ThreadSafeCurlEasyRequest base class of ThreadSafeBufferedCurlEasyRequest is still intact and we can create
@@ -910,6 +917,8 @@ CurlResponderBuffer::~CurlResponderBuffer()
 {
   ThreadSafeBufferedCurlEasyRequest* lockobj = get_lockobj();
   AICurlEasyRequest_wat curl_easy_request_w(*lockobj);				// Wait till possible callbacks have returned.
+  curl_easy_request_w->send_events_to(NULL);
+  curl_easy_request_w->revokeCallbacks();
   if (mResponder)
   {	
 	llwarns << "Calling ~CurlResponderBuffer() with active responder!" << llendl;
@@ -918,7 +927,6 @@ CurlResponderBuffer::~CurlResponderBuffer()
 	mResponder->completedRaw(HTTP_REQUEST_TIME_OUT, "Request timeout, aborted.", sChannels, mOutput);
 	mResponder = NULL;
   }
-  curl_easy_request_w->revokeCallbacks();
 }
 
 void CurlResponderBuffer::resetState(AICurlEasyRequest_wat& curl_easy_request_w)
@@ -995,9 +1003,6 @@ void CurlResponderBuffer::prepRequest(AICurlEasyRequest_wat& curl_easy_request_w
 	  curl_easy_request_w->addHeader((*iter).c_str());
 	}
   }
-
-  // Register for events.
-  curl_easy_request_w->send_events_to(this);
 }
 
 //static
@@ -1067,11 +1072,15 @@ void CurlResponderBuffer::removed_from_multi_handle(AICurlEasyRequest_wat& curl_
 
   // Lock self.
   ThreadSafeBufferedCurlEasyRequest* lockobj = get_lockobj();
-  AICurlResponderBuffer_wat buffer_w(*lockobj);
-
   llassert(dynamic_cast<ThreadSafeBufferedCurlEasyRequest*>(static_cast<ThreadSafeCurlEasyRequest*>(ThreadSafeCurlEasyRequest::wrapper_cast(&*curl_easy_request_w))) == lockobj);
+  AICurlResponderBuffer_wat buffer_w(*lockobj);
   llassert(&*buffer_w == this);
 
+  processOutput(curl_easy_request_w);
+}
+
+void CurlResponderBuffer::processOutput(AICurlEasyRequest_wat& curl_easy_request_w)
+{
   U32 responseCode = 0;	
   std::string responseReason;
   
@@ -1128,107 +1137,3 @@ CurlMultiHandle::~CurlMultiHandle()
 }
 
 } // namespace AICurlPrivate
-
-//==================================================================================
-// External API
-//
-
-namespace AICurlInterface {
-
-//-----------------------------------------------------------------------------
-// class Request
-//
-
-bool Request::get(std::string const& url, ResponderPtr responder)
-{
-  return getByteRange(url, headers_t(), 0, -1, responder);
-}
-
-bool Request::getByteRange(std::string const& url, headers_t const& headers, S32 offset, S32 length, ResponderPtr responder)
-{
-  DoutEntering(dc::curl, "Request::getByteRange(" << url << ", ...)");
-
-  AICurlEasyRequest buffered_easy_request(true);
-
-  {
-    AICurlEasyRequest_wat buffered_easy_request_w(*buffered_easy_request);
-
-	AICurlResponderBuffer_wat(*buffered_easy_request)->prepRequest(buffered_easy_request_w, headers, responder);
-
-	buffered_easy_request_w->setopt(CURLOPT_HTTPGET, 1);
-	if (length > 0)
-	{
-	  std::string range = llformat("Range: bytes=%d-%d", offset, offset + length - 1);
-	  buffered_easy_request_w->addHeader(range.c_str());
-	}
-
-	buffered_easy_request_w->finalizeRequest(url);
-  }
-
-  buffered_easy_request.addRequest();
-
-  return true;	// FIXME
-}
-
-bool Request::post(std::string const& url, headers_t const& headers, std::string const& data, ResponderPtr responder, S32 time_out)
-{
-  DoutEntering(dc::curl, "Request::post(" << url << ", ...)");
-
-  AICurlEasyRequest buffered_easy_request(true);
-
-  {
-    AICurlEasyRequest_wat buffered_easy_request_w(*buffered_easy_request);
-	AICurlResponderBuffer_wat buffer_w(*buffered_easy_request);
-
-	buffer_w->prepRequest(buffered_easy_request_w, headers, responder);
-
-	buffer_w->getInput().write(data.data(), data.size());
-	S32 bytes = buffer_w->getInput().str().length();
-	buffered_easy_request_w->setPost(NULL, bytes);
-	buffered_easy_request_w->addHeader("Content-Type: application/octet-stream");
-	buffered_easy_request_w->finalizeRequest(url);
-
-	lldebugs << "POSTING: " << bytes << " bytes." << llendl;
-  }
-
-  buffered_easy_request.addRequest();
-
-  return true;	// FIXME
-}
-
-bool Request::post(std::string const& url, headers_t const& headers, LLSD const& data, ResponderPtr responder, S32 time_out)
-{
-  DoutEntering(dc::curl, "Request::post(" << url << ", ...)");
-
-  AICurlEasyRequest buffered_easy_request(true);
-
-  {
-    AICurlEasyRequest_wat buffered_easy_request_w(*buffered_easy_request);
-	AICurlResponderBuffer_wat buffer_w(*buffered_easy_request);
-
-	buffer_w->prepRequest(buffered_easy_request_w, headers, responder);
-
-	LLSDSerialize::toXML(data, buffer_w->getInput());
-	S32 bytes = buffer_w->getInput().str().length();
-	buffered_easy_request_w->setPost(NULL, bytes);
-	buffered_easy_request_w->addHeader("Content-Type: application/llsd+xml");
-	buffered_easy_request_w->finalizeRequest(url);
-
-	lldebugs << "POSTING: " << bytes << " bytes." << llendl;
-  }
-
-  buffered_easy_request.addRequest();
-
-  return true;	// FIXME
-}
-
-S32 Request::process(void)
-{
-  //FIXME: needs implementation
-  //DoutEntering(dc::warning, "Request::process()");
-  return 0;
-}
-
-} // namespace AICurlInterface
-//==================================================================================
-

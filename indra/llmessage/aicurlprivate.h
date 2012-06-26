@@ -253,6 +253,9 @@ class CurlResponderBuffer : protected AICurlEasyHandleEvents {
 	std::stringstream& getHeaderOutput() { return mHeaderOutput; }
 	LLIOPipe::buffer_ptr_t& getOutput() { return mOutput; }
 
+	// Called after removed_from_multi_handle was called.
+	void processOutput(AICurlEasyRequest_wat& curl_easy_request_w);
+
   protected:
 	/*virtual*/ void added_to_multi_handle(AICurlEasyRequest_wat& curl_easy_request_w);
 	/*virtual*/ void finished(AICurlEasyRequest_wat& curl_easy_request_w);
@@ -270,7 +273,7 @@ class CurlResponderBuffer : protected AICurlEasyHandleEvents {
   private:
 	// This class may only be created by constructing a ThreadSafeBufferedCurlEasyRequest.
 	friend class ThreadSafeBufferedCurlEasyRequest;
-	CurlResponderBuffer(void) { }
+	CurlResponderBuffer(void);
   public:
 	~CurlResponderBuffer();
 
