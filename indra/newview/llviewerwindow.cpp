@@ -4341,8 +4341,8 @@ S32 LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_heig
 	// Copy screen to a buffer
 
 	LLRect const window_rect = show_ui ? getWindowRectRaw() : getWorldViewRectRaw(); 
-	S32 const window_width = window_rect.getWidth();
-	S32 const window_height = window_rect.getHeight();
+	S32 window_width = window_rect.getWidth();
+	S32 window_height = window_rect.getHeight();
 
 	// SNAPSHOT
 
@@ -4353,21 +4353,6 @@ S32 LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_heig
 	image_width *= internal_scale;
 #endif //shy_mod
 
-	//Hack until hud ui works in high-res shots again (nameplates and hud attachments are buggered).
-	if ((image_width > window_width || image_height > window_height))
-	{
-		if(LLPipeline::sShowHUDAttachments)
-		{
-			hide_hud=true;
-			LLPipeline::sShowHUDAttachments = FALSE;
-		}
-		if(show_ui)
-		{
-			show_ui=false;
-			LLPipeline::toggleRenderDebugFeature((void*)LLPipeline::RENDER_DEBUG_FEATURE_UI);
-		}
-	}
-	
 	S32 buffer_x_offset = 0;
 	S32 buffer_y_offset = 0;
 	F32 scale_factor;
@@ -4392,25 +4377,61 @@ S32 LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_heig
 	// the final scaling). Thus, if ratio < 1 then buffer equals image', otherwise it equals snapshot.
 	// scale_factor is the ratio buffer/snapshot, and is initiallly equal to the ratio between buffer
 	// and snapshot (which have the same aspect).
-	for(scale_factor = llmax(1.0f, 1.0f / ratio);;												// Initial attempt.
-	// However, if the buffer turns out to be too large, then clamp it to max_size.
-		scale_factor = llmin((F32)max_size / snapshot_width, (F32)max_size / snapshot_height))	// Clamp
+	scale_factor = llmax(1.0f, 1.0f / ratio);
+	for(;;)	// This loop is passed once or twice. Never more.
 	{
 		image_buffer_x = llround(snapshot_width * scale_factor);
 		image_buffer_y = llround(snapshot_height * scale_factor);
 		max_image_buffer = llmax(image_buffer_x, image_buffer_y);
-		if (max_image_buffer > max_size &&		// Boundary check to avoid memory overflow.
-			internal_scale <= 1.f)				// SHY_MOD: If supersampling... Don't care about max_size.
+		if (max_image_buffer <= max_size ||		// Boundary check to avoid memory overflow.
+			internal_scale > 1.f)				// SHY_MOD: If supersampling... Don't care about max_size.
 		{
-			// Too big, clamp.
-			continue;
+			// Done.
+			break;
 		}
-		// Done.
-		break;
+		// Too big, clamp.
+		scale_factor = llmin((F32)max_size / snapshot_width, (F32)max_size / snapshot_height);	// Clamp
 	}
 	// Center the buffer.
 	buffer_x_offset = llfloor(((window_width - snapshot_width) * scale_factor) / 2.f);
 	buffer_y_offset = llfloor(((window_height - snapshot_height) * scale_factor) / 2.f);
+
+	S32 original_width = 0;
+	S32 original_height = 0;
+	bool reset_deferred = false;
+	LLRenderTarget scratch_space;
+
+	bool is_tiling = scale_factor > 1.f;
+	if (is_tiling)
+	{
+		// Tiling doesn't really work with render defered (you can see the seams).
+		// Therefore, attempt to allocate a larger frame buffer, and if that
+		// succeeds, turn tiling off. Otherwise continue with a scale factor > 1.
+		if (scratch_space.allocate(image_buffer_x, image_buffer_y, GL_RGBA, true, true))
+		{
+			original_width = gPipeline.mDeferredScreen.getWidth();
+			original_height = gPipeline.mDeferredScreen.getHeight();
+
+			if (gPipeline.allocateScreenBuffer(image_width, image_height))
+			{
+				snapshot_width = window_width = image_buffer_x;
+				snapshot_height = window_height = image_buffer_y;
+				buffer_x_offset = buffer_y_offset = 0;
+				mWindowRectRaw.set(0, window_height, window_width, 0);
+				scratch_space.bindTarget();
+				reset_deferred = true;
+				scale_factor = 1.0f;
+				is_tiling = false;
+				Dout(dc::warning, "TILING IS RESET!");
+			}
+			else
+			{
+				scratch_space.release();
+				gPipeline.allocateScreenBuffer(original_width, original_height);
+			}
+		}
+	}
+
 	Dout(dc::notice, "rawSnapshot(" << image_width << ", " << image_height << ", " << snapshot_aspect << "): image_buffer_x = " << image_buffer_x << "; image_buffer_y = " << image_buffer_y);
 
 	if (image_buffer_x > 0 && image_buffer_y > 0)
@@ -4426,9 +4447,23 @@ S32 LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_heig
 		return 0;
 	}
 
-	BOOL is_tiling = scale_factor > 1.f;
 	if (is_tiling)
 	{
+		// hud ui doesn't works in tiling shots.
+		if ((image_width > window_width || image_height > window_height))
+		{
+			if(LLPipeline::sShowHUDAttachments)
+			{
+				hide_hud=true;
+				LLPipeline::sShowHUDAttachments = FALSE;
+			}
+			if(show_ui)
+			{
+				show_ui=false;
+				LLPipeline::toggleRenderDebugFeature((void*)LLPipeline::RENDER_DEBUG_FEATURE_UI);
+			}
+		}
+
 		Dout(dc::warning, "USING TILING FOR SNAPSHOT!");
 		send_agent_pause();
 		if (show_ui || !hide_hud)
@@ -4588,6 +4623,15 @@ S32 LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_heig
 		// and we stand a good chance of crashing on rebuild because the render drawable arrays have multiple copies of
 		// objects on them.
 		gPipeline.resetDrawOrders();
+	}
+
+	if (reset_deferred)
+	{
+		mWindowRectRaw = window_rect;
+		scratch_space.flush();
+		scratch_space.release();
+		gPipeline.allocateScreenBuffer(original_width, original_height);
+		
 	}
 
 	if (is_tiling)
