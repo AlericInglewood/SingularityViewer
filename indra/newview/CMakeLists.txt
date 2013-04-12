@@ -314,6 +314,7 @@ set(viewer_SOURCE_FILES
     llmarketplacefunctions.cpp
     llmarketplacenotifications.cpp
     llmediactrl.cpp
+    llmediadataclient.cpp
     llmediaremotectrl.cpp
     llmenucommands.cpp
     llmenuoptionpathfindingrebakenavmesh.cpp
@@ -815,6 +816,7 @@ set(viewer_HEADER_FILES
     llmarketplacefunctions.h
     llmarketplacenotifications.h
     llmediactrl.h
+    llmediadataclient.h
     llmediaremotectrl.h
     llmenucommands.h
     llmenuoptionpathfindingrebakenavmesh.h
