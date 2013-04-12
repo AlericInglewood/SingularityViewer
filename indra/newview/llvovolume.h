@@ -96,7 +96,7 @@ protected:
 public:
 	static		void	initClass();
 	static		void	cleanupClass();
-	static 		void 	preUpdateGeom();
+	static		void	preUpdateGeom();
 	
 	enum 
 	{
@@ -297,7 +297,7 @@ public:
 private:
 	friend class LLDrawable;
 	friend class LLFace;
-	
+
 	BOOL		mFaceMappingChanged;
 	LLFrameTimer mTextureUpdateTimer;
 	S32			mLOD;

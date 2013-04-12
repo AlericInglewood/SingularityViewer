@@ -81,8 +81,8 @@ class LLViewerParcelMgr : public LLSingleton<LLViewerParcelMgr>
 {
 
 public:
-	typedef boost::function<void (const LLVector3d&)> teleport_finished_callback_t;
-	typedef boost::signals2::signal<void (const LLVector3d&)> teleport_finished_signal_t;
+	typedef boost::function<void (const LLVector3d&, const bool& local)> teleport_finished_callback_t;
+	typedef boost::signals2::signal<void (const LLVector3d&, const bool&)> teleport_finished_signal_t;
 	typedef boost::function<void()> parcel_changed_callback_t;
 	typedef boost::signals2::signal<void()> parcel_changed_signal_t;
 

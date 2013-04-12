@@ -1336,11 +1336,13 @@ void LLViewerParcelMgr::setHoverParcel(const LLVector3d& pos)
 {
 	static U32 last_west, last_south;
 
+
 	// only request parcel info when tooltip is shown
 	if (!gSavedSettings.getBOOL("ShowLandHoverTip"))
 	{
 		return;
 	}
+
 	// only request parcel info if position has changed outside of the
 	// last parcel grid step
 	U32 west_parcel_step = (U32) floor( pos.mdV[VX] / PARCEL_GRID_STEP_METERS );
@@ -1361,6 +1363,7 @@ void LLViewerParcelMgr::setHoverParcel(const LLVector3d& pos)
 	{
 		return;
 	}
+
 
 	// Send a rectangle around the point.
 	// This means the parcel sent back is at least a rectangle around the point,
@@ -1603,7 +1606,7 @@ void LLViewerParcelMgr::processParcelProperties(LLMessageSystem *msg, void **use
 			if (instance->mTeleportInProgress)
 			{
 				instance->mTeleportInProgress = FALSE;
-				instance->mTeleportFinishedSignal(gAgent.getPositionGlobal());
+				instance->mTeleportFinishedSignal(gAgent.getPositionGlobal(), false);
 			}
 		}
 	}
@@ -2513,7 +2516,7 @@ void LLViewerParcelMgr::onTeleportFinished(bool local, const LLVector3d& new_pos
 	{
 		// Local teleport. We already have the agent parcel data.
 		// Emit the signal immediately.
-		getInstance()->mTeleportFinishedSignal(new_pos);
+		getInstance()->mTeleportFinishedSignal(new_pos, local);
 	}
 	else
 	{

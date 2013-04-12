@@ -34,6 +34,8 @@
 
 #include "llviewermedia.h"
 
+#include "llagent.h"
+#include "llagentcamera.h"
 #include "llappviewer.h"
 #include "lldir.h"
 #include "lldiriterator.h"
@@ -43,15 +45,20 @@
 #include "llmimetypes.h"
 #include "llnotifications.h"
 #include "llnotificationsutil.h"
+#include "llparcel.h"
 #include "llpluginclassmedia.h"
 #include "llplugincookiestore.h"
 #include "llurldispatcher.h"
 #include "lluuid.h"
 #include "llviewermediafocus.h"
 #include "llviewercontrol.h"
+#include "llviewerparcelmedia.h"
+#include "llviewerparcelmgr.h"
 #include "llviewertexture.h"
 #include "llviewertexturelist.h"
 #include "llviewerwindow.h"
+#include "llvoavatar.h"
+#include "llvoavatarself.h"
 #include "llwindow.h"
 #include "llvieweraudio.h"
 #include "llweb.h"
@@ -64,6 +71,11 @@ class AIHTTPTimeoutPolicy;
 extern AIHTTPTimeoutPolicy mimeDiscoveryResponder_timeout;
 extern AIHTTPTimeoutPolicy viewerMediaOpenIDResponder_timeout;
 extern AIHTTPTimeoutPolicy viewerMediaWebProfileResponder_timeout;
+
+/*static*/ const char* LLViewerMedia::AUTO_PLAY_MEDIA_SETTING = "ParcelMediaAutoPlayEnable";
+/*static*/ const char* LLViewerMedia::SHOW_MEDIA_ON_OTHERS_SETTING = "MediaShowOnOthers";
+/*static*/ const char* LLViewerMedia::SHOW_MEDIA_WITHIN_PARCEL_SETTING = "MediaShowWithinParcel";
+/*static*/ const char* LLViewerMedia::SHOW_MEDIA_OUTSIDE_PARCEL_SETTING = "MediaShowOutsideParcel";
 
 // Merov: Temporary definitions while porting the new viewer media code to Snowglobe
 const int LEFT_BUTTON  = 0;
@@ -223,6 +235,9 @@ LLURL LLViewerMedia::sOpenIDURL;
 std::string LLViewerMedia::sOpenIDCookie;
 typedef std::list<LLViewerMediaImpl*> impl_list;
 static impl_list sViewerMediaImplList;
+static F32 sGlobalVolume = 1.0f;
+static bool sForceUpdate = false;
+static LLUUID sOnlyAudibleTextureID = LLUUID::null;
 static std::string sUpdatedCookies;
 static const char *PLUGIN_COOKIE_FILE_NAME = "plugin_cookies.txt";
 
@@ -378,22 +393,34 @@ bool LLViewerMedia::textureHasMedia(const LLUUID& texture_id)
 // static
 void LLViewerMedia::setVolume(F32 volume)
 {
-	impl_list::iterator iter = sViewerMediaImplList.begin();
-	impl_list::iterator end = sViewerMediaImplList.end();
-
-	for(; iter != end; iter++)
+	if(volume != sGlobalVolume || sForceUpdate)
 	{
-		LLViewerMediaImpl* pimpl = *iter;
-		LLPluginClassMedia* plugin = pimpl->getMediaPlugin();
-		if(plugin)
+		sGlobalVolume = volume;
+		impl_list::iterator iter = sViewerMediaImplList.begin();
+		impl_list::iterator end = sViewerMediaImplList.end();
+
+		for(; iter != end; iter++)
 		{
-			plugin->setVolume(volume);
-		}
-		else
-		{
-			llwarns << "Plug-in already destroyed" << llendl;
+			LLViewerMediaImpl* pimpl = *iter;
+			LLPluginClassMedia* plugin = pimpl->getMediaPlugin();
+			if(plugin)
+			{
+				plugin->setVolume(volume);
+			}
+			else
+			{
+				llwarns << "Plug-in already destroyed" << llendl;
+			}
+			sForceUpdate = false;
 		}
 	}
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+// static
+F32 LLViewerMedia::getVolume()
+{
+	return sGlobalVolume;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -760,6 +787,28 @@ void LLViewerMedia::openIDCookieResponse(const std::string &cookie)
 
 	setOpenIDCookie();
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////
+// static
+bool LLViewerMedia::hasParcelMedia()
+{
+	return !LLViewerParcelMedia::getURL().empty();
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+// static
+bool LLViewerMedia::hasParcelAudio()
+{
+	return !LLViewerMedia::getParcelAudioURL().empty();
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+// static
+std::string LLViewerMedia::getParcelAudioURL()
+{
+	return LLViewerParcelMgr::getInstance()->getAgentParcel()->getMusicURL();
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////
 // static
 void LLViewerMedia::cleanupClass()
@@ -773,6 +822,22 @@ void LLViewerMedia::cleanupClass()
 #endif
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////
+// static
+void LLViewerMedia::onTeleportFinished()
+{
+	// On teleport, clear this setting (i.e. set it to true)
+	gSavedSettings.setBOOL("MediaTentativeAutoPlay", true);
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////
+// static
+void LLViewerMedia::setOnlyAudibleMediaTextureID(const LLUUID& texture_id)
+{
+	sOnlyAudibleTextureID = texture_id;
+	sForceUpdate = true;
+}
 //////////////////////////////////////////////////////////////////////////////////////////
 // LLViewerMediaImpl
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -797,9 +862,32 @@ LLViewerMediaImpl::LLViewerMediaImpl(const std::string& media_url,
 	mTextureUsedHeight(0),
 	mSuspendUpdates(false),
 	mVisible(true),
+	mLastSetCursor( UI_CURSOR_ARROW ),
+	mMediaNavState( MEDIANAVSTATE_NONE ),
+	mInterest(0.0f),
+	mUsedInUI(false),
 	mHasFocus(false),
+	mNavigateRediscoverType(false),
+	mNavigateServerRequest(false),
+	mMediaSourceFailed(false),
+	mRequestedVolume(1.0f),
+	mIsMuted(false),
+	mNeedsMuteCheck(false),
+	mPreviousMediaState(MEDIA_NONE),
+	mPreviousMediaTime(0.0f),
+	mIsDisabled(false),
+	mIsParcelMedia(false),
+	mProximity(-1),
+	mProximityDistance(0.0f),
+	mMediaAutoPlay(false),
+	mInNearbyMediaList(false),
 	mClearCache(false),
-	mBackgroundColor(LLColor4::white)
+	mBackgroundColor(LLColor4::white),
+	mNavigateSuspended(false),
+	mNavigateSuspendedDeferred(false),
+	mIsUpdated(false),
+	mTrustedBrowser(false),
+	mZoomFactor(1.0)
 { 
 	createMediaSource();
 }
@@ -966,6 +1054,12 @@ bool LLViewerMediaImpl::initializePlugin(const std::string& media_type)
 	// and unconditionally set the mime type
 	mMimeType = media_type;
 
+	// If we got here, we want to ignore previous init failures.
+	mMediaSourceFailed = false;
+
+	// Save the MIME type that really caused the plugin to load
+	mCurrentMimeType = mMimeType;
+
 	LLPluginClassMedia* media_source = newSourceFromMediaType(mMimeType, this, mMediaWidth, mMediaHeight);
 	
 	if (media_source)
@@ -1097,11 +1191,52 @@ void LLViewerMediaImpl::seek(F32 time)
 //////////////////////////////////////////////////////////////////////////////////////////
 void LLViewerMediaImpl::setVolume(F32 volume)
 {
+	mRequestedVolume = volume;
+	updateVolume();
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+void LLViewerMediaImpl::updateVolume()
+{
 	LLPluginClassMedia* plugin = getMediaPlugin();
 	if (plugin)
 	{
-		plugin->setVolume(volume);
+		// always scale the volume by the global media volume 
+		F32 volume = mRequestedVolume * LLViewerMedia::getVolume();
+
+		if (mProximityCamera > 0) 
+		{
+			if (mProximityCamera > gSavedSettings.getF32("MediaRollOffMax"))
+			{
+				volume = 0;
+			}
+			else if (mProximityCamera > gSavedSettings.getF32("MediaRollOffMin"))
+			{
+				// attenuated_volume = 1 / (roll_off_rate * (d - min))^2
+				// the +1 is there so that for distance 0 the volume stays the same
+				F64 adjusted_distance = mProximityCamera - gSavedSettings.getF32("MediaRollOffMin");
+				F64 attenuation = 1.0 + (gSavedSettings.getF32("MediaRollOffRate") * adjusted_distance);
+				attenuation = 1.0 / (attenuation * attenuation);
+				// the attenuation multiplier should never be more than one since that would increase volume
+				volume = volume * llmin(1.0, attenuation);
+			}
+		}
+
+		if (sOnlyAudibleTextureID == LLUUID::null || sOnlyAudibleTextureID == mTextureId)
+		{
+			plugin->setVolume(volume);
+		}
+		else
+		{
+			plugin->setVolume(0.0f);
+		}
 	}
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+F32 LLViewerMediaImpl::getVolume()
+{
+	return mRequestedVolume;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -1131,6 +1266,17 @@ bool LLViewerMediaImpl::hasFocus() const
 	return mHasFocus;
 }
 
+std::string LLViewerMediaImpl::getCurrentMediaURL()
+{
+	if(!mCurrentMediaURL.empty())
+	{
+		return mCurrentMediaURL;
+	}
+	
+	return mMediaURL;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
 void LLViewerMediaImpl::clearCache()
 {
 	LLPluginClassMedia* plugin = getMediaPlugin();
@@ -1308,6 +1454,23 @@ const std::string& LLViewerMediaImpl::getName() const
 	
 	return LLStringUtil::null; 
 };
+
+//////////////////////////////////////////////////////////////////////////////////////////
+void LLViewerMediaImpl::navigateForward()
+{
+	LLPluginClassMedia* plugin = getMediaPlugin();
+	if (plugin)
+	{
+		plugin->browse_forward();
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+void LLViewerMediaImpl::navigateReload()
+{
+	navigateTo(getCurrentMediaURL(), "", true, false);
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////
 void LLViewerMediaImpl::navigateHome()
 {
@@ -1319,7 +1482,19 @@ void LLViewerMediaImpl::navigateHome()
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
-void LLViewerMediaImpl::navigateTo(const std::string& url, const std::string& mime_type,  bool rediscover_type)
+void LLViewerMediaImpl::unload()
+{
+	// Unload the media impl and clear its state.
+	destroyMediaSource();
+	resetPreviousMediaState();
+	mMediaURL.clear();
+	mMimeType.clear();
+	mCurrentMediaURL.clear();
+	mCurrentMimeType.clear();
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+void LLViewerMediaImpl::navigateTo(const std::string& url, const std::string& mime_type,  bool rediscover_type, bool server_request)
 {
 	LLPluginClassMedia* plugin = getMediaPlugin();
 	if(rediscover_type)
@@ -1776,9 +1951,87 @@ bool LLViewerMediaImpl::isMediaPaused()
 
 //////////////////////////////////////////////////////////////////////////////////////////
 //
-bool LLViewerMediaImpl::hasMedia()
+bool LLViewerMediaImpl::hasMedia() const
 {
 	return mPluginBase != NULL;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+//
+void LLViewerMediaImpl::resetPreviousMediaState()
+{
+	mPreviousMediaState = MEDIA_NONE;
+	mPreviousMediaTime = 0.0f;
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////
+//
+void LLViewerMediaImpl::setDisabled(bool disabled, bool forcePlayOnEnable)
+{
+	if(mIsDisabled != disabled)
+	{
+		// Only do this on actual state transitions.
+		mIsDisabled = disabled;
+		
+		if(mIsDisabled)
+		{
+			// We just disabled this media.  Clear all state.
+			unload();
+		}
+		else
+		{
+			// We just (re)enabled this media.  Do a navigate if auto-play is in order.
+			if(isAutoPlayable() || forcePlayOnEnable)
+			{
+				navigateTo(mMediaEntryURL, "", true, true);
+			}
+		}
+
+	}
+};
+
+//////////////////////////////////////////////////////////////////////////////////////////
+//
+bool LLViewerMediaImpl::isForcedUnloaded() const
+{
+	if(mIsMuted || mMediaSourceFailed || mIsDisabled)
+	{
+		return true;
+	}
+	
+	// If this media's class is not supposed to be shown, unload
+	//if (!shouldShowBasedOnClass())
+	//{
+	//	return true;
+	//}
+	
+	return false;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+//
+bool LLViewerMediaImpl::isPlayable() const
+{
+	if(isForcedUnloaded())
+	{
+		// All of the forced-unloaded criteria also imply not playable.
+		return false;
+	}
+	
+	if(hasMedia())
+	{
+		// Anything that's already playing is, by definition, playable.
+		return true;
+	}
+	
+	if(!mMediaURL.empty())
+	{
+		// If something has navigated the instance, it's ready to be played.
+		return true;
+	}
+	
+	return false;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -1872,6 +2125,36 @@ LLViewerMediaImpl::canPaste() const
 		return FALSE;
 }
 
+void LLViewerMediaImpl::setUpdated(BOOL updated)
+{
+	mIsUpdated = updated ;
+}
+
+BOOL LLViewerMediaImpl::isUpdated()
+{
+	return mIsUpdated ;
+}
+
+F64 LLViewerMediaImpl::getApproximateTextureInterest()
+{
+	F64 result = 0.0f;
+	
+	LLPluginClassMedia* plugin = getMediaPlugin();
+	if(plugin)
+	{
+		result = plugin->getFullWidth();
+		result *= plugin->getFullHeight();
+	}
+	else
+	{
+		// No media source is loaded -- all we have to go on is the texture size that has been set on the impl, if any.
+		result = mMediaWidth;
+		result *= mMediaHeight;
+	}
+
+	return result;
+}
+
 void LLViewerMediaImpl::setBackgroundColor(LLColor4 color)
 {
 	mBackgroundColor = color; 
@@ -1882,3 +2165,115 @@ void LLViewerMediaImpl::setBackgroundColor(LLColor4 color)
 		plugin->setBackgroundColor(mBackgroundColor);
 	}
 };
+
+//////////////////////////////////////////////////////////////////////////////////////////
+//
+bool LLViewerMediaImpl::isAutoPlayable() const
+{
+	return (mMediaAutoPlay && 
+			gSavedSettings.getBOOL(LLViewerMedia::AUTO_PLAY_MEDIA_SETTING) &&
+			gSavedSettings.getBOOL("MediaTentativeAutoPlay"));
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+//
+/*bool LLViewerMediaImpl::shouldShowBasedOnClass() const
+{
+	// If this is parcel media or in the UI, return true always
+	if (getUsedInUI() || isParcelMedia()) return true;
+	
+	bool attached_to_another_avatar = isAttachedToAnotherAvatar();
+	bool inside_parcel = isInAgentParcel();
+	
+	//	llinfos << " hasFocus = " << hasFocus() <<
+	//	" others = " << (attached_to_another_avatar && gSavedSettings.getBOOL(LLViewerMedia::SHOW_MEDIA_ON_OTHERS_SETTING)) <<
+	//	" within = " << (inside_parcel && gSavedSettings.getBOOL(LLViewerMedia::SHOW_MEDIA_WITHIN_PARCEL_SETTING)) <<
+	//	" outside = " << (!inside_parcel && gSavedSettings.getBOOL(LLViewerMedia::SHOW_MEDIA_OUTSIDE_PARCEL_SETTING)) << llendl;
+	
+	// If it has focus, we should show it
+	// This is incorrect, and causes EXT-6750 (disabled attachment media still plays)
+//	if (hasFocus())
+//		return true;
+	
+	// If it is attached to an avatar and the pref is off, we shouldn't show it
+	if (attached_to_another_avatar)
+	{
+		static LLCachedControl<bool> show_media_on_others(gSavedSettings, LLViewerMedia::SHOW_MEDIA_ON_OTHERS_SETTING);
+		return show_media_on_others;
+	}
+	if (inside_parcel)
+	{
+		static LLCachedControl<bool> show_media_within_parcel(gSavedSettings, LLViewerMedia::SHOW_MEDIA_WITHIN_PARCEL_SETTING);
+
+		return show_media_within_parcel;
+	}
+	else 
+	{
+		static LLCachedControl<bool> show_media_outside_parcel(gSavedSettings, LLViewerMedia::SHOW_MEDIA_OUTSIDE_PARCEL_SETTING);
+
+		return show_media_outside_parcel;
+	}
+}
+//////////////////////////////////////////////////////////////////////////////////////////
+//
+bool LLViewerMediaImpl::isAttachedToAnotherAvatar() const
+{
+	bool result = false;
+	
+	std::list< LLVOVolume* >::const_iterator iter = mObjectList.begin();
+	std::list< LLVOVolume* >::const_iterator end = mObjectList.end();
+	for ( ; iter != end; iter++)
+	{
+		if (isObjectAttachedToAnotherAvatar(*iter))
+		{
+			result = true;
+			break;
+		}
+	}
+	return result;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+//
+//static
+bool LLViewerMediaImpl::isObjectAttachedToAnotherAvatar(LLVOVolume *obj)
+{
+	bool result = false;
+	LLXform *xform = obj;
+	// Walk up parent chain
+	while (NULL != xform)
+	{
+		LLViewerObject *object = dynamic_cast<LLViewerObject*> (xform);
+		if (NULL != object)
+		{
+			LLVOAvatar *avatar = object->asAvatar();
+			if ((NULL != avatar) && (avatar != gAgentAvatarp))
+			{
+				result = true;
+				break;
+			}
+		}
+		xform = xform->getParent();
+	}
+	return result;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+//
+bool LLViewerMediaImpl::isInAgentParcel() const
+{
+	bool result = false;
+	
+	std::list< LLVOVolume* >::const_iterator iter = mObjectList.begin();
+	std::list< LLVOVolume* >::const_iterator end = mObjectList.end();
+	for ( ; iter != end; iter++)
+	{
+		LLVOVolume *object = *iter;
+		if (LLViewerMediaImpl::isObjectInAgentParcel(object))
+		{
+			result = true;
+			break;
+		}
+	}
+	return result;
+}*/

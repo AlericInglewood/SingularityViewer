@@ -216,6 +216,16 @@ bool highlight_offered_object(const LLUUID& obj_id);
 void set_dad_inventory_item(LLInventoryItem* inv_item, const LLUUID& into_folder_uuid);
 void set_dad_inbox_object(const LLUUID& object_id);
 
+class LLViewerMessage : public  LLSingleton<LLViewerMessage>
+{
+public:
+	typedef boost::function<void()> teleport_started_callback_t;
+	typedef boost::signals2::signal<void()> teleport_started_signal_t;
+	boost::signals2::connection setTeleportStartedCallback(teleport_started_callback_t cb);
+
+	teleport_started_signal_t	mTeleportStartedSignal;
+};
+
 struct LLOfferInfo
 {
 	LLOfferInfo() {};

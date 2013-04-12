@@ -327,6 +327,33 @@ std::string LLViewerParcelMedia::getMimeType()
 	return sMediaImpl.notNull() ? sMediaImpl->getMimeType() : LLMIMETypes::getDefaultMimeType();
 }
 
+//static 
+std::string LLViewerParcelMedia::getURL()
+{
+	std::string url;
+	if(sMediaImpl.notNull())
+		url = sMediaImpl->getMediaURL();
+	
+	if(stricmp(LLViewerParcelMgr::getInstance()->getAgentParcel()->getMediaType().c_str(), LLMIMETypes::getDefaultMimeType().c_str()) != 0)
+	{
+		if (url.empty())
+			url = LLViewerParcelMgr::getInstance()->getAgentParcel()->getMediaCurrentURL();
+		
+		if (url.empty())
+			url = LLViewerParcelMgr::getInstance()->getAgentParcel()->getMediaURL();
+	}
+	
+	return url;
+}
+
+//static 
+std::string LLViewerParcelMedia::getName()
+{
+	if(sMediaImpl.notNull())
+		return sMediaImpl->getName();
+	return "";
+}
+
 viewer_media_t LLViewerParcelMedia::getParcelMedia()
 {
 	return sMediaImpl;
