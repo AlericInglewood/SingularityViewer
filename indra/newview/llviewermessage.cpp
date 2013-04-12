@@ -1147,8 +1147,8 @@ bool check_offer_throttle(const std::string& from_name, bool check_only)
 
 void open_inventory_offer(const uuid_vec_t& objects, const std::string& from_name)
 {
-	uuid_vec_t::const_iterator it = items.begin();
-	uuid_vec_t::const_iterator end = items.end();
+	uuid_vec_t::const_iterator it = objects.begin();
+	uuid_vec_t::const_iterator end = objects.end();
 	LLInventoryItem* item;
 	for(; it != end; ++it)
 	{
