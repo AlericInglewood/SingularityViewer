@@ -69,6 +69,7 @@ public:
 	typedef LLPointer<LLMediaDataClientObject> ptr_t;
 };
 
+extern AIHTTPTimeoutPolicy mediaDataClient_timeout;
 
 // This object creates a priority queue for requests.
 // Abstracts the Cap URL, the request, and the responder
@@ -190,7 +191,7 @@ protected:
 	typedef LLPointer<Request> request_ptr_t;
 
 	// Responder
-	class Responder : public LLHTTPClient::Responder
+	class Responder : public LLHTTPClient::ResponderWithResult
 	{
 	public:
 		Responder(const request_ptr_t &request);
@@ -203,6 +204,10 @@ protected:
 
 	private:
 		request_ptr_t mRequest;
+
+	protected:
+		/*virtual*/ AIHTTPTimeoutPolicy const& getHTTPTimeoutPolicy(void) const { return mediaDataClient_timeout; }
+		/*virtual*/ char const* getName(void) const { return "LLMediaDataClient::Responder"; }
 	};
 
 	class RetryTimer : public LLEventTimer
