@@ -58,66 +58,26 @@
 		Expression
 	</text>
 	<combo_box label="" name="emote_combo" tool_tip="Contrôle l'expression du visage au cours de l'animation." left_delta="116" width="124">
-		<combo_item name="[None]">
-			[None]
-		</combo_item>
-		<combo_item name="Aaaaah">
-			Aaaaah
-		</combo_item>
-		<combo_item name="Afraid">
-			Effrayé
-		</combo_item>
-		<combo_item name="Angry">
-			En colère
-		</combo_item>
-		<combo_item name="BigSmile">
-			Grand sourire
-		</combo_item>
-		<combo_item name="Bored">
-			Ennui
-		</combo_item>
-		<combo_item name="Cry">
-			Pleurer
-		</combo_item>
-		<combo_item name="Disdain">
-			Mépris
-		</combo_item>
-		<combo_item name="Embarrassed">
-			Gêne
-		</combo_item>
-		<combo_item name="Frown">
-			Froncer les sourcils
-		</combo_item>
-		<combo_item name="Kiss">
-			Embrasser
-		</combo_item>
-		<combo_item name="Laugh">
-			Rire
-		</combo_item>
-		<combo_item name="Plllppt">
-			Plllppt
-		</combo_item>
-		<combo_item name="Repulsed">
-			Dégoût
-		</combo_item>
-		<combo_item name="Sad">
-			Triste
-		</combo_item>
-		<combo_item name="Shrug">
-			Hausser les épaules
-		</combo_item>
-		<combo_item name="Smile">
-			Sourire
-		</combo_item>
-		<combo_item name="Surprise">
-			Surprise
-		</combo_item>
-		<combo_item name="Wink">
-			Clin d'œil
-		</combo_item>
-		<combo_item name="Worry">
-			Soucis
-		</combo_item>
+		<combo_item name="[None]" value="[None]">[None]</combo_item>
+		<combo_item name="Aaaaah" value="Aaaaah">Aaaaah</combo_item>
+		<combo_item name="Afraid" value="Afraid">Effrayé</combo_item>
+		<combo_item name="Angry" value="Angry">En colère</combo_item>
+		<combo_item name="BigSmile" value="BigSmile">Grand sourire</combo_item>
+		<combo_item name="Bored" value="Bored">Ennui</combo_item>
+		<combo_item name="Cry" value="Cry">Pleurer</combo_item>
+		<combo_item name="Disdain" value="Disdain">Mépris</combo_item>
+		<combo_item name="Embarrassed" value="Embarrassed">Gêne</combo_item>
+		<combo_item name="Frown" value="Frown">Froncer les sourcils</combo_item>
+		<combo_item name="Kiss" value="Kiss">Embrasser</combo_item>
+		<combo_item name="Laugh" value="Laugh">Rire</combo_item>
+		<combo_item name="Plllppt" value="Plllppt">Plllppt</combo_item>
+		<combo_item name="Repulsed" value="Repulsed">Dégoût</combo_item>
+		<combo_item name="Sad" value="Sad">Triste</combo_item>
+		<combo_item name="Shrug" value="Shrug">Hausser les épaules</combo_item>
+		<combo_item name="Smile" value="Smile">Sourire</combo_item>
+		<combo_item name="Surprise" value="Surprise">Surprise</combo_item>
+		<combo_item name="Wink" value="Wink">Clin d'œil</combo_item>
+		<combo_item name="Worry" value="Worry">Soucis</combo_item>
 	</combo_box>
 	<text name="preview_label" width="110">
 		Prévisualiser pendant
@@ -140,7 +100,7 @@
 	<spinner label="Transition &#10;fin (s)" label_width="65" name="ease_out_time" tool_tip="Durée (en secondes) pendant laquelle l'animation disparaît du mouvement." left="160" width="125"/>
 	<button label="" name="play_btn" tool_tip="Jouer/Arrêter votre animation." bottom_delta="-48"/>
 	<button label="" name="stop_btn" tool_tip="Arrêter le playback"/>
-	<slider label="" name="playback_slider"/>
+	<slider_bar label="" name="playback_slider"/>
 	<text name="bad_animation_text">
 		Impossible de lire le fichier d'animation.
 

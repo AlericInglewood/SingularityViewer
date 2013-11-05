@@ -77,9 +77,11 @@
 #include "llviewerregion.h"
 #include "llviewerstats.h"
 #include "llviewerwindow.h"
+#include "llfloaterperms.h"
 
 #include "hippogridmanager.h"
 #include "lfsimfeaturehandler.h"
+#include "aimultigridfrontend.h"
 
 #include "llviewerobjectbackup.h" 
 
@@ -115,8 +117,8 @@ class importResponder : public LLNewAgentInventoryResponder
 {
 public:
 
-	importResponder(const LLSD& post_data, const LLUUID& vfile_id, LLAssetType::EType asset_type)
-	: LLNewAgentInventoryResponder(post_data, vfile_id, asset_type)
+	importResponder(const LLSD& post_data, const LLUUID& vfile_id, LLAssetType::EType asset_type, Callback callback, void* userdata)
+	: LLNewAgentInventoryResponder(post_data, vfile_id, asset_type, callback, userdata)
 	{
 	}
 
@@ -1171,48 +1173,6 @@ void LLObjectBackup::updateMap(LLUUID uploaded_asset)
 	mAssetMap.insert(std::pair<LLUUID, LLUUID>(mCurrentAsset, uploaded_asset));
 }
 
-void myupload_new_resource(const LLTransactionID &tid, LLAssetType::EType asset_type,
-						 std::string name, std::string desc, S32 compression_info,
-						 LLFolderType::EType destination_folder_type,
-						 LLInventoryType::EType inv_type, U32 next_owner_perm,
-						 const std::string& display_name,
-						 LLAssetStorage::LLStoreAssetCallback callback,
-						 void *userdata)
-{
-	if (gDisconnected)
-	{
-		return;
-	}
-
-	LLAssetID uuid = tid.makeAssetID(gAgent.getSecureSessionID());	
-
-	// At this point, we're ready for the upload.
-	std::string upload_message = "Uploading...\n\n";
-	upload_message.append(display_name);
-	LLUploadDialog::modalUploadDialog(upload_message);
-
-	std::string url = gAgent.getRegion()->getCapability("NewFileAgentInventory");
-	if (!url.empty())
-	{
-		LLSD body;
-		body["folder_id"] = gInventory.findCategoryUUIDForType((destination_folder_type == LLFolderType::FT_NONE) ? LLFolderType::assetTypeToFolderType(asset_type) : destination_folder_type);
-		body["asset_type"] = LLAssetType::lookup(asset_type);
-		body["inventory_type"] = LLInventoryType::lookup(inv_type);
-		body["name"] = name;
-		body["description"] = desc;
-
-		std::ostringstream llsdxml;
-		LLSDSerialize::toXML(body, llsdxml);
-		LL_DEBUGS("ObjectBackup") << "posting body to capability: " << llsdxml.str() << LL_ENDL;
-		//LLHTTPClient::post(url, body, new LLNewAgentInventoryResponder(body, uuid, asset_type));
-		LLHTTPClient::post(url, body, new importResponder(body, uuid, asset_type));
-	}
-	else
-	{
-		LL_INFOS("ObjectBackup") << "NewAgentInventory capability not found. Can't upload !" << LL_ENDL;	
-	}
-}
-
 void LLObjectBackup::uploadNextAsset()
 {
 	if (mTexturesList.empty())
@@ -1264,7 +1224,10 @@ void LLObjectBackup::uploadNextAsset()
 		return;
 	}
 
-	 myupload_new_resource(tid, LLAssetType::AT_TEXTURE, struid, struid, 0,
+	LLPointer<AIMultiGrid::FrontEnd> mg_front_end = new AIMultiGrid::FrontEnd;
+	mg_front_end->upload_new_resource(tid, LLAssetType::AT_TEXTURE, struid, struid, 0,
 		LLFolderType::FT_TEXTURE, LLInventoryType::defaultForAssetType(LLAssetType::AT_TEXTURE),
-		0x0, "Uploaded texture", NULL, NULL);
+		LLFloaterPerms::getNextOwnerPerms(), LLFloaterPerms::getGroupPerms(), LLFloaterPerms::getNextOwnerPerms(),
+		"exported texture", LLGlobalEconomy::Singleton::getInstance()->getPriceUpload(), NULL, NULL,
+		AIMultiGrid::UploadResponderFactory<importResponder>());
 }

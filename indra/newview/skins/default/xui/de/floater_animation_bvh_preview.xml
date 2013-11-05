@@ -28,26 +28,26 @@
 	</combo_box>
 	<text name="emote_label">Ausdruck</text>
 	<combo_box name="emote_combo" tool_tip="Steuert Gesichtsregungen während der Animation.">
-		<combo_item name="[None]">[Keine]</combo_item>
-		<combo_item name="Aaaaah">Aaaaah</combo_item>
-		<combo_item name="Afraid">Ängstlich</combo_item>
-		<combo_item name="Angry">Verärgert</combo_item>
-		<combo_item name="BigSmile">Grinst</combo_item>
-		<combo_item name="Bored">Gelangweilt</combo_item>
-		<combo_item name="Cry">Weinen</combo_item>
-		<combo_item name="Disdain">Verachtung</combo_item>
-		<combo_item name="Embarrassed">Verlegen</combo_item>
-		<combo_item name="Frown">Stirnrunzeln</combo_item>
-		<combo_item name="Kiss">Küssen</combo_item>
-		<combo_item name="Laugh">Lachen</combo_item>
-		<combo_item name="Plllppt">Bäääh</combo_item>
-		<combo_item name="Repulsed">Angewidert</combo_item>
-		<combo_item name="Sad">Traurig</combo_item>
-		<combo_item name="Shrug">Achselzucken</combo_item>
-		<combo_item name="Smile">Lächeln</combo_item>
-		<combo_item name="Surprise">Überraschung</combo_item>
-		<combo_item name="Wink">Zwinkern</combo_item>
-		<combo_item name="Worry">Sorgenvoll</combo_item>
+		<combo_item name="[None]" value="[None]">[Keine]</combo_item>
+		<combo_item name="Aaaaah" value="Aaaaah">Aaaaah</combo_item>
+		<combo_item name="Afraid" value="Afraid">Ängstlich</combo_item>
+		<combo_item name="Angry" value="Angry">Verärgert</combo_item>
+		<combo_item name="BigSmile" value="BigSmile">Grinst</combo_item>
+		<combo_item name="Bored" value="Bored">Gelangweilt</combo_item>
+		<combo_item name="Cry" value="Cry">Weinen</combo_item>
+		<combo_item name="Disdain" value="Disdain">Verachtung</combo_item>
+		<combo_item name="Embarrassed" value="Embarrassed">Verlegen</combo_item>
+		<combo_item name="Frown" value="Frown">Stirnrunzeln</combo_item>
+		<combo_item name="Kiss" value="Kiss">Küssen</combo_item>
+		<combo_item name="Laugh" value="Laugh">Lachen</combo_item>
+		<combo_item name="Plllppt" value="Plllppt">Bäääh</combo_item>
+		<combo_item name="Repulsed" value="Repulsed">Angewidert</combo_item>
+		<combo_item name="Sad" value="Sad">Traurig</combo_item>
+		<combo_item name="Shrug" value="Shrug">Achselzucken</combo_item>
+		<combo_item name="Smile" value="Smile">Lächeln</combo_item>
+		<combo_item name="Surprise" value="Surprise">Überraschung</combo_item>
+		<combo_item name="Wink" value="Wink">Zwinkern</combo_item>
+		<combo_item name="Worry" value="Worry">Sorgenvoll</combo_item>
 	</combo_box>
 	<text name="preview_label">Vorschau während:</text>
 	<combo_box name="preview_base_anim" tool_tip="Hiermit können Sie das Verhalten Ihres Avatars testen, während Ihr Avatar normale Bewegungen ausführt.">

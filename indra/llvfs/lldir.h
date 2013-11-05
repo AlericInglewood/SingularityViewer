@@ -100,6 +100,7 @@ class LLDir
 	const std::string &getPerAccountChatLogsDir() const;	// Location of the per account chat logs dir.
 	const std::string &getTempDir() const;			// Common temporary directory
 	const std::string  getCacheDir(bool get_default = false) const;	// Location of the cache.
+	std::string getUploadsDir(bool get_default = false) const;	// Location of the uploads database.
 	const std::string &getOSCacheDir() const;		// location of OS-specific cache folder (may be empty string)
 	const std::string &getCAFile() const;			// File containing TLS certificate authorities
 	const std::string &getDirDelimiter() const;	// directory separator for platform (ie. '\' or '/' or ':')
@@ -131,7 +132,9 @@ class LLDir
 	// For producing safe download file names from potentially unsafe ones
 	static std::string getScrubbedFileName(const std::string uncleanFileName);
 	static std::string getForbiddenFileChars();
+	static std::string stripTrailingSeparators(std::string const& path);	// Singu extension.
     void setDumpDir( const std::string& path );
+	void setUploadsDir(const std::string &path);	// Singu extension.
 
 	virtual void setChatLogsDir(const std::string &path);		// Set the chat logs dir to this user's dir
 	virtual void setPerAccountChatLogsDir(const std::string &grid, const std::string &first, const std::string &last);				// Set the per user chat log directory.
@@ -171,6 +174,7 @@ protected:
 	std::string mCacheDir;			// cache directory as set by user preference
 	std::string mDefaultCacheDir;	// default cache diretory
 	std::string mOSCacheDir;		// operating system cache dir
+	std::string mUploadsDir;		// The path to the uploads directory or empty when the default location should be used.
 	std::string mDirDelimiter;
 	std::string mSkinBaseDir;			// Base for skins paths.
 	std::string mSkinDir;			// Location for current skin info.

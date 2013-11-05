@@ -48,10 +48,12 @@
 #include "v3dmath.h"
 #include "v3math.h"
 #include "llbvhconsts.h"
+#include "aibvhanimdelta.h"
 
 class LLKeyframeDataCache;
 class LLVFS;
 class LLDataPacker;
+class LLMD5;
 
 #define MIN_REQUIRED_PIXEL_AREA_KEYFRAME (40.f)
 #define MAX_CHAIN_LENGTH (4)
@@ -69,6 +71,7 @@ class LLKeyframeMotion :
 public:
 	// Constructor
 	LLKeyframeMotion(const LLUUID &id);
+	LLKeyframeMotion(LLCharacter* character);
 
 	// Destructor
 	virtual ~LLKeyframeMotion();
@@ -118,7 +121,7 @@ public:
 
 	// motions must report their priority
 	virtual LLJoint::JointPriority getPriority() { 
-		if (mJointMotionList) return mJointMotionList->mBasePriority; 
+		if (mJointMotionList) return (LLJoint::JointPriority)mJointMotionList->mBasePriority;
 		else return LLJoint::LOW_PRIORITY;
 	}
 
@@ -155,8 +158,21 @@ public:
 							   void* user_data, S32 status, LLExtStat ext_status);
 
 public:
+	enum ECode
+	{
+		success = 0,
+		not_anim_format,
+		incompatible_anim_version,
+		invalid_anim_file,
+		longer_than_60s
+	};
+	static char const* errorString(ECode error);
+
 	U32		getFileSize();
 	BOOL	serialize(LLDataPacker& dp) const;
+	ECode	deserialize_motionlist(LLDataPacker& dp, bool calculate_hash, LLMD5& source_md5);
+	void	deserialize_tail(void);
+	void	deserialize(LLDataPacker& dp, LLMD5& source_md5);
 	BOOL	deserialize(LLDataPacker& dp);
 	BOOL	isLoaded() { return mJointMotionList != NULL; }
 
@@ -181,7 +197,7 @@ public:
 	}
 
 	LLHandMotion::eHandPose getHandPose() { 
-		return (mJointMotionList) ? mJointMotionList->mHandPose : LLHandMotion::HAND_POSE_RELAXED;
+		return (mJointMotionList) ? (LLHandMotion::eHandPose)mJointMotionList->mHandPose : LLHandMotion::HAND_POSE_RELAXED;
 	}
 
 	void setPriority(S32 priority);
@@ -393,26 +409,16 @@ public:
 	//-------------------------------------------------------------------------
 	// JointMotionList
 	//-------------------------------------------------------------------------
-	class JointMotionList
+	class JointMotionList : public AIMultiGrid::BVHAnimDelta
 	{
+		friend class LLKeyframeMotion;		// Need now, to get access to the protected members of the base class, too.
 	public:
 		std::vector<JointMotion*> mJointMotionArray;
 		F32						mDuration;
-		BOOL					mLoop;
-		F32						mLoopInPoint;
-		F32						mLoopOutPoint;
-		F32						mEaseInDuration;
-		F32						mEaseOutDuration;
-		LLJoint::JointPriority	mBasePriority;
-		LLHandMotion::eHandPose mHandPose;
 		LLJoint::JointPriority  mMaxPriority;
 		typedef std::list<JointConstraintSharedData*> constraint_list_t;
 		constraint_list_t		mConstraints;
 		LLBBoxLocal				mPelvisBBox;
-		// mEmoteName is a facial motion, but it's necessary to appear here so that it's cached.
-		// TODO: LLKeyframeDataCache::getKeyframeData should probably return a class containing 
-		// JointMotionList and mEmoteName, see LLKeyframeMotion::onInitialize.
-		std::string				mEmoteName; 
 	public:
 		JointMotionList();
 		~JointMotionList();
@@ -421,6 +427,8 @@ public:
 		U32 getNumJointMotions() const { return mJointMotionArray.size(); }
 	};
 
+	// Accessor. Only valid after the LLKeyframeMotion is loaded.
+	AIMultiGrid::BVHAnimDelta const& getDelta(void) const { return *mJointMotionList; }
 
 protected:
 	static LLVFS*				sVFS;

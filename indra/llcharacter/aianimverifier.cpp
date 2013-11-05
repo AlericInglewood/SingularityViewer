@@ -1,0 +1,100 @@
+/**
+ * @file aianimverifier.cpp
+ * @brief AIMultiGrid support: calculate hash values for an animation asset.
+ *
+ * Copyright (c) 2013, Aleric Inglewood.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ * There are special exceptions to the terms and conditions of the GPL as
+ * it is applied to this Source Code. View the full text of the exception
+ * in the file doc/FLOSS-exception.txt in this software distribution.
+ *
+ * CHANGELOG
+ *   and additional copyright holders.
+ *
+ *   20/09/2013
+ *   Initial version, written by Aleric Inglewood @ SL
+ */
+
+#include "linden_common.h"
+#include "aianimverifier.h"
+#include "aibvhanimdelta.h"
+#include "aifile.h"
+#include "aialert.h"
+#include "llmd5.h"
+#include "llerror.h"
+#include "llkeyframemotion.h"
+#include "lldatapacker.h"
+#include "llcharacter.h"
+
+AIAnimVerifier::AIAnimVerifier(std::string const& filename) :
+  mFilename(filename)
+{
+}
+
+void AIAnimVerifier::calculateHash(LLMD5& source_md5, LLMD5& asset_md5, LLPointer<AIMultiGrid::BVHAnimDelta>& delta, LLCharacter* character)
+{
+  // Open the file.
+  AIFile fp(mFilename, "rb");
+
+  // Default error thrown when seek or read fails. It doesn't really matter
+  // because since we succeeded to open the file for reading, such error
+  // just won't happen anyway.
+  LLKeyframeMotion::ECode error = LLKeyframeMotion::invalid_anim_file;
+
+  // Get the size of the file.
+  long filesize;
+  if (fseek(fp, 0, SEEK_END) || (filesize = ftell(fp)) == -1)
+  {
+	// It's impossible to get an error here, but whatever!
+	THROW_ALERT(LLKeyframeMotion::errorString(error));
+  }
+  rewind(fp);
+
+  // Read it into memory.
+  unsigned char* buffer = new unsigned char[filesize];
+  bool success = fread(buffer, 1, filesize, fp) == filesize;
+
+  // If the read was successful, calculate asset_md5 and source_md5 hash values of it.
+  if (success)
+  {
+	// Calculate the source hash.
+	LLDataPackerBinaryBuffer dp(buffer, filesize);
+	LLKeyframeMotion keyframe(character);
+	error = keyframe.deserialize_motionlist(dp, true, source_md5);
+	if (!error)
+	{
+	  // Extract the Delta from the anim file too, and pass a copy back.
+	  delta = new AIMultiGrid::BVHAnimDelta(keyframe.getDelta());
+	}
+	// Calculate asset hash from source hash and the delta.
+	unsigned char source_digest[16];
+	source_md5.raw_digest(source_digest);
+	asset_md5.update(source_digest, 16);		// Absorb the source.
+	delta->update_hash(asset_md5);				// Absorb the delta; this ignores round off errors in the floating point settings.
+	asset_md5.finalize();
+  }
+
+  // Clean up.
+  delete [] buffer;
+
+  if (error)
+  {
+	THROW_ALERT(LLKeyframeMotion::errorString(error));
+  }
+
+  source_md5.finalize();
+}
+

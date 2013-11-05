@@ -346,6 +346,18 @@ const std::string  LLDir::getCacheDir(bool get_default) const
 	}
 }
 
+std::string LLDir::getUploadsDir(bool get_default) const
+{
+	if (mUploadsDir.empty() || get_default)
+	{
+		return gDirUtilp->getOSUserAppDir() + gDirUtilp->getDirDelimiter() + "uploads";
+	}
+	else
+	{
+		return mUploadsDir;
+	}
+}
+
 // Return the default cache directory
 std::string LLDir::buildSLOSCacheDir() const
 {
@@ -371,8 +383,6 @@ std::string LLDir::buildSLOSCacheDir() const
 	}
 	return res;
 }
-
-
 
 const std::string &LLDir::getOSCacheDir() const
 {
@@ -551,7 +561,7 @@ std::string LLDir::getExpandedFilename(ELLPath location, const std::string& subd
 	case LL_PATH_FONTS:
 		prefix = add(getAppRODataDir(), "fonts");
 		break;
-		
+
 	default:
 		llassert(0);
 	}
@@ -683,6 +693,21 @@ std::string LLDir::getForbiddenFileChars()
 	return "\\/:*?\"<>|";
 }
 
+//static
+std::string LLDir::stripTrailingSeparators(std::string const& path)
+{
+  std::string const delim = gDirUtilp->getDirDelimiter();
+  std::string::size_type const seplen = delim.length();
+  std::string::size_type len, offset;
+  len = offset = path.length();
+  do
+  {
+    offset = path.rfind(delim, len - 1);
+  }
+  while(offset != std::string::npos && len - offset == seplen && (len = offset) > 0);
+  return path.substr(0, len);
+}
+
 void LLDir::setLindenUserDir(const std::string &grid, const std::string &first, const std::string &last)
 {
 	// if both first and last aren't set, assume we're grabbing the cached dir
@@ -784,6 +809,19 @@ bool LLDir::setCacheDir(const std::string &path)
 			return true;
 		}
 		return false;
+	}
+}
+
+void LLDir::setUploadsDir(const std::string &path)
+{
+	if (path.empty() || path == getUploadsDir(true))
+	{
+		// Reset to default.
+		mUploadsDir = "";
+	}
+	else
+	{
+		mUploadsDir = path;
 	}
 }
 

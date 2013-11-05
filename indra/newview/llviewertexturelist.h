@@ -50,6 +50,7 @@ const BOOL IMMEDIATE_NO = FALSE;
 class LLImageJ2C;
 class LLMessageSystem;
 class LLTextureView;
+class LLMD5;
 
 typedef	void (*LLImageCallback)(BOOL success,
 								LLViewerFetchedTexture *src_vi,
@@ -67,8 +68,8 @@ class LLViewerTextureList
 	friend class LLViewerTextureManager;
 	
 public:
-	static BOOL createUploadFile(const std::string& filename, const std::string& out_filename, const U8 codec);
-	static BOOL verifyUploadFile(const std::string& out_filename, const U8 codec);
+	static BOOL createUploadFile(const std::string& filename, const std::string& out_filename, const U8 codec, LLMD5& source_md5, LLMD5& asset_md5);	//Singu note: added '*_md5'.
+	static BOOL verifyUploadFile(const std::string& out_filename, const U8 codec, LLMD5& md5);	//Singu note: added 'md5'.
 	static LLPointer<LLImageJ2C> convertToUploadFile(LLPointer<LLImageRaw> raw_image);
 	static void processImageNotInDatabase( LLMessageSystem *msg, void **user_data );
 	static S32 calcMaxTextureRAM();

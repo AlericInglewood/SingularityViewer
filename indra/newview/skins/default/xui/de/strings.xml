@@ -2122,8 +2122,12 @@ Where tag = tag string to match.  Removes bot's matching the tag.
 	<string name="Cancel">Abbrechen</string>
 	<string name="UploadingCosts">Uploading [NAME] costs [CURRENCY] [AMOUNT]</string>
 	<string name="BuyingCosts">Buying this costs</string>
-	<string name="UnknownFileExtension">Unbekanntes Dateiformat .%s
-Gültige Formate: .wav, .tga, .bmp, .jpg, .jpeg oder .bvh</string>
+	<string name="AIUnknownFileExtension">
+		Unbekanntes Dateiformat .[EXTENSION]. Gültige Formate:
+		.png, .tga, .bmp, .jpg, .jpeg, .j2k (image),
+		.wav, .ogg (sound),
+		.bvh, .anim or .animatn (animation)
+	</string>
   <string name="MuteObject2">Blockieren</string>
   <string name="MuteAvatar">Blockieren</string>
   <string name="UnmuteObject">Stummschaltung aufheben</string>

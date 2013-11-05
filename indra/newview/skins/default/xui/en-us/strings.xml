@@ -3392,9 +3392,11 @@ The
 	<string name="Cancel">Cancel</string>
 	<string name="UploadingCosts">Uploading [NAME] costs [CURRENCY] [AMOUNT]</string>
 	<string name="BuyingCosts">Buying this costs</string>
-	<string name="UnknownFileExtension">
-		Unknown file extension .%s
-Expected .wav, .tga, .bmp, .jpg, .jpeg, or .bvh
+	<string name="AIUnknownFileExtension">
+		Unknown file extension ".[EXTENSION]". Expected:
+		.png, .tga, .bmp, .jpg, .jpeg, .j2k (image),
+		.wav, .ogg (sound),
+		.bvh, .anim or .animatn (animation)
 	</string>
   <string name="MuteObject2">Mute</string>
   <string name="MuteAvatar">Mute</string>
@@ -4373,7 +4375,7 @@ Try enclosing path to the editor with double quotes.
     <!-- AIFile exception alerts -->
 	<string name="AIFile_mkdir_Failed_to_create_DIRNAME">Failed to create folder [DIRNAME]: [ERROR]</string>
 	<string name="AIFile_rmdir_Failed_to_remove_DIRNAME">Failed to remove folder [DIRNAME]: [ERROR]</string>
-	<string name="AIFile_fopen_Failed_to_open_FILENAME">Failed to open file "[FILENAME]": [ERROR]</string>
+	<string name="AIFile_fopen_Failed_to_open_FILENAME">fopen("[FILE]", "[MODE]") failed with error: [ERROR]</string>
 	<string name="AIFile_close_Failed_to_close_file">Failed to close file: [ERROR]</string>
 	<string name="AIFile_remove_Failed_to_remove_FILENAME">Failed to remove file [FILENAME]: [ERROR]</string>
 	<string name="AIFile_rename_Failed_to_rename_FILE_to_NEWFILE">Failed to rename file [FILE] to [NEWFILE]: [ERROR]</string>
@@ -4418,4 +4420,81 @@ Try enclosing path to the editor with double quotes.
   <string name="AIXMLImportError">Failed to import the [TYPE] wearable:</string>
   <string name="AIXMLImportNoArchetypeError">No archetype found in wearable import file "[FILE]".</string>
 
+  <!-- AIMultiGrid -->
+  <string name="AIProblemWithFile">Problem with file "[FILE]":</string>
+  <string name="AIProblemWithFile_ERROR">Problem with file "[FILE]": [ERROR]</string>
+  <string name="AINotNativeMagic">Encountered a file whose file magic could not be recognized as a native format.</string>
+  <string name="AINoFileExtension">No file extension for file "[FILE]". Please make sure the file has a correct file extension.</string>
+  <string name="AICannotOpenTemporarySoundFile">Couldn't open temporary compressed sound file for writing: [FILE]</string>
+  <string name="AIUnknownVorbisEncodeFailure">Unknown Vorbis encode failure on: [FILE]</string>
+  <string name="AIDoNotSupportBulkBVHAnimationUpload">We do not currently support bulk upload of BVH animation files.</string>
+  <string name="AIUnableToAccessOutputFile">Unable to access output file "[FILE]".</string>
+  <string name="upload">Upload ([UPLOADFEE])</string>
+  <string name="reupload">Reupload ([UPLOADFEE])</string> <!-- Used as button text instead of "Upload" when an asset is uploaded that already was uploaded before -->
+  <string name="already_uploaded">This [ASSET] was already uploaded to [GRID] as:</string>
+  <string name="AICouldNotDecodeJustGeneratedAnim">"Could not decode the ANIM format that we just generated?! Error: "</string>
+  <string name="GridUUID_Missing_or_invalid_nick_attribute_in_grid_node">Missing or invalid 'nick' attribute in 'grid' node.</string>
+  <string name="UploadedAsset_Missing_or_invalid_md5_attribute_in_asset_node">Missing or invalid 'md5' attribute in 'asset' node.</string>
+  <string name="UploadedAsset_Missing_or_invalid_type_attribute_in_asset_node">Missing or invalid 'type' attribute in 'asset' node.</string>
+  <string name="UploadedAsset_Reading_assert_md5_attribute_md5_mismatches_the_xml_filename">Reading &lt;asset md5=...&gt;, attribute md5 mismatches the xml filename!</string>
+  <string name="BackEnd_While_creating_uploads_database_folder">"While initializing 'uploads' database: "</string>
+  <string name="BackEnd_Resetting_to_default_value">Resetting to default value. Go to Preferences --> System --> Uploads to change it back.</string>
+  <string name="BackEnd_New_database_repair_failed">"An attemp to repair the new database failed: "</string>
+  <string name="BackEnd_New_database_repaired">The new database was successfully repaired.</string>
+  <string name="BackEnd_Uploaded_asset_database_file_FILE_exists_but_contains_no_asset_hash">Uploaded-asset database file "[FILE]" exists, but contains no asset hash!</string>
+  <string name="BackEnd_Cannot_recover_from_database_corruption">Cannot recover from database corruption; please repair the database manually!</string>
+  <string name="BackEnd_switch_path_FOLDER_does_not_exist">"[FOLDER]" does not exist. You must COPY your old database ([OLDFOLDER]) to the new path manually before you can switch.</string>
+  <string name="BackEnd_switch_path_FOLDER_does_not_appear_to_be_an_uploads_database_folder">"[FOLDER]" does not appear to be an 'uploads' database folder: the subdirectory "[SUBDIR]" does not exist.</string>
+  <string name="BackEnd_Failed_to_commit_asset_to_database">Failed to commit asset [ASSETMD5] ([FILE]) to database</string>
+  <string name="BackEnd_Failed_to_commit_asset_to_database_cont">This asset might be deleted from the database upon viewer restart to guarantee database consistency.
+You should log out and make sure that the harddisk that contains the uploads database [BASEFOLDER] is not full and is writable. See also Preferences --> System --> Uploads.</string>
+  <string name="FrontEnd_Cannot_recover_from_database_corruption">Cannot recover from database corruption; please repair the database (prefs -> system -> uploads -> repair)!</string>
+  <string name="AIUploadsCheckDBclean">The uploads database was clean.</string>
+  <string name="AIUploadsCheckDBfixed">The uploads database was successfully repaired. See the singularity log file for more info (search for 'repair_database').</string>
+  <string name="AIUploadsCheckDBmkdir">"Failed to verify the database because a folder could not be created.
+Please read the singularity log file for more info (search for 'repair_database').
+Make sure that your harddisk is not full and that the viewer has write access to the uploads folder.
+Then go to Preferences --> System --> Uploads and click on 'Repair Database'. Logging in is not necessary.
+Error: "</string>
+  <string name="AIUploadsCheckDBcorrupt">"The uploads database could not be repaired. Please read the singularity log file for more info (search for 'repair_database').
+Make sure that your harddisk is not full and that the viewer has write access to the uploads folder.
+Then go to Preferences --> System --> Uploads and click on Repair Database. Logging in is not necessary.
+Error: "</string>
+  <string name="AIUnsupportedFileFormat">Cannot upload [FILE] because it is not in a supported format.</string>
+  <string name="AIMultiGridDatabaseLocked">
+The uploads database appears to be locked. Please cancel the upload, close all viewers
+and remove the file uploads/journal/lock in the 'uploads' folder (see Prefs -> System -> Uploads).</string>
+  <string name="AIMultiGridAbortUploadRepairDatabase">
+The uploads database appears to be unusable! Please cancel the upload, close all other viewers
+and go to Preferences --> System --> Uploads and click on 'Repair Database'.</string>
+  <string name="AIUploadsSwitchDBlocked">
+Failed to switch to the new database path because the current database is locked!
+Make sure to exit all viewers that might be using it, before switching.</string>
+  <string name="AIUploadsSwitchDBnewlocked">
+Failed to switch to the new database path: it appears to be locked!
+Make sure to exit all viewers that might be using it, before switching.</string>
+  <string name="BackEnd_New_database_repair_failed">
+Make sure that
+1) all viewers are quit,
+2) your harddisk is not full,
+3) the viewer has write access to the new path,
+4) the whole database is on the same harddisk partition.</string>
+  <string name="AIUploadsMergeDBsuccess">The uploads database was successfully merged.</string>
+
+	<!-- AIOggPage::read exception alerts -->
+	<string name="AIOggPage_read_Wrong_magic">The file has the wrong magic: it is not an Ogg/Vorbis file.</string>
+	<string name="AIOggPage_read_Truncated">The file appears to be truncated, it contains no sound.</string>
+	<string name="AIOggPage_read_Wrong_version">This file is not an Ogg/Vorbis file version 0.</string>
+	<string name="AIOggPage_read_Format_error">The file must exist of a single logical bitstream (ogg) containing a vorbis encoded, single, 16 bit, channel with a bitrate of 44100 Hz.</string>
+	<string name="AIOggPage_read_Corrupted">Failed to successfully verify the integrity of this ogg file.</string>
+	<string name="AIOggPage_read_Too_long">The play duration may not be longer than 10 seconds.</string>
+	<string name="AIOggPage_read_Not_Ogg_Vorbis">This file is not an Ogg/Vorbis file.</string>
+
+	<!-- LLKeyframeMotion::deserialize_motionlist exception alerts -->
+	<string name="LLKeyframeMotion_not_anim_format">This file does not appear to contain SL Animation data.</string>
+	<string name="LLKeyframeMotion_incompatible_anim_version">Incompatible ANIM file version, only version 1.0 is supported (and 0.1).</string>
+	<string name="LLKeyframeMotion_invalid_anim_file">This file is malformed, has too many or no joints or is otherwise invalid.</string>
+	<string name="LLKeyframeMotion_longer_than_60s">The animation exceeds the maximum allowed duration of 60 seconds.</string>
+
 </strings>
+

@@ -960,7 +960,7 @@ LLVOAvatar::LLVOAvatar(const LLUUID& id,
 					   const LLPCode pcode,
 					   LLViewerRegion* regionp) :
 	LLAvatarAppearance(&gAgentWearables),
-	LLViewerObject(id, pcode, regionp),
+	LLViewerObject(id, pcode, regionp, !regionp),	// Singu: pass !regionp as is_global, so we can make a dummy avatar before logging in.
 	mSpecialRenderMode(0),
 	mAttachmentGeometryBytes(0),
 	mAttachmentSurfaceArea(0.f),
@@ -1106,7 +1106,7 @@ LLVOAvatar::~LLVOAvatar()
 {
 	//App teardown is a mess. Avatar destruction can be unpredictable due to all potential refs to the smartptr.
 	//Cannot guarantee that LLNotificationUtil will be usable during shutdown chain.
-	if (!LLApp::isQuitting())
+	if (!LLApp::isQuitting() && !mIsDummy)
 	{
 		if (!mFullyLoaded)
 		{

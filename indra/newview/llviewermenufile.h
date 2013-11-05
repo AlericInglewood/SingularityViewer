@@ -39,72 +39,11 @@
 #include "llviewerinventory.h"
 
 #include "statemachine/aifilepicker.h"
-
-class NewResourceItemCallback : public LLInventoryCallback
-{
- void fire(const LLUUID& inv_item);
-};
 // </edit>
 
 class LLTransactionID;
 
 void init_menu_file();
-
-void upload_new_resource(const std::string& src_filename,
-						 std::string name,
-						 std::string desc,
-						 S32 compression_info,
-						 LLFolderType::EType destination_folder_type,
-						 LLInventoryType::EType inv_type,
-						 U32 next_owner_perms,
-						 U32 group_perms,
-						 U32 everyone_perms,
-						 const std::string& display_name,
-						 LLAssetStorage::LLStoreAssetCallback callback,
-						 S32 expected_upload_cost,
-						 void *userdata);
-
-// Return false if no upload attempt was done (and the callback will not be called).
-bool upload_new_resource(const LLTransactionID &tid, 
-						 LLAssetType::EType type,
-						 std::string name,
-						 std::string desc, 
-						 S32 compression_info,
-						 LLFolderType::EType destination_folder_type,
-						 LLInventoryType::EType inv_type,
-						 U32 next_owner_perms,
-						 U32 group_perms,
-						 U32 everyone_perms,
-						 const std::string& display_name,
-						 LLAssetStorage::LLStoreAssetCallback callback,
-						 S32 expected_upload_cost,
-						 void *userdata,
-						 void (*callback2)(bool, void*) = NULL);
-
-// The default callback functions, called when 'callback' == NULL (for normal and temporary uploads).
-// user_data must be a LLResourceData allocated with new (or NULL).
-void upload_done_callback(const LLUUID& uuid, void* user_data, S32 result, LLExtStat ext_status);
-void temp_upload_callback(const LLUUID& uuid, void* user_data, S32 result, LLExtStat ext_status);
-
-LLAssetID generate_asset_id_for_new_upload(const LLTransactionID& tid);
-
-void increase_new_upload_stats(LLAssetType::EType asset_type);
-
-void assign_defaults_and_show_upload_message(LLAssetType::EType asset_type,
-											 LLInventoryType::EType& inventory_type,
-											 std::string& name,
-											 const std::string& display_name,
-											 std::string& description);
-
-LLSD generate_new_resource_upload_capability_body(LLAssetType::EType asset_type,
-												  const std::string& name,
-												  const std::string& desc,
-												  LLFolderType::EType destination_folder_type,
-												  LLInventoryType::EType inv_type,
-												  U32 next_owner_perms,
-												  U32 group_perms,
-												  U32 everyone_perms);
-
 
 class LLFilePickerThread : public LLThread
 {	//multi-threaded file picker (runs system specific file picker in background and calls "notify" from main thread)

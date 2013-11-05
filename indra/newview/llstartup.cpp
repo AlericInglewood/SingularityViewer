@@ -59,7 +59,9 @@
 #include "hippogridmanager.h"
 #include "hippolimits.h"
 #include "floaterao.h"
-#include "statemachine/aifilepicker.h"
+#include "aifilepicker.h"
+#include "aimultigridbackend.h"
+#include "aimultigridbackendaccess.h"
 
 #include "llares.h"
 #include "llavatarnamecache.h"
@@ -757,7 +759,18 @@ bool idle_startup()
 		//-------------------------------------------------
 
 		AIFilePicker::loadFile("filepicker_contexts.xml");
-		
+
+		//-------------------------------------------------
+		// Initialize AIMultiGrid support.
+		//-------------------------------------------------
+
+		// For creating a dummy avatar before logging in.
+		LLAvatarAppearance::initClass();
+
+		gDirUtilp->setUploadsDir(gSavedSettings.getString("AIMultiGridBaseFolder"));
+		AIMultiGrid::BackEnd::instance().init();
+		AIMultiGrid::BackEndAccess::init();
+
 		if (LLTimer::knownBadTimer())
 		{
 			LL_WARNS("AppInit") << "Unreliable timers detected (may be bad PCI chipset)!!" << LL_ENDL;
@@ -1646,9 +1659,6 @@ bool idle_startup()
 		display_startup();
 
 		// init the shader managers
-
-		LLAvatarAppearance::initClass();
-		display_startup();
 
 		//LLDayCycleManager::initClass();
 		//display_startup();

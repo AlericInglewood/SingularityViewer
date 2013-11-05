@@ -84,7 +84,7 @@ LLFILE*	AIFile::fopen(std::string const& filename, const char* mode)
 	LLFILE* fp = LLFile::fopen(filename, mode);
 	if (!fp)
 	{
-		THROW_ERROR("AIFile_fopen_Failed_to_open_FILENAME", AIArgs("[FILENAME]", filename));
+		THROW_ERROR("AIFile_fopen_Failed_to_open_FILENAME", AIArgs("[FILE]", filename)("[MODE]", mode));
 	}
 	return fp;
 }

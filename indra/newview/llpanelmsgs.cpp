@@ -101,6 +101,7 @@ void LLPanelMsgs::buildPopupLists() //void LLFloaterPreference::buildPopupLists(
 
 		LLSD params;
 		params["name"] = (*iter).first;
+		params["form"] = LLSD::emptyArray();
 		LLNotificationPtr notification = LLNotificationPtr(new LLNotification(params));
 
 		LLSD row;

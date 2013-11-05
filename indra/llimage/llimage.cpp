@@ -39,6 +39,7 @@
 #include "llimagedxt.h"
 #include "llimageworker.h"
 #include "llmemory.h"
+#include "llmd5.h"
 
 //---------------------------------------------------------------------------
 // LLImage
@@ -259,7 +260,7 @@ U8* LLImageBase::getData()
 	return mData; 
 }
 
-bool LLImageBase::isBufferInvalid()
+bool LLImageBase::isBufferInvalid() const
 {
 	return mBadBufferAllocation || mData == NULL ;
 }
@@ -275,6 +276,19 @@ U8* LLImageBase::allocateDataSize(S32 width, S32 height, S32 ncomponents, S32 si
 {
 	setSize(width, height, ncomponents);
 	return allocateData(size); // virtual
+}
+
+BOOL LLImageBase::calculateHash(LLMD5& md5) const
+{
+	if (isBufferInvalid())
+	{
+		return FALSE;
+	}
+
+	md5.update(mData, mDataSize);
+	md5.finalize();
+
+	return TRUE;
 }
 
 //---------------------------------------------------------------------------

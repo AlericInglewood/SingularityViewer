@@ -2079,9 +2079,11 @@ Pessoas com contas gratuitas não poderão acessar o Second Life no momento para
 	<string name="BuyingCosts">
 		Isso custa [CURRENCY] [AMOUNT]
 	</string>
-	<string name="UnknownFileExtension">
-		Extensão de arquivo desconhecida [.%s]
-Expected .wav, .tga, .bmp, .jpg, .jpeg, or .bvh
+	<string name="AIUnknownFileExtension">
+	  Extensão de arquivo desconhecida [.[EXTENSION]]. Expected:
+	  .png, .tga, .bmp, .jpg, .jpeg, .j2k (image),
+	  .wav, .ogg (sound),
+	  .bvh, .anim or .animatn (animation)
 	</string>
 	<string name="MuteObject2">
 		Bloquear

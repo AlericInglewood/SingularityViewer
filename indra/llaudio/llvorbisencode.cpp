@@ -33,6 +33,7 @@
 #include "llrand.h"
 #include "llmath.h"
 #include "llapr.h"
+#include "llmd5.h"
 
 //#if LL_DARWIN
 // MBW -- XXX -- Getting rid of SecondLifeVorbis for now -- no fmod means no name collisions.
@@ -113,7 +114,7 @@ S32 check_for_invalid_wav_formats(const std::string& in_fname, std::string& erro
 	while ((file_pos + 8)< physical_file_size)
 	{
 		infile.seek(APR_SET,file_pos);
-		infile.read(wav_header, 44);
+		infile.read(wav_header, 24);					// The fmt sub-chunk is 24 bytes, the data sub-chunk is 8 byte plus the data that we don't read here.
 
 		chunk_length = ((U32) wav_header[7] << 24) 
 			+ ((U32) wav_header[6] << 16) 
@@ -198,7 +199,7 @@ S32 check_for_invalid_wav_formats(const std::string& in_fname, std::string& erro
     return(LLVORBISENC_NOERR);
 }
 
-S32 encode_vorbis_file(const std::string& in_fname, const std::string& out_fname)
+S32 encode_vorbis_file(const std::string& in_fname, const std::string& out_fname, LLMD5& source_md5, LLMD5& asset_md5)
 {
 #define READ_BUFFER 1024
 	unsigned char readbuffer[READ_BUFFER*4+44];   /* out of the data segment, not the stack */	/*Flawfinder: ignore*/
@@ -229,7 +230,7 @@ S32 encode_vorbis_file(const std::string& in_fname, const std::string& out_fname
 	}
 
 #if 1
-	unsigned char wav_header[44];	/*Flawfinder: ignore*/
+	unsigned char wav_header[24];	/*Flawfinder: ignore*/
 
 	S32 data_left = 0;
 
@@ -258,7 +259,7 @@ S32 encode_vorbis_file(const std::string& in_fname, const std::string& out_fname
 	 while (infile.eof() != APR_EOF)
 	 {
 		 infile.seek(APR_SET,file_pos);
-		 infile.read(wav_header, 44);
+		 infile.read(wav_header, 24);
 		 
 		 chunk_length = ((U32) wav_header[7] << 24) 
 			 + ((U32) wav_header[6] << 16) 
@@ -269,6 +270,14 @@ S32 encode_vorbis_file(const std::string& in_fname, const std::string& out_fname
 		 
 		 if (!(strncmp((char *)&(wav_header[0]),"fmt ",4)))
 		 {
+			 //Singu: Just hashing the "fmt " sub-chunk (not even really necessary), avoids that other chunks change the hash.
+			 // The viewer does not allow anything to be different in the chunk except a few bits:
+			 // - Mono or stereo (num_channels)
+			 // - bits_per_sample (8 or 16)
+			 // If these are different then the source file should not be considered the same,
+			 // even if the data hash would be the same :p (which is, however, extremely unlikely).
+			 source_md5.update(wav_header, 24);
+
 			 num_channels = ((U16) wav_header[11] << 8) + wav_header[10];
 			 sample_rate = ((U32) wav_header[15] << 24) 
 				 + ((U32) wav_header[14] << 16) 
@@ -377,6 +386,9 @@ S32 encode_vorbis_file(const std::string& in_fname, const std::string& out_fname
 		 }
 		 else
 		 {
+			 //Singu note: Calculate hash of source wav data.
+			 source_md5.update(readbuffer, bytes);
+
 			 long i;
 			 long samples;
 			 int temp;
@@ -472,6 +484,14 @@ S32 encode_vorbis_file(const std::string& in_fname, const std::string& out_fname
 
 				 outfile.write(og.header, og.header_len);
 				 outfile.write(og.body, og.body_len);
+
+				 // Singu: Calculate the hash of this asset.
+				 // We do not include the packet headers in this hash, because they do not
+				 // contain information that can be different without drastically changing
+				 // the sound, but DO contain a random number (the bitstream serial number)
+				 // that is different every time a wav file is re-encoded.
+				 // See http://en.wikipedia.org/wiki/Ogg#Page_structure
+				 asset_md5.update(og.body, og.body_len);
 				 
 				 /* this could be set above, but for illustrative purposes, I do
 					it here (to show that vorbis does know where the stream ends) */
@@ -483,9 +503,10 @@ S32 encode_vorbis_file(const std::string& in_fname, const std::string& out_fname
 			}
 		 }
 	 }
-	 
-	 
-	 
+
+	 source_md5.finalize();
+	 asset_md5.finalize();
+
 	 /* clean up and exit.  vorbis_info_clear() must be called last */
 	 
 	 ogg_stream_clear(&os);

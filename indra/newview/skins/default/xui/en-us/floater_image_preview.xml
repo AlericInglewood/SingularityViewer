@@ -48,6 +48,13 @@
 			Sculpted Prim
 		</combo_item>
 	</combo_box>
+	<text bottom_delta="-14" follows="top|left" left="10" name="already_exists_text" />
+	<name_editor bevel_style="in" border_style="line"
+			   border_thickness="1" bottom_delta="-23" enabled="false" follows="left|top"
+			   font="SansSerifSmall" height="16" is_unicode="false" left="10"
+			   max_length="36" mouse_opaque="false" name="asset_id" width="210"
+			   tool_tip = "This is the Universally Unique IDentifier key of the previously uploaded texture. You can use it to texture objects without having the texture in your inventory." />
+	<button bottom_delta="-3" follows="left|top" halign="right" height="20" label="Copy UUID" right="-10" font="SansSerifSmall" tool_tip="Copy the asset UUID to clipboard" name="copy_uuid" width="70"/>
 	<text bottom="250" follows="top|left" left="10" name="bad_image_text">
 		Unable to read image.
 
@@ -60,9 +67,10 @@ Try saving image as 24 bit Targa (.tga).
 	<check_box bottom="37" control_name="TemporaryUpload" enabled="true"
              follows="bottom|left" font="SansSerifSmall" height="16"
              initial_value="false" label="Temporary (Free)"
-             left_delta="155" name="temp_check" width="280" tooltip="Sets the asset to be temporary, meaning its free, but in return, only good for a short time before it ceases to exist." />
+             left_delta="155" name="temp_check" width="280" tool_tip="Sets the asset to be temporary, meaning its free, but in return, only good for a short time before it ceases to exist." />
 	<button bottom="10" follows="bottom|right" height="20" label="Cancel" left="165"
 	     name="cancel_btn" width="125" />
 	<button bottom="10" follows="bottom|left" height="20" label="Upload ([UPLOADFEE])"
 	     left="15" name="ok_btn" width="125" />
 </floater>
+

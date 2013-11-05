@@ -40,6 +40,7 @@ include_directories(
     )
 
 set(llaudio_SOURCE_FILES
+    aioggvorbisverifier.cpp
     llaudiodecodemgr.cpp
     llaudioengine.cpp
     lllistener.cpp
@@ -50,6 +51,7 @@ set(llaudio_SOURCE_FILES
 set(llaudio_HEADER_FILES
     CMakeLists.txt
 
+    aioggvorbisverifier.h
     llaudiodecodemgr.h
     llaudioengine.h
     lllistener.h

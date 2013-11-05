@@ -58,66 +58,26 @@
 		Expressão
 	</text>
 	<combo_box left_delta="100" width="184" name="emote_combo" tool_tip="Controla o que a face faz durante a animação.">
-		<combo_item name="[None]">
-			[None]
-		</combo_item>
-		<combo_item name="Aaaaah">
-			Aaaaah
-		</combo_item>
-		<combo_item name="Afraid">
-			Temeroso
-		</combo_item>
-		<combo_item name="Angry">
-			Raivoso
-		</combo_item>
-		<combo_item name="BigSmile">
-			Sorrisão
-		</combo_item>
-		<combo_item name="Bored">
-			Entediado
-		</combo_item>
-		<combo_item name="Cry">
-			Chorar
-		</combo_item>
-		<combo_item name="Disdain">
-			Desprezar
-		</combo_item>
-		<combo_item name="Embarrassed">
-			Envergonhado
-		</combo_item>
-		<combo_item name="Frown">
-			Franzir a testa
-		</combo_item>
-		<combo_item name="Kiss">
-			Beijar
-		</combo_item>
-		<combo_item name="Laugh">
-			Rir
-		</combo_item>
-		<combo_item name="Plllppt">
-			Plllppt
-		</combo_item>
-		<combo_item name="Repulsed">
-			Enojado
-		</combo_item>
-		<combo_item name="Sad">
-			Triste
-		</combo_item>
-		<combo_item name="Shrug">
-			Indiferença
-		</combo_item>
-		<combo_item name="Smile">
-			Sorriso
-		</combo_item>
-		<combo_item name="Surprise">
-			Surpreso
-		</combo_item>
-		<combo_item name="Wink">
-			Piscar
-		</combo_item>
-		<combo_item name="Worry">
-			Preocupado
-		</combo_item>
+		<combo_item name="[None]" value="[None]">[None]</combo_item>
+		<combo_item name="Aaaaah" value="Aaaaah">Aaaaah</combo_item>
+		<combo_item name="Afraid" value="Afraid">Temeroso</combo_item>
+		<combo_item name="Angry" value="Angry">Raivoso</combo_item>
+		<combo_item name="BigSmile" value="BigSmile">Sorrisão</combo_item>
+		<combo_item name="Bored" value="Bored">Entediado</combo_item>
+		<combo_item name="Cry" value="Cry">Chorar</combo_item>
+		<combo_item name="Disdain" value="Disdain">Desprezar</combo_item>
+		<combo_item name="Embarrassed" value="Embarrassed">Envergonhado</combo_item>
+		<combo_item name="Frown" value="Frown">Franzir a testa</combo_item>
+		<combo_item name="Kiss" value="Kiss">Beijar</combo_item>
+		<combo_item name="Laugh" value="Laugh">Rir</combo_item>
+		<combo_item name="Plllppt" value="Plllppt">Plllppt</combo_item>
+		<combo_item name="Repulsed" value="Repulsed">Enojado</combo_item>
+		<combo_item name="Sad" value="Sad">Triste</combo_item>
+		<combo_item name="Shrug" value="Shrug">Indiferença</combo_item>
+		<combo_item name="Smile" value="Smile">Sorriso</combo_item>
+		<combo_item name="Surprise" value="Surprise">Surpreso</combo_item>
+		<combo_item name="Wink" value="Wink">Piscar</combo_item>
+		<combo_item name="Worry" value="Worry">Preocupado</combo_item>
 	</combo_box>
 	<text name="preview_label" width="250">
 		Prever enquanto

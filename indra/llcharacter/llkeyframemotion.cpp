@@ -29,6 +29,7 @@
 //-----------------------------------------------------------------------------
 #include "linden_common.h"
 
+#include "aialert.h"
 #include "llmath.h"
 #include "llanimationstates.h"
 #include "llassetstorage.h"
@@ -38,6 +39,7 @@
 #include "lldir.h"
 #include "llendianswizzle.h"
 #include "llkeyframemotion.h"
+#include "llmd5.h"
 #include "llquantize.h"
 #include "llvfile.h"
 #include "m3math.h"
@@ -67,13 +69,6 @@ static F32 MAX_CONSTRAINTS = 10;
 //-----------------------------------------------------------------------------
 LLKeyframeMotion::JointMotionList::JointMotionList()
 	: mDuration(0.f),
-	  mLoop(FALSE),
-	  mLoopInPoint(0.f),
-	  mLoopOutPoint(0.f),
-	  mEaseInDuration(0.f),
-	  mEaseOutDuration(0.f),
-	  mBasePriority(LLJoint::LOW_PRIORITY),
-	  mHandPose(LLHandMotion::HAND_POSE_SPREAD),
 	  mMaxPriority(LLJoint::LOW_PRIORITY)
 {
 }
@@ -431,6 +426,7 @@ LLKeyframeMotion::LLKeyframeMotion(const LLUUID &id)
 	: LLMotion(id),
 		mJointMotionList(NULL),
 		mPelvisp(NULL),
+		mCharacter(NULL),
 		mLastSkeletonSerialNum(0),
 		mLastUpdateTime(0.f),
 		mLastLoopedTime(0.f),
@@ -439,6 +435,18 @@ LLKeyframeMotion::LLKeyframeMotion(const LLUUID &id)
 
 }
 
+LLKeyframeMotion::LLKeyframeMotion(LLCharacter* character)
+	: LLMotion(LLUUID::null),
+		mJointMotionList(NULL),
+		mPelvisp(NULL),
+		mCharacter(character),
+		mLastSkeletonSerialNum(0),
+		mLastUpdateTime(0.f),
+		mLastLoopedTime(0.f),
+		mAssetStatus(ASSET_UNDEFINED)
+{
+
+}
 
 //-----------------------------------------------------------------------------
 // ~LLKeyframeMotion()
@@ -1225,13 +1233,102 @@ void LLKeyframeMotion::applyConstraint(JointConstraint* constraint, F32 time, U8
 	}
 }
 
+// Wrapper around LLDataPacker, to allow seamless hash calculation of what is being read.
+class AIDataPackerBinaryBufferHashed
+{
+  private:
+	LLDataPackerBinaryBuffer& mDp;
+	bool mCalculateHash;	// Only calculate the hash when this is true.
+	LLMD5& mSourceHash;
+
+	void update(size_t s);
+
+  public:
+	AIDataPackerBinaryBufferHashed(LLDataPackerBinaryBuffer& dp, bool calculate_hash, LLMD5& source_md5) : mDp(dp), mCalculateHash(calculate_hash), mSourceHash(source_md5) { }
+
+	// Unfortunately, Linden Lab never heard of templates.
+	BOOL unpackU8(U8& value, char const* name);
+	BOOL unpackU16(U16& value, char const* name);
+	BOOL unpackS32(S32& value, char const* name);
+	BOOL unpackU32(U32& value, char const* name);
+	BOOL unpackF32(F32 &value, const char *name);
+	BOOL unpackString(std::string& value, char const* name);
+	BOOL unpackVector3(LLVector3& value, char const* name);
+	BOOL unpackBinaryDataFixed(U8* value, S32 size, char const* name);
+};
+
+void AIDataPackerBinaryBufferHashed::update(size_t s)
+{
+  if (mCalculateHash)
+  {
+	mSourceHash.update(mDp.getCurBufferp(), s);
+  }
+}
+
+BOOL AIDataPackerBinaryBufferHashed::unpackU8(U8& value, char const* name)
+{
+  update(1);
+  return mDp.unpackU8(value, name);
+}
+
+BOOL AIDataPackerBinaryBufferHashed::unpackU16(U16& value, char const* name)
+{
+  update(2);
+  return mDp.unpackU16(value, name);
+}
+
+BOOL AIDataPackerBinaryBufferHashed::unpackS32(S32& value, char const* name)
+{
+  update(4);
+  return mDp.unpackS32(value, name);
+}
+
+BOOL AIDataPackerBinaryBufferHashed::unpackU32(U32& value, char const* name)
+{
+  update(4);
+  return mDp.unpackU32(value, name);
+}
+
+BOOL AIDataPackerBinaryBufferHashed::unpackF32(F32 &value, const char *name)
+{
+  update(4);
+  return mDp.unpackF32(value, name);
+}
+
+BOOL AIDataPackerBinaryBufferHashed::unpackString(std::string& value, char const* name)
+{
+  S32 length = (S32)strlen((char *)mDp.getCurBufferp()) + 1;	// Taken from LLDataPackerBinaryBuffer::unpackString.
+  update(length);
+  return mDp.unpackString(value, name);
+}
+
+BOOL AIDataPackerBinaryBufferHashed::unpackVector3(LLVector3& value, char const* name)
+{
+  update(12);
+  return mDp.unpackVector3(value, name);
+}
+
+BOOL AIDataPackerBinaryBufferHashed::unpackBinaryDataFixed(U8* value, S32 size, char const* name)
+{
+  update(size);
+  return mDp.unpackBinaryDataFixed(value, size, name);
+}
+
 //-----------------------------------------------------------------------------
 // deserialize()
 //-----------------------------------------------------------------------------
-BOOL LLKeyframeMotion::deserialize(LLDataPacker& dp)
+
+// Singu: The first part of the old deserialize function - slightly changed to include caluclating a hash value.
+LLKeyframeMotion::ECode LLKeyframeMotion::deserialize_motionlist(LLDataPacker& dp, bool calculate_hash, LLMD5& source_md5)
 {
 	BOOL old_version = FALSE;
+	llassert(!mJointMotionList);
 	mJointMotionList = new LLKeyframeMotion::JointMotionList;
+
+	// Singu: Return not_anim_format until we found at least one joint name that made sense.
+	// Use 'FALSE' as variable name in order to minimize the diff with original code :/
+#undef FALSE
+	ECode FALSE = not_anim_format;
 
 	//-------------------------------------------------------------------------
 	// get base priority
@@ -1260,10 +1357,10 @@ BOOL LLKeyframeMotion::deserialize(LLDataPacker& dp)
 	{
 #if LL_RELEASE
 		llwarns << "Bad animation version " << version << "." << sub_version << llendl;
-		return FALSE;
 #else
 		llerrs << "Bad animation version " << version << "." << sub_version << llendl;
 #endif
+		return incompatible_anim_version;
 	}
 
 	if (!dp.unpackS32(temp_priority, "base_priority"))
@@ -1273,10 +1370,9 @@ BOOL LLKeyframeMotion::deserialize(LLDataPacker& dp)
 	}
 	mJointMotionList->mBasePriority = (LLJoint::JointPriority) temp_priority;
 
-	if (mJointMotionList->mBasePriority >= LLJoint::ADDITIVE_PRIORITY)
+	if (mJointMotionList->mBasePriority > LLJoint::HIGHEST_PRIORITY)
 	{
-		mJointMotionList->mBasePriority = (LLJoint::JointPriority)((int)LLJoint::ADDITIVE_PRIORITY-1);
-		mJointMotionList->mMaxPriority = mJointMotionList->mBasePriority;
+		mJointMotionList->mBasePriority = mJointMotionList->mMaxPriority = LLJoint::HIGHEST_PRIORITY;
 	}
 	else if (mJointMotionList->mBasePriority < LLJoint::USE_MOTION_PRIORITY)
 	{
@@ -1297,7 +1393,7 @@ BOOL LLKeyframeMotion::deserialize(LLDataPacker& dp)
 	    !llfinite(mJointMotionList->mDuration))
 	{
 		llwarns << "invalid animation duration" << llendl;
-		return FALSE;
+		return longer_than_60s;
 	}
 
 	//-------------------------------------------------------------------------
@@ -1312,7 +1408,7 @@ BOOL LLKeyframeMotion::deserialize(LLDataPacker& dp)
 	if(mJointMotionList->mEmoteName==mID.asString())
 	{
 		llwarns << "Malformed animation mEmoteName==mID" << llendl;
-		return FALSE;
+		return invalid_anim_file;
 	}
 
 	//-------------------------------------------------------------------------
@@ -1373,6 +1469,13 @@ BOOL LLKeyframeMotion::deserialize(LLDataPacker& dp)
 	
 	mJointMotionList->mHandPose = (LLHandMotion::eHandPose)word;
 
+	// Singu note: From here on we want to calculate the source hash of most things, but without changing the code too much (to avoid merge collisions).
+	// Therefore, redefine 'dp' into something that will do just that.
+	LLDataPacker& orig_dp(dp);
+	{ // Start shadowing dp.
+		LLDataPackerBinaryBuffer* bp = static_cast<LLDataPackerBinaryBuffer*>(&dp);		// All animations are binary packed.
+		AIDataPackerBinaryBufferHashed dp(*bp, calculate_hash, source_md5);
+
 	//-------------------------------------------------------------------------
 	// get number of joint motions
 	//-------------------------------------------------------------------------
@@ -1386,12 +1489,12 @@ BOOL LLKeyframeMotion::deserialize(LLDataPacker& dp)
 	if (num_motions == 0)
 	{
 		llwarns << "no joints in animation" << llendl;
-		return FALSE;
+		return invalid_anim_file;
 	}
 	else if (num_motions > LL_CHARACTER_MAX_JOINTS)
 	{
 		llwarns << "too many joints in animation" << llendl;
-		return FALSE;
+		return invalid_anim_file;
 	}
 
 	mJointMotionList->mJointMotionArray.clear();
@@ -1418,7 +1521,7 @@ BOOL LLKeyframeMotion::deserialize(LLDataPacker& dp)
 		if (joint_name == "mScreen" || joint_name == "mRoot")
 		{
 			llwarns << "attempted to animate special " << joint_name << " joint" << llendl;
-			return FALSE;
+			return invalid_anim_file;
 		}
 				
 		//---------------------------------------------------------------------
@@ -1427,6 +1530,7 @@ BOOL LLKeyframeMotion::deserialize(LLDataPacker& dp)
 		LLJoint *joint = mCharacter->getJoint( joint_name );
 		if (joint)
 		{
+			FALSE = invalid_anim_file;
 //			llinfos << "  joint: " << joint_name << llendl;
 		}
 		else
@@ -1458,7 +1562,7 @@ BOOL LLKeyframeMotion::deserialize(LLDataPacker& dp)
 		// get joint priority
 		//---------------------------------------------------------------------
 		S32 joint_priority;
-		if (!dp.unpackS32(joint_priority, "joint_priority"))
+		if (!orig_dp.unpackS32(joint_priority, "joint_priority"))
 		{
 			llwarns << "can't read joint priority." << llendl;
 			return FALSE;
@@ -1561,7 +1665,7 @@ BOOL LLKeyframeMotion::deserialize(LLDataPacker& dp)
 			if( !(rot_key.mRotation.isFinite()) )
 			{
 				llwarns << "non-finite angle in rotation key" << llendl;
-				success = FALSE;
+				success = 0;
 			}
 			
 			if (!success)
@@ -1640,7 +1744,7 @@ BOOL LLKeyframeMotion::deserialize(LLDataPacker& dp)
 			if( !(pos_key.mPosition.isFinite()) )
 			{
 				llwarns << "non-finite position in key" << llendl;
-				success = FALSE;
+				success = 0;
 			}
 			
 			if (!success)
@@ -1881,13 +1985,66 @@ BOOL LLKeyframeMotion::deserialize(LLDataPacker& dp)
 		}
 	}
 
+	} // End of shadowing dp.
+
+	return success;
+}
+
+// Re-define FALSE...
+#define FALSE			(0)
+
+// Singu: The old deserialize() function
+BOOL LLKeyframeMotion::deserialize(LLDataPacker& dp)
+{
+	LLMD5 dummy;
+	if (deserialize_motionlist(dp, false, dummy) != success)
+	{
+		return FALSE;
+	}
+	deserialize_tail();
+	return TRUE;
+}
+
+// Singu: This a new deserialize() function that also calculates a hash of the input
+// data excluding data that is not part of the corresponding BVH file;
+// the hash value is thus the same for all animation assets that were
+// generated from the same BVH (even though the anims themselves can be
+// different, like having a different priority, etc).
+void LLKeyframeMotion::deserialize(LLDataPacker& dp, LLMD5& source_md5)
+{
+	ECode ret = deserialize_motionlist(dp, true, source_md5);
+	if (ret != success)
+	{
+		THROW_ALERT(errorString(ret));
+	}
+	deserialize_tail();
+}
+
+// Singu: The tail of the old deserialize did not change.
+void LLKeyframeMotion::deserialize_tail(void)
+{
 	// *FIX: support cleanup of old keyframe data
 	LLKeyframeDataCache::addKeyframeData(getID(),  mJointMotionList);
 	mAssetStatus = ASSET_LOADED;
 
 	setupPose();
+}
 
-	return TRUE;
+#define AI_CASE_RETURN(x) do { case x: return "LLKeyframeMotion_"#x; } while(0)
+char const* const SUCCESS = "NoneFound"; // Translates to "None found"
+char const* LLKeyframeMotion::errorString(ECode error)
+{
+	switch(error)
+	{
+		AI_CASE_RETURN(not_anim_format);
+		AI_CASE_RETURN(incompatible_anim_version);
+		AI_CASE_RETURN(invalid_anim_file);
+		AI_CASE_RETURN(longer_than_60s);
+		case success:
+			llerrs << "Calling LLKeyframeMotion::errorString(success)" << llendl;
+			break;
+	}
+	return SUCCESS;
 }
 
 //-----------------------------------------------------------------------------
@@ -2016,8 +2173,7 @@ void LLKeyframeMotion::setPriority(S32 priority)
 	if (mJointMotionList) 
 	{
 		S32 priority_delta = priority - mJointMotionList->mBasePriority;
-		mJointMotionList->mBasePriority = (LLJoint::JointPriority)priority;
-		mJointMotionList->mMaxPriority = mJointMotionList->mBasePriority;
+		mJointMotionList->mBasePriority = mJointMotionList->mMaxPriority = (LLJoint::JointPriority)priority;
 
 		for (U32 i = 0; i < mJointMotionList->getNumJointMotions(); i++)
 		{

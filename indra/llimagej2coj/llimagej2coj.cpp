@@ -25,6 +25,7 @@
  */
 
 #include "linden_common.h"
+#include "libcwd/buf2str.h"
 #include "llimagej2coj.h"
 
 // this is defined so that we get static linking.

@@ -151,8 +151,8 @@ void AIFilePicker::open(ELoadFilter filter, std::string const& default_path, std
 	  case FFLOAD_ALL:
 		  mFilter = "all";
 		  break;
-	  case FFLOAD_WAV:
-		  mFilter = "wav";
+	  case FFLOAD_SOUND:
+		  mFilter = "sound";
 		  break;
 	  case FFLOAD_IMAGE:
 		  mFilter = "image";

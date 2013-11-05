@@ -36,12 +36,15 @@
 #include "llallocator.h"
 #include "llsys.h"			// for LLOSInfo
 #include "llviewercontrol.h"	// settings_map_type
+#include "llframetimer.h"
 
 class LLCommandLineParser;
 class LLTextureCache;
 class LLImageDecodeThread;
 class LLTextureFetch;
 class LLWatchdogTimeout;
+class LLPumpIO;
+class LLVFS;
 
 class LLAppViewer : public LLApp
 {

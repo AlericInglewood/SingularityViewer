@@ -180,6 +180,10 @@ void LLPermissions::fixFairUse()
 	if(!(mMaskBase & PERM_COPY))
 	{
 		mMaskBase |= PERM_TRANSFER;
+		if (mMaskNextOwner == PERM_NONE)
+		{
+			mMaskNextOwner = mMaskBase;
+		}
 	}
 	// (mask next owner == PERM_NONE) iff mask base is no transfer
 	if(mMaskNextOwner != PERM_NONE)

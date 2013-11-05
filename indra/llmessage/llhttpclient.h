@@ -366,7 +366,7 @@ public:
 
 #ifdef SHOW_ASSERT
 		// Responders derived from this class must override result, and either errorWithContent or error.
-		// They may not attempt to override any of the virual functions defined by ResponderWithCompleted.
+		// They may not attempt to override any of the virtual functions defined by ResponderWithCompleted.
 		// Define those functions here with different parameter in order to cause a compile
 		// warning when a class accidently tries to override them.
 		enum YOU_ARE_DERIVING_FROM_THE_WRONG_CLASS { };

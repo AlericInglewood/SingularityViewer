@@ -96,10 +96,10 @@ void HelloWorld::toXML(std::ostream& os, int indentation) const
 HelloWorld::HelloWorld(AIXMLElementParser const& parser)
 {
   // Zero or more attributes:
-  parser.attribute("attributename1", "foobar");			// Throws std::runtime_error is attributename1 is missing or does not have the value "foobar".
+  parser.attribute("attributename1", "foobar");			// Throws AIAlert::Error is attributename1 is missing or does not have the value "foobar".
   if (!parser.attribute("attributename2", mAttribute2))	// Reads value of attributename2 into mAttribute2 (throws if it could not be parsed).
   {
-	throw std::runtime_error("...");					// Attribute was missing.
+	THROW_ALERT("...");					// Attribute was missing.
   }
 
   // Zero or more child elements:

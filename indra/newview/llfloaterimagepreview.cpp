@@ -73,15 +73,15 @@ const S32 PREVIEW_TEXTURE_HEIGHT = 300;
 // LLFloaterImagePreview()
 //-----------------------------------------------------------------------------
 // <edit>
-LLFloaterImagePreview::LLFloaterImagePreview(const std::string& filename, void* item) : 
-	LLFloaterNameDesc(filename, item),
+LLFloaterImagePreview::LLFloaterImagePreview(LLPointer<AIMultiGrid::FrontEnd> const& front_end) : LLFloaterNameDesc(front_end),
 // </edit>
 
 	mAvatarPreview(NULL),
 	mSculptedPreview(NULL),
 	mLastMouseX(0),
 	mLastMouseY(0),
-	mImagep(NULL)
+	mImagep(NULL),
+	mImageOffset(0)
 {
 	loadImage(mFilenameAndPath);
 }
@@ -96,8 +96,6 @@ BOOL LLFloaterImagePreview::postBuild()
 		return FALSE;
 	}
 
-	childSetLabelArg("ok_btn", "[UPLOADFEE]", gHippoGridManager->getConnectedGrid()->getUploadFee());
-
 	LLCtrlSelectionInterface* iface = childGetSelectionInterface("clothing_type_combo");
 	if (iface)
 	{
@@ -110,6 +108,18 @@ BOOL LLFloaterImagePreview::postBuild()
 		getRect().getWidth() - PREVIEW_HPAD, 
 		PREVIEW_HPAD + PREF_BUTTON_HEIGHT + PREVIEW_HPAD);
 	mPreviewImageRect.set(0.f, 1.f, 1.f, 0.f);
+
+	// If already uploaded before, move the image and everything below it 42 pixels down.
+	postBuildUploadedBefore("image", 42);
+#if 0 // Uncomment if image needs to be shifted back up
+	if (mUploadedBefore)
+	{
+	  // Shift the image back 0 pixels up.
+	  mImageOffset = 0;
+	  mPreviewRect.mTop += mImageOffset;
+	  mPreviewRect.mBottom += mImageOffset;
+	}
+#endif
 
 	getChildView("bad_image_text")->setVisible(FALSE);
 
@@ -280,13 +290,13 @@ void LLFloaterImagePreview::draw()
 			gGL.begin( LLRender::QUADS );
 			{
 				gGL.texCoord2f(mPreviewImageRect.mLeft, mPreviewImageRect.mTop);
-				gGL.vertex2i(PREVIEW_HPAD, PREVIEW_TEXTURE_HEIGHT);
+				gGL.vertex2i(PREVIEW_HPAD, PREVIEW_TEXTURE_HEIGHT + mImageOffset);
 				gGL.texCoord2f(mPreviewImageRect.mLeft, mPreviewImageRect.mBottom);
-				gGL.vertex2i(PREVIEW_HPAD, PREVIEW_HPAD + PREF_BUTTON_HEIGHT + PREVIEW_HPAD);
+				gGL.vertex2i(PREVIEW_HPAD, PREVIEW_HPAD + PREF_BUTTON_HEIGHT + PREVIEW_HPAD + mImageOffset);
 				gGL.texCoord2f(mPreviewImageRect.mRight, mPreviewImageRect.mBottom);
-				gGL.vertex2i(r.getWidth() - PREVIEW_HPAD, PREVIEW_HPAD + PREF_BUTTON_HEIGHT + PREVIEW_HPAD);
+				gGL.vertex2i(r.getWidth() - PREVIEW_HPAD, PREVIEW_HPAD + PREF_BUTTON_HEIGHT + PREVIEW_HPAD + mImageOffset);
 				gGL.texCoord2f(mPreviewImageRect.mRight, mPreviewImageRect.mTop);
-				gGL.vertex2i(r.getWidth() - PREVIEW_HPAD, PREVIEW_TEXTURE_HEIGHT);
+				gGL.vertex2i(r.getWidth() - PREVIEW_HPAD, PREVIEW_TEXTURE_HEIGHT + mImageOffset);
 			}
 			gGL.end();
 
@@ -312,13 +322,13 @@ void LLFloaterImagePreview::draw()
 				gGL.begin( LLRender::QUADS );
 				{
 					gGL.texCoord2f(0.f, 1.f);
-					gGL.vertex2i(PREVIEW_HPAD, PREVIEW_TEXTURE_HEIGHT);
+					gGL.vertex2i(PREVIEW_HPAD, PREVIEW_TEXTURE_HEIGHT + mImageOffset);
 					gGL.texCoord2f(0.f, 0.f);
-					gGL.vertex2i(PREVIEW_HPAD, PREVIEW_HPAD + PREF_BUTTON_HEIGHT + PREVIEW_HPAD);
+					gGL.vertex2i(PREVIEW_HPAD, PREVIEW_HPAD + PREF_BUTTON_HEIGHT + PREVIEW_HPAD + mImageOffset);
 					gGL.texCoord2f(1.f, 0.f);
-					gGL.vertex2i(r.getWidth() - PREVIEW_HPAD, PREVIEW_HPAD + PREF_BUTTON_HEIGHT + PREVIEW_HPAD);
+					gGL.vertex2i(r.getWidth() - PREVIEW_HPAD, PREVIEW_HPAD + PREF_BUTTON_HEIGHT + PREVIEW_HPAD + mImageOffset);
 					gGL.texCoord2f(1.f, 1.f);
-					gGL.vertex2i(r.getWidth() - PREVIEW_HPAD, PREVIEW_TEXTURE_HEIGHT);
+					gGL.vertex2i(r.getWidth() - PREVIEW_HPAD, PREVIEW_TEXTURE_HEIGHT + mImageOffset);
 				}
 				gGL.end();
 

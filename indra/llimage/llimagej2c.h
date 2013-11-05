@@ -57,8 +57,9 @@ public:
 	// Encode with comment text 
 	BOOL encode(const LLImageRaw *raw_imagep, const char* comment_text, F32 encode_time=0.0);
 
+	BOOL calculateHash(U8 const* data, U32 file_size, LLMD5& md5);	//Singu extension.
 	BOOL validate(U8 *data, U32 file_size);
-	BOOL loadAndValidate(const std::string &filename);
+	BOOL loadAndValidate(const std::string &filename, LLMD5& md5);	//Singu note: added md5 for AIMultiGrid support (is passed to calculateHash).
 
 	// Encode accessors
 	void setReversible(const BOOL reversible); // Use non-lossy?

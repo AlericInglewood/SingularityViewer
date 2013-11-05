@@ -143,8 +143,8 @@ static LLFilePicker::ESaveFilter str2savefilter(std::string const& filter)
 static LLFilePicker::ELoadFilter str2loadfilter(std::string const& filter)
 {
   // Complement of AIFilePicker::open(ELoadFilter filter, std::string const& folder)
-  if (filter == "wav")
-	return LLFilePicker::FFLOAD_WAV;
+  if (filter == "sound")
+	return LLFilePicker::FFLOAD_SOUND;
   else if (filter == "image")
 	return LLFilePicker::FFLOAD_IMAGE;
   else if (filter == "anim")

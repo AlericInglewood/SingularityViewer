@@ -80,9 +80,14 @@ include_directories(
     )
 
 set(viewer_SOURCE_FILES
-    NACLantispam.cpp
+    aimultigridbackend.cpp
+    aimultigridbackendaccess.cpp
+    aimultigridfrontend.cpp
+    aiuploadedasset.cpp
+    aimultigridfileupload.cpp
     aihttpview.cpp
     aixmllindengenepool.cpp
+    NACLantispam.cpp
     aoremotectrl.cpp
     ascentfloatercontactgroups.cpp
     ascentkeyword.cpp
@@ -598,9 +603,14 @@ set(viewer_HEADER_FILES
     CMakeLists.txt
     ViewerInstall.cmake
 
-    NACLantispam.h
+    aimultigridbackend.h
+    aimultigridbackendaccess.h
+    aimultigridfrontend.h
+    aiuploadedasset.h
+    aimultigridfileupload.h
     aihttpview.h
     aixmllindengenepool.h
+    NACLantispam.h
     aoremotectrl.h
     ascentfloatercontactgroups.h
     ascentkeyword.h

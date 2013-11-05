@@ -28,9 +28,18 @@
  *   Initial version, written by Aleric Inglewood @ SL
  */
 
-#include "sys.h"
+#include "linden_common.h"
 #include "aicondition.h"
 #include "aistatemachine.h"
+
+// Constructor and destructor need "aistatemachine.h" for member mWaitingStateMachines.
+AIConditionBase::AIConditionBase(void)
+{
+}
+
+AIConditionBase::~AIConditionBase()
+{
+}
 
 void AIConditionBase::wait(AIStateMachine* state_machine)
 {

@@ -116,6 +116,22 @@ protected:
 };
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Class AINoLinkAssetIDMatches
+//
+// Like LLAssetIDMatches, but does not return links.
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+class AINoLinkAssetIDMatches : public LLInventoryCollectFunctor
+{
+public:
+	AINoLinkAssetIDMatches(const LLUUID& item_id) : mAssetID(item_id) {}
+	virtual ~AINoLinkAssetIDMatches() {}
+	bool operator()(LLInventoryCategory* cat, LLInventoryItem* item);
+
+protected:
+	LLUUID mAssetID;
+};
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // Class LLLinkedItemIDMatches
 //
 // This functor finds inventory items linked to the specific inventory id.

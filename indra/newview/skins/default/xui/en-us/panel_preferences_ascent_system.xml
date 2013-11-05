@@ -142,5 +142,13 @@
       <check_box bottom_delta="-20" follows="top" initial_value="false" label="Axis arrow on root prim position" tool_tip="Default behaviour is to show the axis on the center of mass of a linkset. If enabled, the axis will be shown on the root prim of the linkset instead." name="EmBuildPrefsActualRoot_toggle" control_name="AscentBuildPrefs_ActualRoot"/>
     </panel>
 
+	<panel border="true" left="1" bottom="-408" height="408" width="500" label="Uploads" name="Uploads">
+	  <text bottom_delta="-17" follows="top" height="10" left="12" name="uploads_location_label">Uploads Database Location:</text>
+	  <line_editor bevel_style="in" border_style="line" border_thickness="1" bottom_delta="-28" follows="top" handle_edit_keys_directly="true" height="20" left_delta="7" max_length="4096" name="uploads_location" width="460"/>
+	  <button bottom_delta="-25" follows="top" height="22" label="Choose..." label_selected="Set" name="set_uploads_location" scale_image="true" width="100"/>
+	  <button bottom_delta="0" follows="top" height="22" label="Reset" label_selected="Reset" left_delta="103" name="reset_uploads_location" scale_image="true" width="100"/>
+	  <button bottom="10" left="12" follows="bottom" height="22" label="Repair database" name="repair_uploads_database" scale_image="true" width="120"/>
+	  <button bottom="10" right="-12" follows="bottom" height="22" label="Merge database with..." name="merge_uploads_database" scale_image="true" width="180"/>
+	</panel>
   </tab_container>
 </panel>

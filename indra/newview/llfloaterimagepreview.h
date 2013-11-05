@@ -115,7 +115,7 @@ class LLFloaterImagePreview : public LLFloaterNameDesc
 {
 public:
 	// <edit>
-	LLFloaterImagePreview(const std::string& filename, void* item = NULL);
+	explicit LLFloaterImagePreview(LLPointer<AIMultiGrid::FrontEnd> const& front_end);
 	// </edit>
 	virtual ~LLFloaterImagePreview();
 
@@ -143,6 +143,9 @@ protected:
 	LLRect			mPreviewRect;
 	LLRectf			mPreviewImageRect;
 	LLPointer<LLViewerTexture> mImagep ;
+	// <edit>
+	S32				mImageOffset;
+	// </edit>
 };
 
 #endif  // LL_LLFLOATERIMAGEPREVIEW_H

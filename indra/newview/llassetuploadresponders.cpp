@@ -317,17 +317,9 @@ LLNewAgentInventoryResponder::LLNewAgentInventoryResponder(
 	const LLSD& post_data,
 	const LLUUID& vfile_id,
 	LLAssetType::EType asset_type,
-	void (*callback)(bool, void*),
+	Callback callback,
 	void* user_data)
 	: LLAssetUploadResponder(post_data, vfile_id, asset_type), mCallBack(callback), mUserData(user_data)
-{
-}
-
-LLNewAgentInventoryResponder::LLNewAgentInventoryResponder(
-	const LLSD& post_data,
-	const std::string& file_name,
-	LLAssetType::EType asset_type)
-	: LLAssetUploadResponder(post_data, file_name, asset_type), mCallBack(NULL), mUserData(NULL)
 {
 }
 
@@ -336,7 +328,9 @@ void LLNewAgentInventoryResponder::error(U32 statusNum, const std::string& reaso
 {
 	if (mCallBack)
 	{
-		(*mCallBack)(false, mUserData);
+		//Singu note: We pass the UUID upon success. The callback signature was changed from (bool, void*) to (LLUUID const&, void*, bool). Pass a dummy UUID upon failure.
+		LLUUID dummy;
+		(*mCallBack)(dummy, mUserData, false);
 	}
 	LLAssetUploadResponder::error(statusNum, reason);
 	//LLImportColladaAssetCache::getInstance()->assetUploaded(mVFileID, LLUUID(), FALSE);
@@ -348,7 +342,9 @@ void LLNewAgentInventoryResponder::uploadFailure(const LLSD& content)
 {
 	if (mCallBack)
 	{
-		(*mCallBack)(false, mUserData);
+		//Singu note: We pass the UUID upon success. The callback signature was changed from (bool, void*) to (LLUUID const&, void*, bool). Pass a dummy UUID upon failure.
+		LLUUID dummy;
+		(*mCallBack)(dummy, mUserData, false);
 	}
 	LLAssetUploadResponder::uploadFailure(content);
 
@@ -360,9 +356,12 @@ void LLNewAgentInventoryResponder::uploadComplete(const LLSD& content)
 {
 	lldebugs << "LLNewAgentInventoryResponder::result from capabilities" << llendl;
 
+	LLUUID new_id = content["new_asset"];
+
 	if (mCallBack)
 	{
-		(*mCallBack)(true, mUserData);
+		//Singu note: We pass the UUID upon success. The callback signature was changed from (bool, void*) to (LLUUID const&, void*, bool).
+		(*mCallBack)(new_id, mUserData, true);
 	}
 
 	//std::ostringstream llsdxml;
@@ -385,7 +384,7 @@ void LLNewAgentInventoryResponder::uploadComplete(const LLSD& content)
 	}
 
 	llinfos << "Adding " << content["new_inventory_item"].asUUID() << " "
-			<< content["new_asset"].asUUID() << " to inventory." << llendl;
+			<< new_id << " to inventory." << llendl;
 	on_new_single_inventory_upload_complete(
 		asset_type,
 		inventory_type,
@@ -435,23 +434,22 @@ void LLNewAgentInventoryResponder::uploadComplete(const LLSD& content)
 			PERM_NONE;
 
 		std::string display_name = LLStringUtil::null;
-		LLAssetStorage::LLStoreAssetCallback callback = NULL;
-		void *userdata = NULL;
 
-		upload_new_resource(
-			next_file,
-			asset_name,
-			asset_name,
-			0,
-			LLFolderType::FT_NONE,
-			LLInventoryType::IT_NONE,
-			next_owner_perms,
-			group_perms,
-			everyone_perms,
-			display_name,
-			callback,
-			expected_upload_cost,
-			userdata);
+		LLPointer<AIMultiGrid::FrontEnd> mg_front_end = new AIMultiGrid::FrontEnd;
+		if (mg_front_end->prepare_upload(next_file, true))
+		{
+			upload_new_resource_continued(
+				asset_name,
+				asset_name,
+				0,
+				LLFolderType::FT_NONE,
+				LLInventoryType::IT_NONE,
+				next_owner_perms,
+				group_perms,
+				everyone_perms,
+				display_name,
+				expected_upload_cost);
+		}
 	}
 	*/
 }

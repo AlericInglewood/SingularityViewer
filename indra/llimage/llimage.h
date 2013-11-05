@@ -62,6 +62,7 @@ class LLImageFormatted;
 class LLImageRaw;
 class LLColor4U;
 class LLPrivateMemoryPool;
+class LLMD5;
 
 typedef enum e_image_codec
 {
@@ -126,12 +127,16 @@ public:
 
 	const U8 *getData() const	;
 	U8 *getData()				;
-	bool isBufferInvalid() ;
+	bool isBufferInvalid() const;
 
 	void setSize(S32 width, S32 height, S32 ncomponents);
 	U8* allocateDataSize(S32 width, S32 height, S32 ncomponents, S32 size = -1); // setSize() + allocateData()
 	void enableOverSize() {mAllowOverSize = true ;}
 	void disableOverSize() {mAllowOverSize = false; }
+
+	//<singu>
+	BOOL calculateHash(LLMD5& md5) const;	// Calculate hash of raw data and write it to md5. Returns TRUE on success.
+	//</singu>
 
 protected:
 	// special accessor to allow direct setting of mData and mDataSize by LLImageFormatted

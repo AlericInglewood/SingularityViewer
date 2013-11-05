@@ -45,6 +45,9 @@
 #include "lluictrlfactory.h"
 #include "llviewercontrol.h"
 #include "lltrans.h"
+#include "llnotificationsutil.h"
+#include "statemachine/aidirpicker.h"
+#include "aimultigridbackend.h"
 
 LLPrefsAscentSys::LLPrefsAscentSys()
 {
@@ -86,6 +89,13 @@ LLPrefsAscentSys::LLPrefsAscentSys()
 	getChild<LLUICtrl>("combobox shininess")->setCommitCallback(boost::bind(&LLPrefsAscentSys::onCommitComboBox, this, _1, _2));
 	getChild<LLTextureCtrl>("texture control")->setDefaultImageAssetID(LLUUID(gSavedSettings.getString("EmeraldBuildPrefs_Texture")));
 	getChild<LLUICtrl>("texture control")->setCommitCallback(boost::bind(&LLPrefsAscentSys::onCommitTexturePicker, this, _1));
+
+	//Uploads -----------------------------------------------------------------------------
+	getChild<LLLineEditor>("uploads_location")->setText(gDirUtilp->getUploadsDir());
+	getChild<LLButton>("set_uploads_location")->setClickedCallback(boost::bind(&LLPrefsAscentSys::onClickSetUploadsLocation, this));
+	getChild<LLButton>("reset_uploads_location")->setClickedCallback(boost::bind(&LLPrefsAscentSys::onClickResetUploadsLocation, this));
+	getChild<LLButton>("repair_uploads_database")->setClickedCallback(boost::bind(&LLPrefsAscentSys::onClickRepairUploadsDatabase, this));
+	getChild<LLButton>("merge_uploads_database")->setClickedCallback(boost::bind(&LLPrefsAscentSys::onClickMergeUploadsDatabase, this));
 
 	refreshValues();
     refresh();
@@ -198,6 +208,107 @@ void LLPrefsAscentSys::onCommitTexturePicker(LLUICtrl* ctrl)
 {
 	LLTextureCtrl*	image_ctrl = static_cast<LLTextureCtrl*>(ctrl);
 	if(image_ctrl)	gSavedSettings.setString("EmeraldBuildPrefs_Texture", image_ctrl->getImageAssetID().asString());
+}
+
+void LLPrefsAscentSys::onClickSetUploadsLocation(void)
+{
+	std::string proposed_name = gDirUtilp->getUploadsDir();
+	AIDirPicker* dirpicker = new AIDirPicker(proposed_name, "uploadslocation");
+	dirpicker->run(boost::bind(&LLPrefsAscentSys::onClickSetUploadsLocation_continued, this, dirpicker));
+}
+
+static void switch_path(std::string const& path)
+{
+	using namespace AIMultiGrid;
+	try
+	{
+	  BackEnd::getInstance()->switch_path(path);
+	}
+	catch (AIAlert::Error const& error)
+	{
+	  AIAlert::add_modal(error);
+	}
+}
+
+void LLPrefsAscentSys::onClickSetUploadsLocation_continued(AIDirPicker* dirpicker)
+{
+	if (!dirpicker->hasDirname())
+	{
+		return; // Canceled!
+	}
+
+	std::string dir_name = dirpicker->getDirname();
+	if (!dir_name.empty() && dir_name != gDirUtilp->getUploadsDir())
+	{
+		switch_path(dir_name);
+	}
+	childSetText("uploads_location", gDirUtilp->getUploadsDir());
+}
+
+void LLPrefsAscentSys::onClickResetUploadsLocation(void)
+{
+	// Is the uploads location not already the default?
+	if (gDirUtilp->getUploadsDir() != gDirUtilp->getUploadsDir(true))
+	{
+		switch_path(gDirUtilp->getUploadsDir());
+	}
+	childSetText("uploads_location", gDirUtilp->getUploadsDir());
+}
+
+void LLPrefsAscentSys::onClickRepairUploadsDatabase(void)
+{
+	using namespace AIMultiGrid;
+	try
+	{
+	  bool fixed = BackEnd::getInstance()->repair_database();
+	  if (fixed)
+	  {
+		AIAlert::add_modal("AIUploadsCheckDBfixed");
+	  }
+	  else
+	  {
+		AIAlert::add_modal("AIUploadsCheckDBclean");
+	  }
+	}
+	catch (AIAlert::ErrorCode const& error)
+	{
+		if (error.getCode() == 0)
+		{
+			AIAlert::add_modal("AIUploadsCheckDBmkdir", error);
+		}
+		else
+		{
+			AIAlert::add_modal("AIUploadsCheckDBcorrupt", error);
+		}
+	}
+}
+
+void LLPrefsAscentSys::onClickMergeUploadsDatabase(void)
+{
+	std::string proposed_name = gDirUtilp->getUploadsDir();
+	AIDirPicker* dirpicker = new AIDirPicker(proposed_name, "uploadslocation");
+	dirpicker->run(boost::bind(&LLPrefsAscentSys::onClickMergeUploadsDatabase_continued, this, dirpicker));
+}
+
+void LLPrefsAscentSys::onClickMergeUploadsDatabase_continued(AIDirPicker* dirpicker)
+{
+	if (!dirpicker->hasDirname())
+	{
+		return; // Canceled!
+	}
+
+	std::string dir_name = dirpicker->getDirname();
+	if (!dir_name.empty() && dir_name != gDirUtilp->getUploadsDir())
+	{
+		using namespace AIMultiGrid;
+		mergedb_nt result = BackEnd::getInstance()->merge_database(dir_name);
+		switch (result)
+		{
+			case mergedb_success:
+				AIAlert::add_modal("AIUploadsMergeDBsuccess");
+				break;
+		}
+	}
 }
 
 void LLPrefsAscentSys::refreshValues()

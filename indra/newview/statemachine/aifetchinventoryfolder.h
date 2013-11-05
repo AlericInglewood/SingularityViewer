@@ -32,6 +32,8 @@
 #define AIFETCHINVENTORYFOLDER_H
 
 #include "aistatemachine.h"
+#include "llinventoryobserver.h"
+#include "llinventorymodel.h"
 #include "lluuid.h"
 #include <map>
 
@@ -149,6 +151,26 @@ class AIFetchInventoryFolder : public AIStateMachine {
 
 	// Implemenation of state_str for run states.
 	/*virtual*/ char const* state_str_impl(state_type run_state) const;
+};
+
+// Helper class.
+//
+// Fetches children of a category/folder, advances the state of 'statemachine' to 'state' when all inventory has arrived.
+class AIInventoryFetchDescendentsObserver : public LLInventoryFetchDescendentsObserver {
+  public:
+	AIInventoryFetchDescendentsObserver(AIStateMachine* statemachine, AIStateMachine::state_type state, LLUUID const& folder);
+	~AIInventoryFetchDescendentsObserver() { gInventory.removeObserver(this); }
+
+  protected:
+	/*virtual*/ void done()
+	{
+	  mStateMachine->advance_state(mDoneState);
+	  delete this;
+	}
+
+  private:
+	LLPointer<AIStateMachine> mStateMachine;
+	AIStateMachine::state_type mDoneState;
 };
 
 #endif

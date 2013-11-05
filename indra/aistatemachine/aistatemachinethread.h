@@ -119,7 +119,7 @@ void HelloWorld::multiplex_impl(state_type run_state)
 	case HelloWorld_start:
 	{
 	  mHelloWorld->run(this, HelloWorld_done);		// Run HelloWorldThread and set the state of 'this' to HelloWorld_done when finished.
-	  idle(HelloWorld_start);						// Always go idle after starting a thread!
+	  idle();										// Always go idle after starting a thread!
 	  break;
 	}
 	case HelloWorld_done:

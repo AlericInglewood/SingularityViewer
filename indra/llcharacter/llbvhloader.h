@@ -283,7 +283,7 @@ public:
 
 	// Returns the number of lines scanned.
 	// Useful for error reporting.
-	S32 getLineNumber() { return mLineNumber; }
+	S32 getLineNumber() const { return mLineNumber; }
 
 	// returns required size of output buffer
 	U32 getOutputSize();
@@ -296,11 +296,11 @@ public:
 
 	void reset();
 
-	F32 getDuration() { return mDuration; }
+	F32 getDuration() const { return mDuration; }
 
-	BOOL isInitialized() { return mInitialized; }
+	BOOL isInitialized() const { return mInitialized; }
 
-	ELoadStatus getStatus() { return mStatus; }
+	ELoadStatus getStatus() const { return mStatus; }
 
 protected:
 	// Consumes one line of input from file.

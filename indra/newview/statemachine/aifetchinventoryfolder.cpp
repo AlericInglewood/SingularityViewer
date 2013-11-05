@@ -41,36 +41,19 @@ enum fetchinventoryfolder_state_type {
   AIFetchInventoryFolder_folderCompleted
 };
 
-class AIInventoryFetchDescendentsObserver : public LLInventoryFetchDescendentsObserver {
-  public:
-	AIInventoryFetchDescendentsObserver(AIStateMachine* statemachine, LLUUID const& folder);
-	~AIInventoryFetchDescendentsObserver() { gInventory.removeObserver(this); }
-
-  protected:
-	/*virtual*/ void done()
-	{
-	  mStateMachine->advance_state(AIFetchInventoryFolder_folderCompleted);
-	  delete this;
-	}
-
-  private:
-	LLPointer<AIStateMachine> mStateMachine;
-};
-
-AIInventoryFetchDescendentsObserver::AIInventoryFetchDescendentsObserver(AIStateMachine* statemachine, LLUUID const& folder) : 
+AIInventoryFetchDescendentsObserver::AIInventoryFetchDescendentsObserver(AIStateMachine* statemachine, AIStateMachine::state_type state, LLUUID const& folder) :
+	LLInventoryFetchDescendentsObserver(folder),
 	mStateMachine(statemachine),
-	LLInventoryFetchDescendentsObserver(folder)
+	mDoneState(state)
 {
-	// Call idle() on the parent state machine before passing it.
-	llassert(mStateMachine->waiting());
 	startFetch();
-	if(isFinished())
+	if (isFinished())
 	{
 		done();
 	}
 	else
 	{
-		 gInventory.addObserver(this);
+		gInventory.addObserver(this);
 	}
 }
 
@@ -176,7 +159,7 @@ void AIFetchInventoryFolder::multiplex_impl(state_type run_state)
 	{
 	  idle();	// Wait till the state is set to AIFetchInventoryFolder_folderCompleted.
 	  // This sets the state to AIFetchInventoryFolder_folderCompleted once the folder is complete.
-	  new AIInventoryFetchDescendentsObserver(this, mFolderUUID);
+	  new AIInventoryFetchDescendentsObserver(this, AIFetchInventoryFolder_folderCompleted, mFolderUUID);
 	  break;
 	}
 	case AIFetchInventoryFolder_folderCompleted:

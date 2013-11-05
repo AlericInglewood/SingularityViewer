@@ -1093,7 +1093,9 @@ void LLViewerTextureList::decodeAllImages(F32 max_time)
 
 BOOL LLViewerTextureList::createUploadFile(const std::string& filename,
 										 const std::string& out_filename,
-										 const U8 codec)
+										 const U8 codec,
+										 LLMD5& source_md5,
+										 LLMD5& asset_md5)
 {
 	// Load the image
 	LLPointer<LLImageFormatted> image = LLImageFormatted::createFromType(codec);
@@ -1120,6 +1122,12 @@ BOOL LLViewerTextureList::createUploadFile(const std::string& filename,
 		LLImage::setLastError("Image files with less than 3 or more than 4 components are not supported.");
 		return FALSE;
 	}
+	//<singu>
+	if (!raw_image->calculateHash(source_md5))
+	{
+		source_md5 = LLMD5();
+	}
+	//</singu>
 	// Convert to j2c (JPEG2000) and save the file locally
 	LLPointer<LLImageJ2C> compressedImage = convertToUploadFile(raw_image);	
 	if (compressedImage.isNull())
@@ -1134,7 +1142,7 @@ BOOL LLViewerTextureList::createUploadFile(const std::string& filename,
 		llinfos << "Couldn't create output file : " << out_filename << llendl;
 		return FALSE;
 	}
-	return verifyUploadFile(out_filename, codec);
+	return verifyUploadFile(out_filename, codec, asset_md5);
 }
 
 static bool positive_power_of_two(int dim)
@@ -1142,11 +1150,11 @@ static bool positive_power_of_two(int dim)
   return dim > 0 && !(dim & (dim - 1));
 }
 
-BOOL LLViewerTextureList::verifyUploadFile(const std::string& out_filename, const U8 codec)
+BOOL LLViewerTextureList::verifyUploadFile(const std::string& out_filename, const U8 codec, LLMD5& md5)
 {
 	// Test to see if the encode and save worked
 	LLPointer<LLImageJ2C> integrity_test = new LLImageJ2C;
-	if (!integrity_test->loadAndValidate( out_filename ))
+	if (!integrity_test->loadAndValidate(out_filename, md5))	//Singu note: passing md5 to get a hash of the file.
 	{
 		LLImage::setLastError(std::string("The ") + ((codec == IMG_CODEC_J2C) ? "" : "created ") + "jpeg2000 image is corrupt: " + LLImage::getLastError());
 		llinfos << "Image file : " << out_filename << " is corrupt" << llendl;

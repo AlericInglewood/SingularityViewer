@@ -50,8 +50,8 @@ class LLMutex;
 // Usage:
 //
 // struct Foo { bool met(); };	// Returns true when the condition is met.
-// AICondition<Foo> Condition_t;
-// AIAccess<Foo> Condition_wat;
+// typedef AICondition<Foo> Condition_t;
+// typedef AIAccess<Foo> Condition_wat;
 //
 // // Some thread-safe condition variable.
 // Condition_t condition;
@@ -80,7 +80,8 @@ class LLMutex;
 class AIConditionBase
 {
   public:
-	virtual ~AIConditionBase() { }
+	AIConditionBase(void);
+	virtual ~AIConditionBase();
 
 	void signal(int n = 1);											// Call this when the condition was met to release n state machines.
 	void broadcast(void) { signal(mWaitingStateMachines.size()); }	// Release all blocked state machines.

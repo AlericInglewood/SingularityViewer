@@ -137,7 +137,7 @@ M&#xF6;chten Sie desweiteren jetzt den Marktplatz-Browser auf die Seite dieser R
 
   <notification name="UploadAuctionSnapshotFail">Eine Auktions-Screenshot konnte aus folgendem Grund nicht hochgeladen werden: [REASON]</notification>
 
-  <notification name="UploadSnapshotFail">Ein Screenshot konnte aus folgendem Grund nicht hochgeladen werden: [REASON]</notification>
+  <notification name="UploadSnapshotFail">Ein Screenshot konnte nicht hochgeladen werden.</notification>
 
   <notification name="UnableToViewContentsMoreThanOne">Es kann nur jeweils der Inhalt von einem Objekt angezeigt werden.
 W&#xE4;hlen Sie ein einzelnes Objekt aus und versuchen Sie es erneut.</notification>

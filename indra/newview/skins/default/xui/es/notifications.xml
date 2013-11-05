@@ -245,7 +245,7 @@ canceltext="Reiniciar" yestext="Si"/>
 	</notification>
 	
 	<notification name="UploadSnapshotFail">
-Hubo un problema al subir la foto por la siguiente razón: [REASON]
+		Hubo un problema al subir la foto.
   </notification>	
 	
 	<notification name="UnableToViewContentsMoreThanOne">

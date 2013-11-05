@@ -52,8 +52,10 @@ const size_t LLVORBIS_CLIP_MAX_SAMPLE_DATA		= LLVORBIS_CLIP_MAX_SAMPLES * 2; // 
 const size_t LLVORBIS_CLIP_REJECT_SAMPLES		= LLVORBIS_CLIP_MAX_SAMPLES * 3;
 const size_t LLVORBIS_CLIP_REJECT_SIZE			= LLVORBIS_CLIP_MAX_SAMPLE_DATA * 3;
 
+class LLMD5;
+
 S32 check_for_invalid_wav_formats(const std::string& in_fname, std::string& error_msg);
-S32 encode_vorbis_file(const std::string& in_fname, const std::string& out_fname);
+S32 encode_vorbis_file(const std::string& in_fname, const std::string& out_fname, LLMD5& source_md5, LLMD5& asset_md5);
 
 #endif
 

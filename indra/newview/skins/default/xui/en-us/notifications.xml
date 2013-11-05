@@ -462,7 +462,7 @@ There was a problem uploading the auction snapshot due to the following reason: 
    icon="alertmodal.tga"
    name="UploadSnapshotFail"
    type="alertmodal">
-There was a problem uploading the snapshot due to the following reason: [REASON]
+There was a problem uploading the snapshot.
   </notification>
 
   <notification
@@ -1741,15 +1741,6 @@ Audio file is too long (10 second maximum):
 
   <notification
    icon="alertmodal.tga"
-   name="ProblemWithFile"
-   type="alertmodal">
-Problem with file [FILE]:
-
-[ERROR]
-  </notification>
-
-  <notification
-   icon="alertmodal.tga"
    name="CannotOpenTemporarySoundFile"
    type="alertmodal">
 Couldn&apos;t open temporary compressed sound file for writing: [FILE]
@@ -2515,7 +2506,7 @@ Please enter a higher price.
    icon="alertmodal.tga"
    name="ConfirmItemDeleteHasLinks"
    type="alertmodal">
-At least one of the items you has link items that point to it.  If you delete this item, its links will permanently stop working.  It is strongly advised to delete the links first.
+At least one of the items you try to delete has link items that point to it.  If you delete this item, its links will permanently stop working.  It is strongly advised to delete the links first.
 
 Are you sure you want to delete these items?
     <usetemplate
@@ -7814,7 +7805,7 @@ Your shape, skin, hair or eyes might be defect.
    name="BulkTemporaryUpload"
    type="alertmodal">
 Would you like to bulk upload the files as temporary files?
-Only textures will upload as temporary on Agni and Aditi.
+Only textures will upload as temporary.
 
 WARNING: Each upload costs [UPLOADCOST] if it's not temporary
     <usetemplate
@@ -7829,7 +7820,7 @@ WARNING: Each upload costs [UPLOADCOST] if it's not temporary
    name="BulkTemporaryUploadFree"
    type="alertmodal">
 Would you like to bulk upload the files as temporary files?
-Only textures will upload as temporary on Agni and Aditi.
+Only textures will upload as temporary.
     <usetemplate
      name="yesnocancelbuttons"
      notext="Permanent"

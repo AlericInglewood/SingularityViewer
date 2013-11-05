@@ -195,6 +195,10 @@ protected:
 	U8 *mBufferp;
 	U8 *mCurBufferp;
 	S32 mBufferSize;
+
+public:
+	// Needed by AIDataPackerHashed.
+	U8 const* getCurBufferp(void) const { return mCurBufferp; }
 };
 
 inline BOOL LLDataPackerBinaryBuffer::verifyLength(const S32 data_size, const char *name)

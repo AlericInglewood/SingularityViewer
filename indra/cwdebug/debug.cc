@@ -240,6 +240,7 @@ void stop_recording_backtraces(void)
       channel_ct curlio DDCN("CURLIO");	//!< This debug channel is used to print debug output of libcurl. This includes all HTTP network traffic.
       channel_ct curltr DDCN("CURLTR");	//!< This debug channel is used to print libcurl API calls.
       channel_ct snapshot DDCN("SNAPSHOT");	//!< This debug channel is used for output related to snapshots.
+      channel_ct backend DDCN("BACKEND");	//!< This debug channel is used for output related to AIMultiGrid::BackEnd.
 
     } // namespace dc
   } // namespace DEBUGCHANNELS
@@ -566,6 +567,7 @@ fake_channel const       curltr(1, "CURLTR      ");
 fake_channel const statemachine(1, "STATEMACHINE");
 fake_channel const       notice(1, "NOTICE      ");
 fake_channel const     snapshot(0, "SNAPSHOT    ");
+fake_channel const      backend(0, "BACKEND     ");
 
 } // namespace dc
 } // namespace debug

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
 <floater can_close="true" can_drag_on_left="false" can_minimize="false"
-     can_resize="false" height="556" min_height="256" min_width="300"
+     can_resize="false" height="595" min_height="256" min_width="300"
      name="Animation Preview" title="" width="300">
 	<pad height="12" />
 	<text follows="top|left" height="15" left="10" name="name_label">
@@ -15,7 +15,17 @@
 	<line_editor bottom_delta="-2" follows="top|left|right" height="19" left="85"
 	     max_length="254" name="description_form" right="-10" spell_check="true" />
 	<pad height="0" />
-	<spinner decimal_digits="0" follows="left|top" height="18" increment="1" initial_val="0"
+
+    <text bottom_delta="-10" follows="top|left" left="10" name="previously_uploaded_text">Presets of previous uploads:</text>
+    <combo_box bottom_delta="-25" enabled="false" follows="left|top" font="SansSerifSmall" height="20"
+        left="10" mouse_opaque="true" width="200" allow_text_entry="false" name="previously_uploaded"
+        tool_tip="These are settings of previously uploaded animations.">
+      <combo_item name="select_item">Select previously upload</combo_item>
+    </combo_box>
+    <button bottom_delta="0" follows="left|top" halign="right" height="20" label="Copy UUID" right="-10"
+        font="SansSerifSmall" tool_tip="Copy the asset UUID to clipboard" name="copy_uuid" width="70"/>
+
+	<spinner bottom_delta="-28" decimal_digits="0" follows="left|top" height="18" increment="1" initial_val="0"
 	     label="Priority" label_width="50" left="10" max_val="5" min_val="0"
 	     name="priority"
 	     tool_tip="Controls which other animations can be overridden by this animation."
@@ -81,66 +91,26 @@
 	<combo_box bottom_delta="-2" follows="left|top" height="18" label="" left_delta="76"
 	     name="emote_combo" right="190"
 	     tool_tip="Controls what face does during animation." width="104">
-		<combo_item name="[None]">
-			[None]
-		</combo_item>
-		<combo_item name="Aaaaah">
-			Aaaaah
-		</combo_item>
-		<combo_item name="Afraid">
-			Afraid
-		</combo_item>
-		<combo_item name="Angry">
-			Angry
-		</combo_item>
-		<combo_item name="BigSmile">
-			Big Smile
-		</combo_item>
-		<combo_item name="Bored">
-			Bored
-		</combo_item>
-		<combo_item name="Cry">
-			Cry
-		</combo_item>
-		<combo_item name="Disdain">
-			Disdain
-		</combo_item>
-		<combo_item name="Embarrassed">
-			Embarrassed
-		</combo_item>
-		<combo_item name="Frown">
-			Frown
-		</combo_item>
-		<combo_item name="Kiss">
-			Kiss
-		</combo_item>
-		<combo_item name="Laugh">
-			Laugh
-		</combo_item>
-		<combo_item name="Plllppt">
-			Plllppt
-		</combo_item>
-		<combo_item name="Repulsed">
-			Repulsed
-		</combo_item>
-		<combo_item name="Sad">
-			Sad
-		</combo_item>
-		<combo_item name="Shrug">
-			Shrug
-		</combo_item>
-		<combo_item name="Smile">
-			Smile
-		</combo_item>
-		<combo_item name="Surprise">
-			Surprise
-		</combo_item>
-		<combo_item name="Wink">
-			Wink
-		</combo_item>
-		<combo_item name="Worry">
-			Worry
-		</combo_item>
+	    <combo_item name="[None]" value="[None]">[None]</combo_item>
+		<combo_item name="Aaaaah" value="Aaaaah">Aaaaah</combo_item>
+		<combo_item name="Afraid" value="Afraid">Afraid"</combo_item>
+		<combo_item name="Angry" value="Angry">Angry</combo_item>
+		<combo_item name="BigSmile" value="BigSmile">BigSmile</combo_item>
+		<combo_item name="Bored" value="Bored">Bored</combo_item>
+		<combo_item name="Cry" value="Cry">Cry</combo_item>
+		<combo_item name="Disdain" value="Disdain">Disdain</combo_item>
+		<combo_item name="Embarrassed" value="Embarrassed">Embarrassed</combo_item>
+		<combo_item name="Frown" value="Frown">Frown</combo_item>
+		<combo_item name="Kiss" value="Kiss">Kiss</combo_item>
+		<combo_item name="Laugh" value="Laugh">Laugh</combo_item>
+		<combo_item name="Plllppt" value="Plllppt">Plllppt</combo_item>
+		<combo_item name="Repulsed" value="Repulsed">Repulsed</combo_item>
+		<combo_item name="Sad" value="Sad">Sad</combo_item>
+		<combo_item name="Shrug" value="Shrug">Shrug</combo_item>
+		<combo_item name="Smile" value="Smile">Smile</combo_item>
+		<combo_item name="Surprise" value="Surprise">Surprise</combo_item>
+		<combo_item name="Wink" value="Wink">Wink</combo_item>
+		<combo_item name="Worry" value="Worry">Worry</combo_item>
 	</combo_box>
 	<text bottom_delta="-21" follows="top|left" height="15" left="10"
 	     name="preview_label" width="70">
@@ -177,10 +147,11 @@
 	     name="play_btn" tool_tip="Play/pause your animation." width="28" />
 	<button bottom_delta="0" follows="top|right" height="28" label="" left_delta="32"
 	     name="stop_btn" tool_tip="Stop animation playback" width="28" />
-	<slider bottom_delta="0" follows="top|right" height="20" increment="0.0001"
+	<slider_bar bottom_delta="0" follows="top|right" height="20" increment="0.0001"
 	     initial_val="0" label="" label_width="0" left="80" max_val="1" min_val="0"
 	     name="playback_slider" right="290" show_text="false" />
-	<text bottom="280" follows="top|left" left="20" name="bad_animation_text">
+
+	<text bottom_delta="-20" follows="top|left" left="20" name="bad_animation_text">
 		Unable to read animation file.
 
 We recommend BVH files exported from Poser 4.

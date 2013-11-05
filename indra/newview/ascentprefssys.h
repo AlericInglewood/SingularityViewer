@@ -32,8 +32,9 @@
 #ifndef ASCENTPREFSSYS_H
 #define ASCENTPREFSSYS_H
 
-
 #include "llpanel.h"
+
+class AIDirPicker;
 
 class LLPrefsAscentSys : public LLPanel
 {
@@ -51,6 +52,12 @@ protected:
 	void onCommitCmdLine(LLUICtrl* ctrl, const LLSD& value);
 	void onCommitComboBox(LLUICtrl* ctrl, const LLSD& value);
 	void onCommitTexturePicker(LLUICtrl* ctrl);
+	void onClickSetUploadsLocation(void);
+	void onClickSetUploadsLocation_continued(AIDirPicker* dirpicker);
+	void onClickResetUploadsLocation(void);
+	void onClickRepairUploadsDatabase(void);
+	void onClickMergeUploadsDatabase(void);
+	void onClickMergeUploadsDatabase_continued(AIDirPicker* dirpicker);
 
 private:
 	//General -----------------------------------------------------------------------------
@@ -128,6 +135,8 @@ private:
 	F32 mXsize;
 	F32 mYsize;
 	F32 mZsize;
+
+	//Uploads -----------------------------------------------------------------------------
 };
 
 #endif

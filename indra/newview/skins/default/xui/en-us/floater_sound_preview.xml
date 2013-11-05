@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
 <floater can_close="true" can_drag_on_left="false" can_minimize="true"
-     can_resize="false" height="190" min_height="140" min_width="300"
+     can_resize="false" height="150" min_height="140" min_width="300"
      name="Sound Preview" title="sound.wav" width="300">
 	<text bg_visible="false" border_drop_shadow_visible="false" border_visible="false"
 	     bottom="-35" drop_shadow_visible="true" follows="left|top"
@@ -20,10 +20,15 @@
 	<line_editor bevel_style="in" border_style="line" border_thickness="1" bottom_delta="-23"
 	     follows="left|top|right" font="SansSerifSmall" height="19" left="10"
 	     max_length="127" mouse_opaque="true" name="description_form" width="280" spell_check="true" />
-	<button bottom="-180" follows="right|bottom" font="SansSerif" halign="center"
-	     height="20" label="Cancel" label_selected="Cancel" left="200"
-	     mouse_opaque="true" name="cancel_btn" width="90" />
-	<button bottom="-180" follows="left|bottom" font="SansSerif" halign="center"
-	     height="20" label="Upload ([UPLOADFEE])"
-	     left_delta="-135" mouse_opaque="true" name="ok_btn" width="130" />
+	<text bottom_delta="-23" follows="top|left" left="10" name="already_exists_text" />
+	<name_editor bevel_style="in" border_style="line"
+			   border_thickness="1" bottom_delta="-23" enabled="false" follows="left|top"
+			   font="SansSerifSmall" height="16" is_unicode="false" left="10"
+			   max_length="36" mouse_opaque="false" name="asset_id" width="210"
+			   tool_tip = "This is the Universally Unique IDentifier key of the previously uploaded sound. You can use it to play sounds without having the sound in your inventory." />
+	<button bottom_delta="-3" follows="left|top" halign="right" height="20" label="Copy UUID" right="-10" font="SansSerifSmall" tool_tip="Copy the asset UUID to clipboard" name="copy_uuid" width="70"/>
+	<button bottom="10" follows="bottom|right" height="20" label="Cancel" left="165"
+	     name="cancel_btn" width="125" />
+	<button bottom="10" follows="bottom|left" height="20" label="Upload ([UPLOADFEE])"
+	     left="15" name="ok_btn" width="125" />
 </floater>

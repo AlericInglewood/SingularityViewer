@@ -36,22 +36,36 @@
 #include "llresizehandle.h"
 #include "llstring.h"
 
+namespace AIMultiGrid {
+  class FrontEnd;
+  class Delta;
+}
+
 class LLLineEditor;
 class LLButton;
 class LLRadioGroup;
+class AIUploadedAsset;
 
 class LLFloaterNameDesc : public LLFloater
 {
 public:
-	// <edit>
-	LLFloaterNameDesc(const LLSD& filename, void* item = NULL);
-	// </edit>
+	explicit LLFloaterNameDesc(LLPointer<AIMultiGrid::FrontEnd> const& front_end);
 	virtual ~LLFloaterNameDesc();
-	virtual BOOL postBuild();
 
+protected:
+	virtual BOOL postBuild();
+	void postBuildUploadedBefore(std::string const& asset_name, S32 extend);
+	static void onClickGetKey(void* userdata);
+	//<edit>
+	void onChangePreset(LLUICtrl* ctrl);
+	virtual void onChangePresetDelta(AIMultiGrid::Delta*) { }
+	//</edit>
+
+public:
 	void		onBtnOK();
 	void		onBtnCancel();
-	void		doCommit();
+	void		doCommitName();
+	void		doCommitDescription();
 
 protected:
 	virtual void		onCommit();
@@ -63,28 +77,33 @@ protected:
 	std::string		mFilenameAndPath;
 	std::string		mFilename;
 	// <edit>
-	void* mItem;
+	LLPointer<AIMultiGrid::FrontEnd> mFrontEnd;		// The upload manager state machine.
+	bool mUploadedBefore;							// True if this asset already exists on the _current_ grid.
+	LLUUID mExistingUUID;							// UUID of previously uploaded asset. Only valid when mUploadedBefore is true.
+	std::vector<AIUploadedAsset*> mPreviousUploads;	// A list of all previous uploads (to any grid), only set for one_source_many_assets source types.
+	bool			mUserEdittedName;
+	bool			mUserEdittedDescription;
 	// </edit>
 };
 
 class LLFloaterSoundPreview : public LLFloaterNameDesc
 {
 public:
-	LLFloaterSoundPreview(const LLSD& filename, void* item = NULL );
+	explicit LLFloaterSoundPreview(LLPointer<AIMultiGrid::FrontEnd> const& front_end);
 	virtual BOOL postBuild();
 };
 
 class LLFloaterAnimPreview : public LLFloaterNameDesc
 {
 public:
-	LLFloaterAnimPreview(const LLSD& filename, void* item = NULL );
+	explicit LLFloaterAnimPreview(LLPointer<AIMultiGrid::FrontEnd> const& front_end);
 	virtual BOOL postBuild();
 };
 
 class LLFloaterScriptPreview : public LLFloaterNameDesc
 {
 public:
-	LLFloaterScriptPreview(const LLSD& filename, void* item = NULL );
+	explicit LLFloaterScriptPreview(LLPointer<AIMultiGrid::FrontEnd> const& front_end);
 	virtual BOOL postBuild();
 };
 

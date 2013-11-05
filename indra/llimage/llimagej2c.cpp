@@ -35,6 +35,7 @@
 #include "lldir.h"
 #include "../llxml/llcontrol.h"
 #include "llimagej2c.h"
+#include "llmd5.h"
 
 typedef LLImageJ2CImpl* (*CreateLLImageJ2CFunction)();
 typedef void (*DestroyLLImageJ2CFunction)(LLImageJ2CImpl*);
@@ -465,7 +466,7 @@ void LLImageJ2C::setReversible(const BOOL reversible)
 }
 
 
-BOOL LLImageJ2C::loadAndValidate(const std::string &filename)
+BOOL LLImageJ2C::loadAndValidate(const std::string &filename, LLMD5& md5)
 {
 	BOOL res = TRUE;
 	
@@ -500,6 +501,12 @@ BOOL LLImageJ2C::loadAndValidate(const std::string &filename)
 		else
 		{
 			res = validate(data, file_size);
+			//<singu>
+			if (res)
+			{
+				res = calculateHash(data, file_size, md5);
+			}
+			//</singu>
 		}
 	}
 	
@@ -541,6 +548,92 @@ BOOL LLImageJ2C::validate(U8 *data, U32 file_size)
 	}
 	return res;
 }
+
+//<singu>
+// Singularity extension for AIMultiGrid.
+
+// Transfer array of bytes { 0x12, 0x34 } into 0x1234.
+static U16 readShort(U8 const* p)
+{
+	U16 value = p[0];
+	value <<= 8;
+	value |= p[1];
+	return value;
+}
+
+bool isMarker(U8 const* data, U8 code)
+{
+	return data[0] == 0xff && data[1] == code;
+}
+
+BOOL LLImageJ2C::calculateHash(U8 const* data, U32 file_size, LLMD5& md5)
+{
+	// JPEG 2000 delimiters.
+	U8 const SOC = 0x4f;	// Start of codestream.
+	U8 const SOD = 0x93;	// Start of data.
+	U8 const EOC = 0xd9;	// End of codestream.
+	// Fixed information segment.
+	U8 const SIZ = 0x51;	// Image and tile size.
+	// Informational segments.
+	U8 const COM = 0x64;	// Comment.
+
+	// Avoid reading uninitialized data.
+	if (file_size < 6) return FALSE;
+
+	U8 const* marker = data;
+	// Must be a JPEG 2000 stream.
+	bool isSOC = isMarker(marker, SOC);
+	llassert(isSOC);
+	if (!isSOC) return FALSE;
+	// The first segment has no length.
+	marker += 2;
+
+	// Determine an upper limit for the header.
+	int const header_len = llmin(file_size, (U32)(FIRST_PACKET_SIZE + 2));	// Something larger than the real header size.
+
+	// The next segment should be SIZ.
+	bool isSIZ = isMarker(marker, SIZ);
+	llassert(isSIZ);
+	if (!isSIZ) return FALSE;
+
+	// Skip segments until we find the Start Of Data.
+	bool sawCOM = false;
+	do
+	{
+		marker += 2;
+		U16 len = readShort(marker);
+		marker += len;
+		if (marker - data > header_len - 4)	// Make sure we can read the next segment length.
+		{
+			return FALSE;
+		}
+		bool isMarker = marker[0] == 0xff;
+		llassert(isMarker);
+		if (!isMarker) return FALSE;
+		sawCOM |= marker[1] == COM;
+	}
+	while (marker[1] != SOD);
+
+	// Sanity check: make sure we skipped the comment by now.
+	llassert(sawCOM);
+	if (!sawCOM) return FALSE;
+
+	// Only hash from SOD and onwards.
+	size_t hash_length = file_size - (marker - data);
+
+	// Another sanity check, make sure the file ends on EOC.
+	bool endsOnEOC = isMarker(marker + hash_length - 2, EOC);
+	llassert(endsOnEOC);
+	if (!endsOnEOC) return FALSE;
+
+	// Calculate hash.
+	md5.update(marker, hash_length);
+	md5.finalize();
+
+	return TRUE;
+}
+
+//</singu>
 
 void LLImageJ2C::decodeFailed()
 {

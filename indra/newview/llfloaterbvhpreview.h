@@ -36,9 +36,11 @@
 #include "lldynamictexture.h"
 #include "llcharacter.h"
 #include "llquaternion.h"
+#include "llbvhloader.h"
 
 class LLVOAvatar;
 class LLViewerJointMesh;
+class LLKeyframeMotion;
 
 class LLPreviewAnimation : public LLViewerDynamicTexture
 {
@@ -71,12 +73,35 @@ protected:
 	LLPointer<LLVOAvatar>			mDummyAvatar;
 };
 
+class AIBVHLoader
+{
+  private:
+	LLTransactionID mTransactionID;
+	LLAssetID mMotionID;
+	LLPointer<LLPreviewAnimation> mAnimPreview;
+	LLBVHLoader* mLoader;
+	LLKeyframeMotion* mMotionp;
+
+  public:
+	AIBVHLoader(void) : mLoader(NULL), mMotionp(NULL) { }
+	~AIBVHLoader() { delete mLoader; }
+
+	bool loadbvh(std::string const& filename, bool in_world, LLPointer<AIMultiGrid::FrontEnd> front_end);
+
+	LLTransactionID const& getTransactionID(void) const { return mTransactionID; }
+	LLAssetID const& getMotionID(void) const { return mMotionID; }
+	LLPointer<LLPreviewAnimation> const& getAnimPreview(void) const { return mAnimPreview; }
+	LLKeyframeMotion* getMotionp(void) const { return mMotionp; }
+
+	ELoadStatus getStatus(void) const { return mLoader ? mLoader->getStatus() : E_ST_OK; }
+	S32 getLineNumber(void) const { return mLoader ? mLoader->getLineNumber() : 0; }
+	F32 getDuration(void ) const { return mLoader ? mLoader->getDuration() : 0.f; }
+};
+
 class LLFloaterBvhPreview : public LLFloaterNameDesc
 {
 public:
-	//<edit>
-	LLFloaterBvhPreview(const std::string& filename, void* item = NULL);
-	//<edit>
+	explicit LLFloaterBvhPreview(LLPointer<AIMultiGrid::FrontEnd> const& front_end);
 	virtual ~LLFloaterBvhPreview();
 	
 	BOOL postBuild();
@@ -111,6 +136,13 @@ public:
 									   LLAssetType::EType type,
 									   void* user_data,
 									   S32 status, LLExtStat ext_status);
+
+	//<edit>
+	// Overridden from LLFloaterNameDesc.
+	/*virtual*/ void onChangePresetDelta(AIMultiGrid::Delta* delta);	// Accept a preset and update all settings.
+	void checkForPreset(void);											// Accept a setting change and check if the new settings match an existing preset.
+	//</edit>
+
 private:
 	void setAnimCallbacks() ;
 	
@@ -129,11 +161,12 @@ protected:
 	LLTransactionID		mTransactionID;
 	BOOL				mInWorld;
 	LLAnimPauseRequest	mPauseRequest;
+	//<edit>
+	F32					mDuration;				// Singu extension. Cache for the duration of the BVH animation.
+	bool				mPresetting;			// Singu extension. Set to indicate that we're committing a preset (as opposed to the user actually changing a setting).
+	//</edit>
 
 	std::map<std::string, LLUUID>	mIDList;
-	//<edit>
-	void* mItem;
-	//</edit>
 };
 
 #endif  // LL_LLFLOATERBVHPREVIEW_H

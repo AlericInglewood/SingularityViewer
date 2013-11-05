@@ -64,15 +64,17 @@
 #include "llviewercamera.h"
 #include "llviewerobjectlist.h"
 #include "llviewerwindow.h"
-#include "llviewermenufile.h"	// upload_new_resource()
 #include "llvoavatarself.h"
 #include "pipeline.h"
 #include "lluictrlfactory.h"
+#include "llassetuploadresponders.h"
 
 #include "hippogridmanager.h"
 
 //<edit>
-#include "llinventorymodel.h" // gInventoryModel
+#include "lltrans.h"				// LLTrans
+#include "llinventorymodel.h" 		// gInventoryModel
+#include "aimultigridfrontend.h"
 //</edit>
 
 const S32 PREVIEW_BORDER_WIDTH = 2;
@@ -143,12 +145,8 @@ std::string STATUS[] =
 //-----------------------------------------------------------------------------
 // LLFloaterBvhPreview()
 //-----------------------------------------------------------------------------
-LLFloaterBvhPreview::LLFloaterBvhPreview(const std::string& filename, void* item) :
-	LLFloaterNameDesc(filename, item)
+LLFloaterBvhPreview::LLFloaterBvhPreview(LLPointer<AIMultiGrid::FrontEnd> const& front_end) : LLFloaterNameDesc(front_end)
 {
-	//<edit>
-	mItem = item;
-	//<edit>
 	mLastMouseX = 0;
 	mLastMouseY = 0;
 
@@ -177,6 +175,10 @@ LLFloaterBvhPreview::LLFloaterBvhPreview(const std::string& filename, void* item
 	mIDList["Surprise"] = ANIM_AGENT_EXPRESS_SURPRISE;
 	mIDList["Wink"] = ANIM_AGENT_EXPRESS_WINK;
 	mIDList["Worry"] = ANIM_AGENT_EXPRESS_WORRY;
+
+	//<edit>
+	mPresetting = false;
+	//</edit>
 }
 
 //-----------------------------------------------------------------------------
@@ -207,14 +209,95 @@ void LLFloaterBvhPreview::setAnimCallbacks()
 	getChild<LLUICtrl>("ease_out_time")->setValidateBeforeCommit( boost::bind(&LLFloaterBvhPreview::validateEaseOut, this, _1));
 }
 
+// Singu note: this function used to be part of LLFloaterBvhPreview::postBuild below.
+bool AIBVHLoader::loadbvh(std::string const& filename, bool in_world, LLPointer<AIMultiGrid::FrontEnd> front_end)
+{
+	bool success = false;
+
+	// Load the bvh file.
+	S32 file_size;
+
+	LLAPRFile infile(filename, LL_APR_RB, &file_size);
+
+	if (!infile.getFileHandle())
+	{
+		llwarns << "Can't open BVH file:" << filename << llendl;
+	}
+	else
+	{
+		ELoadStatus load_status;
+		char* file_buffer = new char[file_size + 1];
+
+		if (file_size == infile.read(file_buffer, file_size))
+		{
+			S32 error_line;
+			file_buffer[file_size] = '\0';
+			llinfos << "Loading BVH file " << filename << llendl;
+			mLoader = new LLBVHLoader(file_buffer, load_status, error_line);
+		}
+
+		infile.close();
+		delete[] file_buffer;
+
+		if (mLoader && mLoader->isInitialized() && load_status == E_ST_OK && mLoader->getDuration() <= MAX_ANIM_DURATION)
+		{
+			// generate unique id for this motion
+			mTransactionID.generate();
+			mMotionID = mTransactionID.makeAssetID(gAgent.getSecureSessionID());
+
+			mAnimPreview = new LLPreviewAnimation(256, 256);
+
+			// motion will be returned, but it will be in a load-pending state, as this is a new motion
+			// this motion will not request an asset transfer until next update, so we have a chance to
+			// load the keyframe data locally
+			if (in_world)
+				mMotionp = (LLKeyframeMotion*)gAgentAvatarp->createMotion(mMotionID);
+			else
+				mMotionp = (LLKeyframeMotion*)mAnimPreview->getDummyAvatar()->createMotion(mMotionID);
+
+			// create data buffer for keyframe initialization
+			S32 buffer_size = mLoader->getOutputSize();
+			U8* buffer = new U8[buffer_size];
+
+			LLDataPackerBinaryBuffer dp(buffer, buffer_size);
+
+			// pass animation data through memory buffer
+			mLoader->serialize(dp);
+			dp.reset();
+			if (mMotionp)
+			{
+				LLMD5 source_md5;
+				try
+				{
+					mMotionp->deserialize(dp, source_md5);
+
+					source_md5.finalize();
+					LLPointer<AIMultiGrid::Delta> delta = new AIMultiGrid::BVHAnimDelta(mMotionp->getDelta());
+					front_end->setSourceHash(source_md5, AIMultiGrid::FrontEnd::one_source_many_assets, delta);
+					success = true;
+				}
+				catch (AIAlert::Error const& error)
+				{
+					AIAlert::add_modal("AIProblemWithFile_ERROR", AIArgs("[FILE]", filename)("[ERROR]", LLTrans::getString("AICouldNotDecodeJustGeneratedAnim")), error);
+				}
+			}
+		}
+		if (!success)
+		{
+			mTransactionID.setNull();
+			mMotionID.setNull();
+			mAnimPreview = NULL;
+		}
+	}
+	return success;
+}
+
 //-----------------------------------------------------------------------------
 // postBuild()
 //-----------------------------------------------------------------------------
 BOOL LLFloaterBvhPreview::postBuild()
 {
 	LLRect r;
-	LLKeyframeMotion* motionp = NULL;
-	LLBVHLoader* loaderp = NULL;
 
 	if (!LLFloaterNameDesc::postBuild())
 	{
@@ -281,141 +364,49 @@ BOOL LLFloaterBvhPreview::postBuild()
 
 	r.set(r.mRight + PREVIEW_HPAD, y, getRect().getWidth() - PREVIEW_HPAD, y - BTN_HEIGHT);
 
-	// <edit> moved declaration from below
-	BOOL success = false;
-	// </edit>
+	//<edit>
+	// This is where the code that is now (mostly) in AIBVHLoader::loadbvh used to be.
+	AIBVHLoader loader;
+	bool success = loader.loadbvh(mFilenameAndPath, mInWorld, mFrontEnd);
 
-	std::string exten = gDirUtilp->getExtension(mFilename);
-	if (exten == "bvh")
+	LLKeyframeMotion* motionp;
+	if (success)
 	{
-		// loading a bvh file
-
-		// now load bvh file
-		S32 file_size;
-		
-		LLAPRFile infile(mFilenameAndPath, LL_APR_RB, &file_size);
-		
-		if (!infile.getFileHandle())
+		mTransactionID = loader.getTransactionID();
+		mMotionID = loader.getMotionID();
+		mAnimPreview = loader.getAnimPreview();
+		motionp = loader.getMotionp();
+		mDuration = loader.getDuration();
+	}
+	else if (loader.getStatus() != E_ST_OK)
+	{
+		if (loader.getStatus() == E_ST_NO_XLT_FILE)
 		{
-			llwarns << "Can't open BVH file:" << mFilename << llendl;	
+			llwarns << "NOTE: No translation table found." << llendl;
 		}
 		else
 		{
-			char*	file_buffer;
-
-			file_buffer = new char[file_size + 1];
-
-			if (file_size == infile.read(file_buffer, file_size))
-			{
-				file_buffer[file_size] = '\0';
-				llinfos << "Loading BVH file " << mFilename << llendl;
-				ELoadStatus load_status = E_ST_OK;
-				S32 line_number = 0; 
-				loaderp = new LLBVHLoader(file_buffer, load_status, line_number);
-				std::string status = getString(STATUS[load_status]);
-				
-				if(load_status == E_ST_NO_XLT_FILE)
-				{
-					llwarns << "NOTE: No translation table found." << llendl;
-				}
-				else
-				{
-					llwarns << "ERROR: [line: " << line_number << "] " << status << llendl;
-				}
-			}
-
-			infile.close() ;
-			delete[] file_buffer;
-
-			// <edit> moved everything bvh from below
-			if(loaderp && loaderp->isInitialized() && loaderp->getDuration() <= MAX_ANIM_DURATION)
-	{
-		// generate unique id for this motion
-		mTransactionID.generate();
-		mMotionID = mTransactionID.makeAssetID(gAgent.getSecureSessionID());
-
-		mAnimPreview = new LLPreviewAnimation(256, 256);
-
-		// motion will be returned, but it will be in a load-pending state, as this is a new motion
-		// this motion will not request an asset transfer until next update, so we have a chance to 
-		// load the keyframe data locally
-		if (mInWorld)
-			motionp = (LLKeyframeMotion*)gAgentAvatarp->createMotion(mMotionID);
-		else
-			motionp = (LLKeyframeMotion*)mAnimPreview->getDummyAvatar()->createMotion(mMotionID);
-
-		// create data buffer for keyframe initialization
-		S32 buffer_size = loaderp->getOutputSize();
-		U8* buffer = new U8[buffer_size];
-
-		LLDataPackerBinaryBuffer dp(buffer, buffer_size);
-
-		// pass animation data through memory buffer
-		loaderp->serialize(dp);
-		dp.reset();
-				success = motionp && motionp->deserialize(dp);
-			}
-			else
-			{
-				success = false;
-				if ( loaderp )
-				{
-					if (loaderp->getDuration() > MAX_ANIM_DURATION)
-					{
-						LLUIString out_str = getString("anim_too_long");
-						out_str.setArg("[LENGTH]", llformat("%.1f", loaderp->getDuration()));
-						out_str.setArg("[MAX_LENGTH]", llformat("%.1f", MAX_ANIM_DURATION));
-						getChild<LLUICtrl>("bad_animation_text")->setValue(out_str.getString());
-					}
-					else
-					{
-						LLUIString out_str = getString("failed_file_read");
-						out_str.setArg("[STATUS]", getString(STATUS[loaderp->getStatus()])); 
-						getChild<LLUICtrl>("bad_animation_text")->setValue(out_str.getString());
-					}
-				}
-
-				//setEnabled(FALSE);
-				mMotionID.setNull();
-				mAnimPreview = NULL;
-			}
-			// </edit>
+			std::string status = getString(STATUS[loader.getStatus()]);
+			llwarns << "ERROR: [line: " << loader.getLineNumber() << "] " << status << llendl;
 		}
 	}
-	// <edit>
-	else if(exten == "animatn")
+	else if (loader.getDuration() > MAX_ANIM_DURATION)
 	{
-		S32 file_size;
-		LLAPRFile raw_animatn(mFilenameAndPath, LL_APR_RB, &file_size);
-
-		if (!raw_animatn.getFileHandle())
-		{
-			llwarns << "Can't open animatn file:" << mFilename << llendl;	
-		}
-		else
-		{
-			char*	file_buffer;
-
-			file_buffer = new char[file_size + 1];
-
-			if (file_size == raw_animatn.read(file_buffer, file_size))
-			{
-				file_buffer[file_size] = '\0';
-				llinfos << "Loading animatn file " << mFilename << llendl;
-				mTransactionID.generate();
-				mMotionID = mTransactionID.makeAssetID(gAgent.getSecureSessionID());
-				mAnimPreview = new LLPreviewAnimation(256, 256);
-				motionp = (LLKeyframeMotion*)mAnimPreview->getDummyAvatar()->createMotion(mMotionID);
-				LLDataPackerBinaryBuffer dp((U8*)file_buffer, file_size);
-				dp.reset();
-				success = motionp && motionp->deserialize(dp);
-			}
-
-			raw_animatn.close();
-			delete[] file_buffer;
-		}
+		LLUIString out_str = getString("anim_too_long");
+		out_str.setArg("[LENGTH]", llformat("%.1f", loader.getDuration()));
+		out_str.setArg("[MAX_LENGTH]", llformat("%.1f", MAX_ANIM_DURATION));
+		getChild<LLUICtrl>("bad_animation_text")->setValue(out_str.getString());
 	}
-	// </edit>
+	else
+	{
+		LLUIString out_str = getString("failed_file_read");
+		out_str.setArg("[STATUS]", "");	// There is no status if we get here.
+		getChild<LLUICtrl>("bad_animation_text")->setValue(out_str.getString());
+	}
+	//</edit>
+
+	// If already uploaded before, move the buttons 20 pixels down and show the previously uploaded combobox, and the "copy UUID" button.
+	postBuildUploadedBefore("animation", 40);
 
 		if (success)
 		{
@@ -458,6 +449,12 @@ BOOL LLFloaterBvhPreview::postBuild()
 			seconds_string = llformat(" - %.2f seconds", motionp->getDuration());
 
 			setTitle(mFilename + std::string(seconds_string));
+
+			// Set everything to the first preset, if any.
+			if (!mPreviousUploads.empty())
+			{
+			  onChangePreset(getChild<LLUICtrl>("previously_uploaded"));
+			}
 		}
 		else
 		{
@@ -466,12 +463,88 @@ BOOL LLFloaterBvhPreview::postBuild()
 			getChild<LLUICtrl>("bad_animation_text")->setValue(getString("failed_to_initialize"));
 		}
 
-
 	refresh();
 
-	delete loaderp;
-
 	return TRUE;
+}
+
+void LLFloaterBvhPreview::onChangePresetDelta(AIMultiGrid::Delta* delta)
+{
+	AIMultiGrid::BVHAnimDelta* bvh_anim_delta = static_cast<AIMultiGrid::BVHAnimDelta*>(delta);
+	if (bvh_anim_delta)
+	{
+		// Update the widgets to the new preset.
+		getChild<LLUICtrl>("priority")->setValue(LLSD((F32)bvh_anim_delta->getBasePriority()));
+		getChild<LLUICtrl>("loop_check")->setValue(LLSD((BOOL)bvh_anim_delta->getLoop()));
+		getChild<LLUICtrl>("loop_in_point")->setValue(LLSD(bvh_anim_delta->getLoopInPoint() / mDuration * 100.f));
+		getChild<LLUICtrl>("loop_out_point")->setValue(LLSD(bvh_anim_delta->getLoopOutPoint() / mDuration * 100.f));
+		getChild<LLUICtrl>("hand_pose_combo")->setValue(LLHandMotion::getHandPoseName((LLHandMotion::eHandPose)bvh_anim_delta->getHandPose()));
+		LLComboBox* emote_box = getChild<LLComboBox>("emote_combo");
+		LLUUID anim_state = gAnimLibrary.stringToAnimState(bvh_anim_delta->getEmoteName(), FALSE);
+		for (std::map<std::string, LLUUID>::iterator iter = mIDList.begin(); iter != mIDList.end(); ++iter)
+		{
+		  if (iter->second == anim_state)
+		  {
+			emote_box->setValue(iter->first);
+			break;
+		  }
+		}
+		getChild<LLUICtrl>("ease_in_time")->setValue(LLSD(bvh_anim_delta->getEaseInDuration()));
+		getChild<LLUICtrl>("ease_out_time")->setValue(LLSD(bvh_anim_delta->getEaseOutDuration()));
+		// Commit the new preset.
+		mPresetting = true;
+		onCommitPriority();
+		onCommitLoop();
+		onCommitEaseIn();
+		onCommitEaseOut();
+		mPresetting = false;
+	}
+}
+
+void LLFloaterBvhPreview::checkForPreset(void)
+{
+	LLVOAvatar* avatarp;
+	if (mInWorld && gAgentAvatarp)
+		avatarp = gAgentAvatarp;
+	else if (mAnimPreview)
+		avatarp = mAnimPreview->getDummyAvatar();
+	else
+		return;
+
+	LLSD args;
+	args["UPLOADFEE"] = gHippoGridManager->getConnectedGrid()->getUploadFee();
+	LLKeyframeMotion* motionp = (LLKeyframeMotion*)avatarp->findMotion(mMotionID);
+	AIMultiGrid::BVHAnimDelta const& bvh_anim_delta = motionp->getDelta();
+	LLSD::Integer id = 0;
+	for (std::vector<AIUploadedAsset*>::iterator preset = mPreviousUploads.begin(); preset != mPreviousUploads.end(); ++preset, ++id)
+	{
+		AIUploadedAsset_rat AIUploadedAsset_r(**preset);
+		AIMultiGrid::BVHAnimDelta const* delta = dynamic_cast<AIMultiGrid::BVHAnimDelta const*>(AIUploadedAsset_r->getDelta().get());
+		if (delta && delta->equals(bvh_anim_delta))
+		{
+			getChild<LLComboBox>("previously_uploaded")->setCurrentByIndex(id);
+			if (!mUserEdittedName)
+			{
+			  getChildView("name_form")->setValue(LLSD(AIUploadedAsset_r->getName()));
+			}
+			if (!mUserEdittedDescription)
+			{
+			  getChildView("description_form")->setValue(LLSD(AIUploadedAsset_r->getDescription()));
+			}
+			LLUUID const* uuid = AIUploadedAsset_r->find_uuid();
+			if (uuid)
+			{
+				mExistingUUID = *uuid;
+				getChildView("copy_uuid")->setEnabled(TRUE);
+				getChild<LLButton>("ok_btn")->setLabel(LLTrans::getString("reupload", args));
+				return;
+			}
+			break;
+		}
+	}
+	mExistingUUID.setNull();
+	getChildView("copy_uuid")->setEnabled(FALSE);
+	getChild<LLButton>("ok_btn")->setLabel(LLTrans::getString("upload", args));
 }
 
 //-----------------------------------------------------------------------------
@@ -588,6 +661,11 @@ void LLFloaterBvhPreview::resetMotion()
 	else
 	{
 		mPauseRequest = NULL;	
+	}
+
+	if (!mPresetting)
+	{
+	  checkForPreset();
 	}
 }
 
@@ -843,6 +921,11 @@ void LLFloaterBvhPreview::onCommitLoop()
 		motionp->setLoopIn((F32)getChild<LLUICtrl>("loop_in_point")->getValue().asReal() * 0.01f * motionp->getDuration());
 		motionp->setLoopOut((F32)getChild<LLUICtrl>("loop_out_point")->getValue().asReal() * 0.01f * motionp->getDuration());
 	}
+
+	if (!mPresetting)
+	{
+	  checkForPreset();
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -869,6 +952,11 @@ void LLFloaterBvhPreview::onCommitLoopIn()
 		resetMotion();
 		getChild<LLUICtrl>("loop_check")->setValue(LLSD(TRUE));
 		onCommitLoop();
+	}
+
+	if (!mPresetting)
+	{
+	  checkForPreset();
 	}
 }
 
@@ -897,6 +985,11 @@ void LLFloaterBvhPreview::onCommitLoopOut()
 		getChild<LLUICtrl>("loop_check")->setValue(LLSD(TRUE));
 		onCommitLoop();
 	}
+
+	if (!mPresetting)
+	{
+	  checkForPreset();
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -922,7 +1015,7 @@ void LLFloaterBvhPreview::onCommitName()
 		motionp->setName(getChild<LLUICtrl>("name_form")->getValue().asString());
 	}
 
-	doCommit();
+	doCommitName();
 }
 
 //-----------------------------------------------------------------------------
@@ -966,6 +1059,11 @@ void LLFloaterBvhPreview::onCommitPriority()
 	LLKeyframeMotion* motionp = (LLKeyframeMotion*)avatarp->findMotion(mMotionID);
 
 	motionp->setPriority(llfloor((F32)getChild<LLUICtrl>("priority")->getValue().asReal()));
+
+	if (!mPresetting)
+	{
+	  checkForPreset();
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -1212,15 +1310,22 @@ void LLFloaterBvhPreview::onBtnOK(void* userdata)
 			LLVFile file(gVFS, motionp->getID(), LLAssetType::AT_ANIMATION, LLVFile::APPEND);
 
 			S32 size = dp.getCurrentSize();
+
+			//<edit>
+			LLMD5 asset_md5;
+			asset_md5.update(buffer, size);
+			asset_md5.finalize();
+			floaterp->mFrontEnd->setAssetHash(asset_md5);
+			//</edit>
+
 			file.setMaxSize(size);
 			if (file.write((U8*)buffer, size))
 			{
 				std::string name = floaterp->getChild<LLUICtrl>("name_form")->getValue().asString();
 				std::string desc = floaterp->getChild<LLUICtrl>("description_form")->getValue().asString();
-				LLAssetStorage::LLStoreAssetCallback callback = NULL;
 				S32 expected_upload_cost = LLGlobalEconomy::Singleton::getInstance()->getPriceUpload();
-				void *userdata = NULL;
 
+#if 0 // mItem was always NULL
 				// <edit>
 				if(floaterp->mItem)
 				{
@@ -1240,8 +1345,10 @@ void LLFloaterBvhPreview::onBtnOK(void* userdata)
 				}
 				else
 				// </edit>
+#endif
 				{
-					upload_new_resource(floaterp->mTransactionID, // tid
+					floaterp->mFrontEnd->addDelta(new AIMultiGrid::BVHAnimDelta(motionp->getDelta()));
+					floaterp->mFrontEnd->upload_new_resource(floaterp->mTransactionID, // tid
 						    LLAssetType::AT_ANIMATION,
 						    name,
 						    desc,
@@ -1250,7 +1357,9 @@ void LLFloaterBvhPreview::onBtnOK(void* userdata)
 						    LLInventoryType::IT_ANIMATION,
 						    LLFloaterPerms::getNextOwnerPerms(), LLFloaterPerms::getGroupPerms(), LLFloaterPerms::getEveryonePerms(),
 						    name,
-						    callback, expected_upload_cost, userdata);
+						    expected_upload_cost,
+							NULL, NULL,
+							AIMultiGrid::UploadResponderFactory<LLNewAgentInventoryResponder>());
 				}
 			}
 			else

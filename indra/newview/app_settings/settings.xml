@@ -8,6 +8,19 @@
 		<string>settings_sh.xml</string>
 		<string>settings_rlv.xml</string>
 	</array>
+
+	<key>AIMultiGridBaseFolder</key>
+	<map>
+	  <key>Comment</key>
+	  <string>The base folder of the database with your personal upload/export/import data for multi grid support.
+ Never change this directly! Use Preferences -> System -> Uploads instead.</string>
+	  <key>Persist</key>
+	  <integer>1</integer>
+	  <key>Type</key>
+	  <string>String</string>
+	  <key>Value</key>
+	  <string></string>
+	</map>
     <key>SinguOffsetScrollKeys</key>
     <map>
       <key>Comment</key>

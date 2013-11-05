@@ -940,6 +940,14 @@ bool LLAssetIDMatches ::operator()(LLInventoryCategory* cat, LLInventoryItem* it
 }
 
 ///----------------------------------------------------------------------------
+/// AINoLinkAssetIDMatches
+///----------------------------------------------------------------------------
+bool AINoLinkAssetIDMatches::operator()(LLInventoryCategory* cat, LLInventoryItem* item)
+{
+	return (item && !item->getIsLinkType() && item->getAssetUUID() == mAssetID);
+}
+
+///----------------------------------------------------------------------------
 /// LLLinkedItemIDMatches 
 ///----------------------------------------------------------------------------
 bool LLLinkedItemIDMatches::operator()(LLInventoryCategory* cat, LLInventoryItem* item)

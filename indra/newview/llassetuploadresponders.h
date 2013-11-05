@@ -78,19 +78,19 @@ protected:
 
 class LLNewAgentInventoryResponder : public LLAssetUploadResponder
 {
-	void (*mCallBack)(bool, void*);
+public:
+	typedef void (*Callback)(LLUUID const&, void*, bool);
+private:
+	Callback mCallBack;
 	void* mUserData;
 public:
+	//Singu note: removed constructors that allow no callback, because we ALWAYS need to do a callback.
 	LLNewAgentInventoryResponder(
 		const LLSD& post_data,
 		const LLUUID& vfile_id,
 		LLAssetType::EType asset_type,
-		void (*callback)(bool, void*) = NULL,
-		void* user_data = NULL);
-	LLNewAgentInventoryResponder(
-		const LLSD& post_data,
-		const std::string& file_name,
-		LLAssetType::EType asset_type);
+		Callback callback,
+		void* user_data);
     /*virtual*/ void error(U32 statusNum, const std::string& reason);
 	virtual void uploadComplete(const LLSD& content);
 	virtual void uploadFailure(const LLSD& content);

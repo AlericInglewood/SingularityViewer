@@ -64,6 +64,7 @@ this feature is still a work in progress.
 #include "llviewermenufile.h"
 #include "llfloaterimagepreview.h"
 #include "llfile.h"
+#include "aimultigridfrontend.h"
 
 /* including to force rebakes when needed */
 #include "llvoavatarself.h"
@@ -851,8 +852,12 @@ void FloaterLocalAssetBrowser::onClickUpload(void* userdata)
 
 	if ( !filename.empty() )
 	{
-		LLFloaterImagePreview* floaterp = new LLFloaterImagePreview(filename);
-		LLUICtrlFactory::getInstance()->buildFloater(floaterp, "floater_image_preview.xml");
+		LLPointer<AIMultiGrid::FrontEnd> front_end = new AIMultiGrid::FrontEnd;
+		if (front_end->prepare_upload(filename, false))
+		{
+			LLFloaterImagePreview* floaterp = new LLFloaterImagePreview(front_end);
+			LLUICtrlFactory::getInstance()->buildFloater(floaterp, "floater_image_preview.xml");
+		}
 	}
 }
 

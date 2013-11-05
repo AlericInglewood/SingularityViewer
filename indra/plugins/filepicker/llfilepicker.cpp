@@ -156,7 +156,7 @@ bool LLFilePickerBase::setupFilter(ELoadFilter filter)
 		ANIM_FILTER \
 		L"\0";
 		break;
-	case FFLOAD_WAV:
+	case FFLOAD_SOUND:
 		mOFN.lpstrFilter = SOUND_FILTER \
 			L"\0";
 		break;
@@ -773,11 +773,13 @@ Boolean LLFilePickerBase::navOpenFilterProc(AEDesc *theItem, void *info, void *c
 								result = false;
 							}
 						}
-						else if (filter == FFLOAD_WAV)
+						else if (filter == FFLOAD_SOUND)
 						{
 							if (fileInfo.filetype != 'WAVE' && fileInfo.filetype != 'WAV ' && 
+							    fileInfo.filetype != 'OGG ' && fileInfo.filetype != 'OGGS' &&
 								(fileInfo.extension && (CFStringCompare(fileInfo.extension, CFSTR("wave"), kCFCompareCaseInsensitive) != kCFCompareEqualTo && 
-								CFStringCompare(fileInfo.extension, CFSTR("wav"), kCFCompareCaseInsensitive) != kCFCompareEqualTo))
+								CFStringCompare(fileInfo.extension, CFSTR("wav"), kCFCompareCaseInsensitive) != kCFCompareEqualTo &&
+								CFStringCompare(fileInfo.extension, CFSTR("ogg"), kCFCompareCaseInsensitive) != kCFCompareEqualTo))
 							)
 							{
 								result = false;
@@ -1400,6 +1402,19 @@ static std::string add_wav_filter_to_gtkchooser(GtkWindow *picker)
 								LLTrans::getString("sound_files") + " (*.wav)");
 }
 
+static std::string add_sound_filter_to_gtkchooser(GtkWindow *picker)
+{
+	GtkFileFilter *gfilter = gtk_file_filter_new();
+	gtk_file_filter_add_pattern(gfilter, "*.wav");
+	gtk_file_filter_add_pattern(gfilter, "*.ogg");
+	gtk_file_filter_add_mime_type(gfilter, "audio/wav");
+	gtk_file_filter_add_mime_type(gfilter, "application/ogg");	// Deprecated.
+	gtk_file_filter_add_mime_type(gfilter, "audio/ogg");		// http://www.ietf.org/rfc/rfc5334.txt
+	std::string filtername = LLTrans::getString("sound_files") + " (*.wav; *.ogg)";
+	add_common_filters_to_gtkchooser(gfilter, picker, filtername);
+	return filtername;
+}
+
 static std::string add_anim_filter_to_gtkchooser(GtkWindow *picker)
 {
 	GtkFileFilter *gfilter = gtk_file_filter_new();
@@ -1576,8 +1591,8 @@ bool LLFilePickerBase::getLoadFile(ELoadFilter filter, std::string const& folder
 		std::string filtername = "";
 		switch (filter)
 		{
-		case FFLOAD_WAV:
-			filtername = add_wav_filter_to_gtkchooser(picker);
+		case FFLOAD_SOUND:
+			filtername = add_sound_filter_to_gtkchooser(picker);
 			break;
 		case FFLOAD_ANIM:
 			filtername = add_anim_filter_to_gtkchooser(picker);
@@ -1671,7 +1686,7 @@ bool LLFilePickerBase::getLoadFile(ELoadFilter filter, std::string const& folder
 	std::string filename = gDirUtilp->getLindenUserDir() + gDirUtilp->getDirDelimiter() + "upload";
 	switch (filter)
 	{
-	case FFLOAD_WAV: filename += ".wav"; break;
+	case FFLOAD_SOUND: filename += ".wav"; break;
 	case FFLOAD_IMAGE: filename += ".tga"; break;
 	case FFLOAD_ANIM: filename += ".bvh"; break;
 	case FFLOAD_XML: filename += ".xml"; break;

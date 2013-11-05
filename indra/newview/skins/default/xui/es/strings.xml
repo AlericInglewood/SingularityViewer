@@ -3927,9 +3927,11 @@ Where tag = tag string to match.  Removes bot's matching the tag.
 	<string name="Cancel">Cancelar</string>
 	<string name="UploadingCosts">Subiendo [NAME] a un costo de [CURRENCY] [AMOUNT]</string>
 	<string name="BuyingCosts">Comprar esto costará</string>	
-	<string name="UnknownFileExtension">
-		Extensión de archivo %s deconocida.
-Se espera .wav, .tga, .bmp, .jpg, .jpeg, o .bvh
+	<string name="AIUnknownFileExtension">
+		Extensión de archivo [EXTENSION] deconocida. Se espera:
+		.png, .tga, .bmp, .jpg, .jpeg, .j2k (image),
+		.wav, .ogg (sound),
+		.bvh, .anim or .animatn (animation)
 	</string>
   <string name="MuteObject2">Ignorar</string>
   <string name="MuteAvatar">Ignorar</string>

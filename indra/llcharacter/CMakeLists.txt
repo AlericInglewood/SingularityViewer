@@ -18,6 +18,8 @@ include_directories(
     )
 
 set(llcharacter_SOURCE_FILES
+    aianimverifier.cpp
+    aibvhanimdelta.cpp
     llanimationstates.cpp
     llbvhloader.cpp
     llcharacter.cpp
@@ -44,6 +46,8 @@ set(llcharacter_SOURCE_FILES
 set(llcharacter_HEADER_FILES
     CMakeLists.txt
 
+    aianimverifier.h
+    aibvhanimdelta.h
     llanimationstates.h
     llbvhconsts.h
     llbvhloader.h

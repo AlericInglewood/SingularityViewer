@@ -86,6 +86,7 @@ extern LL_COMMON_API fake_channel const curltr;
 extern LL_COMMON_API fake_channel const statemachine;
 extern LL_COMMON_API fake_channel const notice;
 extern LL_COMMON_API fake_channel const snapshot;
+extern LL_COMMON_API fake_channel const backend;
 
 } // namespace dc
 } // namespace debug
@@ -213,6 +214,7 @@ extern CWD_API channel_ct curl;
 extern CWD_API channel_ct curlio;
 extern CWD_API channel_ct curltr;
 extern CWD_API channel_ct snapshot;
+extern CWD_API channel_ct backend;
 
 #endif
 
