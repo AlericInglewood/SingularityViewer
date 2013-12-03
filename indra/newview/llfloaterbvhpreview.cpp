@@ -284,6 +284,10 @@ bool AIBVHLoader::loadbvh(std::string const& filename, bool in_world, LLPointer<
 		}
 		if (!success)
 		{
+			if (mMotionp && in_world)
+			{
+				gAgentAvatarp->removeMotion(mMotionID);
+			}
 			mTransactionID.setNull();
 			mMotionID.setNull();
 			mAnimPreview = NULL;
@@ -369,7 +373,7 @@ BOOL LLFloaterBvhPreview::postBuild()
 	AIBVHLoader loader;
 	bool success = loader.loadbvh(mFilenameAndPath, mInWorld, mFrontEnd);
 
-	LLKeyframeMotion* motionp;
+	LLKeyframeMotion* motionp = NULL;	// Avoid compiler warning.
 	if (success)
 	{
 		mTransactionID = loader.getTransactionID();

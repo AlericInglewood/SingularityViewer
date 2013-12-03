@@ -79,38 +79,55 @@ LLKeyframeMotion::JointMotionList::~JointMotionList()
 	for_each(mJointMotionArray.begin(), mJointMotionArray.end(), DeletePointer());
 }
 
-U32 LLKeyframeMotion::JointMotionList::dumpDiagInfo()
+//Singu: add parameter 'silent'.
+U32 LLKeyframeMotion::JointMotionList::dumpDiagInfo(bool silent) const
 {
 	S32	total_size = sizeof(JointMotionList);
 
 	for (U32 i = 0; i < getNumJointMotions(); i++)
 	{
-		LLKeyframeMotion::JointMotion* joint_motion_p = mJointMotionArray[i];
+		LLKeyframeMotion::JointMotion const* joint_motion_p = mJointMotionArray[i];
 
-		llinfos << "\tJoint " << joint_motion_p->mJointName << llendl;
+		if (!silent)
+		{
+			llinfos << "\tJoint " << joint_motion_p->mJointName << llendl;
+		}
 		if (joint_motion_p->mUsage & LLJointState::SCALE)
 		{
-			llinfos << "\t" << joint_motion_p->mScaleCurve.mNumKeys << " scale keys at " 
-			<< joint_motion_p->mScaleCurve.mNumKeys * sizeof(ScaleKey) << " bytes" << llendl;
-
+			if (!silent)
+			{
+				llinfos << "\t" << joint_motion_p->mScaleCurve.mNumKeys << " scale keys at "
+				<< joint_motion_p->mScaleCurve.mNumKeys * sizeof(ScaleKey) << " bytes" << llendl;
+			}
 			total_size += joint_motion_p->mScaleCurve.mNumKeys * sizeof(ScaleKey);
 		}
 		if (joint_motion_p->mUsage & LLJointState::ROT)
 		{
-			llinfos << "\t" << joint_motion_p->mRotationCurve.mNumKeys << " rotation keys at " 
-			<< joint_motion_p->mRotationCurve.mNumKeys * sizeof(RotationKey) << " bytes" << llendl;
-
+			if (!silent)
+			{
+				llinfos << "\t" << joint_motion_p->mRotationCurve.mNumKeys << " rotation keys at "
+				<< joint_motion_p->mRotationCurve.mNumKeys * sizeof(RotationKey) << " bytes" << llendl;
+			}
 			total_size += joint_motion_p->mRotationCurve.mNumKeys * sizeof(RotationKey);
 		}
 		if (joint_motion_p->mUsage & LLJointState::POS)
 		{
-			llinfos << "\t" << joint_motion_p->mPositionCurve.mNumKeys << " position keys at " 
-			<< joint_motion_p->mPositionCurve.mNumKeys * sizeof(PositionKey) << " bytes" << llendl;
-
+			if (!silent)
+			{
+				llinfos << "\t" << joint_motion_p->mPositionCurve.mNumKeys << " position keys at "
+				<< joint_motion_p->mPositionCurve.mNumKeys * sizeof(PositionKey) << " bytes" << llendl;
+			}
 			total_size += joint_motion_p->mPositionCurve.mNumKeys * sizeof(PositionKey);
 		}
 	}
-	llinfos << "Size: " << total_size << " bytes" << llendl;
+	//Singu: Also add memory used by the constraints.
+	S32 constraints_size = mConstraints.size() * sizeof(constraint_list_t::value_type);
+	total_size += constraints_size;
+	if (!silent)
+	{
+		llinfos << "\t" << mConstraints.size() << " constraints at " << constraints_size << " bytes" << llendl;
+		llinfos << "Size: " << total_size << " bytes" << llendl;
+	}
 
 	return total_size;
 }
@@ -424,7 +441,6 @@ void LLKeyframeMotion::JointMotion::update(LLJointState* joint_state, F32 time, 
 //-----------------------------------------------------------------------------
 LLKeyframeMotion::LLKeyframeMotion(const LLUUID &id) 
 	: LLMotion(id),
-		mJointMotionList(NULL),
 		mPelvisp(NULL),
 		mCharacter(NULL),
 		mLastSkeletonSerialNum(0),
@@ -437,7 +453,6 @@ LLKeyframeMotion::LLKeyframeMotion(const LLUUID &id)
 
 LLKeyframeMotion::LLKeyframeMotion(LLCharacter* character)
 	: LLMotion(LLUUID::null),
-		mJointMotionList(NULL),
 		mPelvisp(NULL),
 		mCharacter(character),
 		mLastSkeletonSerialNum(0),
@@ -523,6 +538,7 @@ LLMotion::LLMotionInitStatus LLKeyframeMotion::onInitialize(LLCharacter *charact
 	case ASSET_FETCHED:
 		return STATUS_HOLD;
 	case ASSET_FETCH_FAILED:
+		llwarns << "Trying to initialize a motion that failed to be fetched." << llendl;
 		return STATUS_FAILURE;
 	case ASSET_LOADED:
 		return STATUS_SUCCESS;
@@ -532,7 +548,7 @@ LLMotion::LLMotionInitStatus LLKeyframeMotion::onInitialize(LLCharacter *charact
 		break;
 	}
 
-	LLKeyframeMotion::JointMotionList* joint_motion_list = LLKeyframeDataCache::getKeyframeData(getID());
+	LLKeyframeMotion::JointMotionListPtr joint_motion_list = LLKeyframeDataCache::getKeyframeData(getID());
 
 	if(joint_motion_list)
 	{
@@ -1318,17 +1334,46 @@ BOOL AIDataPackerBinaryBufferHashed::unpackBinaryDataFixed(U8* value, S32 size, 
 // deserialize()
 //-----------------------------------------------------------------------------
 
-// Singu: The first part of the old deserialize function - slightly changed to include caluclating a hash value.
+// Helper class.
+template<typename T>
+struct AIAutoDestruct
+{
+  T* mPtr;
+  AIAutoDestruct() : mPtr(NULL) { }
+  ~AIAutoDestruct() { delete mPtr; }
+  void add(T* ptr) { mPtr = ptr; }
+};
+
+// Singu: The first part of the old deserialize function - slightly changed to include calculating a hash value.
 LLKeyframeMotion::ECode LLKeyframeMotion::deserialize_motionlist(LLDataPacker& dp, bool calculate_hash, LLMD5& source_md5)
 {
 	BOOL old_version = FALSE;
 	llassert(!mJointMotionList);
-	mJointMotionList = new LLKeyframeMotion::JointMotionList;
+
+	//<singu>
+
+	// First add a new LLKeyframeMotion::JointMotionList to the cache, then assign a pointer
+	// to that to mJointMotionList. In LLs code the cache is never deleted again. Now it is
+	// is deleted when the last mJointMotionList pointer is destructed.
+	//
+	// It is possible that we get here for an already added animation, because animations can
+	// be requested multiple times (we get here from LLKeyframeMotion::onLoadComplete) when
+	// the animation was still downloading from a previous request for another LLMotionController
+	// object (avatar). In that case we just overwrite the old data while decoding it again.
+	mJointMotionList = LLKeyframeDataCache::getKeyframeData(getID());
+	bool singu_new_joint_motion_list = !mJointMotionList;
+	if (singu_new_joint_motion_list)
+	{
+		// Create a new JointMotionList.
+		mJointMotionList = LLKeyframeDataCache::createKeyframeData(getID());
+	}
 
 	// Singu: Return not_anim_format until we found at least one joint name that made sense.
 	// Use 'FALSE' as variable name in order to minimize the diff with original code :/
 #undef FALSE
 	ECode FALSE = not_anim_format;
+
+	//</singu>
 
 	//-------------------------------------------------------------------------
 	// get base priority
@@ -1497,8 +1542,10 @@ LLKeyframeMotion::ECode LLKeyframeMotion::deserialize_motionlist(LLDataPacker& d
 		return invalid_anim_file;
 	}
 
-	mJointMotionList->mJointMotionArray.clear();
-	mJointMotionList->mJointMotionArray.reserve(num_motions);
+	if (singu_new_joint_motion_list)
+	{
+		mJointMotionList->mJointMotionArray.reserve(num_motions);
+	}
 	mJointStates.clear();
 	mJointStates.reserve(num_motions);
 
@@ -1508,8 +1555,19 @@ LLKeyframeMotion::ECode LLKeyframeMotion::deserialize_motionlist(LLDataPacker& d
 
 	for(U32 i=0; i<num_motions; ++i)
 	{
+		AIAutoDestruct<JointMotion> watcher;
+
 		JointMotion* joint_motion = new JointMotion;		
-		mJointMotionList->mJointMotionArray.push_back(joint_motion);
+		if (singu_new_joint_motion_list)
+		{
+			// Pass ownership to mJointMotionList.
+			mJointMotionList->mJointMotionArray.push_back(joint_motion);
+		}
+		else
+		{
+			// Just delete this at the end.
+			watcher.add(joint_motion);
+		}
 		
 		std::string joint_name;
 		if (!dp.unpackString(joint_name, "joint_name"))
@@ -1938,7 +1996,15 @@ LLKeyframeMotion::ECode LLKeyframeMotion::deserialize_motionlist(LLDataPacker& d
 				return FALSE;
 			}
 
-			mJointMotionList->mConstraints.push_front(constraintp);
+			AIAutoDestruct<JointConstraintSharedData> watcher;
+			if (singu_new_joint_motion_list)
+			{
+				mJointMotionList->mConstraints.push_front(constraintp);
+			}
+			else
+			{
+				watcher.add(constraintp);
+			}
 
 			constraintp->mJointStateIndices = new S32[constraintp->mChainLength + 1]; // note: mChainLength is size-limited - comes from a byte
 			
@@ -1978,7 +2044,6 @@ LLKeyframeMotion::ECode LLKeyframeMotion::deserialize_motionlist(LLDataPacker& d
 				if (constraintp->mJointStateIndices[i] < 0 )
 				{
 					llwarns << "No joint index for constraint " << i << llendl;
-					delete constraintp;
 					return FALSE;
 				}
 			}
@@ -2020,11 +2085,11 @@ void LLKeyframeMotion::deserialize(LLDataPacker& dp, LLMD5& source_md5)
 	deserialize_tail();
 }
 
-// Singu: The tail of the old deserialize did not change.
+// Singu: The tail of the old deserialize.
+//        It does no longer add mJointMotionList to LLKeyframeDataCache because
+//        that was already one in deserialize_motionlist.
 void LLKeyframeMotion::deserialize_tail(void)
 {
-	// *FIX: support cleanup of old keyframe data
-	LLKeyframeDataCache::addKeyframeData(getID(),  mJointMotionList);
 	mAssetStatus = ASSET_LOADED;
 
 	setupPose();
@@ -2380,16 +2445,24 @@ void LLKeyframeMotion::onLoadComplete(LLVFS *vfs,
 //--------------------------------------------------------------------
 // LLKeyframeDataCache::dumpDiagInfo()
 //--------------------------------------------------------------------
-void LLKeyframeDataCache::dumpDiagInfo()
+// <singu>
+// quiet = 0 : print everything in detail.
+//         1 : print the UUIDs of all animations in the cache and the total memory usage.
+//         2 : only print the total memory usage.
+// </singu>
+void LLKeyframeDataCache::dumpDiagInfo(int quiet)
 {
 	// keep track of totals
 	U32 total_size = 0;
 
 	char buf[1024];		/* Flawfinder: ignore */
 
-	llinfos << "-----------------------------------------------------" << llendl;
-	llinfos << "       Global Motion Table (DEBUG only)" << llendl;
-	llinfos << "-----------------------------------------------------" << llendl;
+	if (quiet < 2)
+	{
+	  llinfos << "-----------------------------------------------------" << llendl;
+	  llinfos << "       Global Motion Table" << llendl;
+	  llinfos << "-----------------------------------------------------" << llendl;
+	}
 
 	// print each loaded mesh, and it's memory usage
 	for (keyframe_data_map_t::iterator map_it = sKeyframeDataMap.begin();
@@ -2397,30 +2470,46 @@ void LLKeyframeDataCache::dumpDiagInfo()
 	{
 		U32 joint_motion_kb;
 
-		LLKeyframeMotion::JointMotionList *motion_list_p = map_it->second;
+		LLKeyframeMotion::JointMotionList const* motion_list_p = map_it->get();
 
-		llinfos << "Motion: " << map_it->first << llendl;
+		if (quiet < 2)
+		{
+			llinfos << "Motion: " << map_it->key() << llendl;
+		}
 
-		joint_motion_kb = motion_list_p->dumpDiagInfo();
-
-		total_size += joint_motion_kb;
+		if (motion_list_p)
+		{
+		  joint_motion_kb = motion_list_p->dumpDiagInfo(quiet);
+		  total_size += joint_motion_kb;
+		}
 	}
 
-	llinfos << "-----------------------------------------------------" << llendl;
+	if (quiet < 2)
+	{
+		llinfos << "-----------------------------------------------------" << llendl;
+	}
 	llinfos << "Motions\tTotal Size" << llendl;
 	snprintf(buf, sizeof(buf), "%d\t\t%d bytes", (S32)sKeyframeDataMap.size(), total_size );		/* Flawfinder: ignore */
 	llinfos << buf << llendl;
-	llinfos << "-----------------------------------------------------" << llendl;
+	if (quiet < 2)
+	{
+		llinfos << "-----------------------------------------------------" << llendl;
+	}
 }
 
 
 //--------------------------------------------------------------------
-// LLKeyframeDataCache::addKeyframeData()
+// LLKeyframeDataCache::createKeyframeData()
 //--------------------------------------------------------------------
-void LLKeyframeDataCache::addKeyframeData(const LLUUID& id, LLKeyframeMotion::JointMotionList* joint_motion_listp)
+//<singu> This function replaces LLKeyframeDataCache::addKeyframeData and was rewritten to fix a memory leak (aka, the usage of AICachedPointer).
+LLKeyframeMotion::JointMotionListPtr LLKeyframeDataCache::createKeyframeData(LLUUID const& id)
 {
-	sKeyframeDataMap[id] = joint_motion_listp;
+	std::pair<keyframe_data_map_t::iterator, bool> result =
+		sKeyframeDataMap.insert(AICachedPointer<LLUUID, LLKeyframeMotion::JointMotionList>(id, new LLKeyframeMotion::JointMotionList, &sKeyframeDataMap));
+	llassert(result.second);	// id may not already exist in the cache.
+	return &*result.first;		// Construct and return a JointMotionListPt from a pointer to the actually inserted AICachedPointer.
 }
+//</singu>
 
 //--------------------------------------------------------------------
 // LLKeyframeDataCache::removeKeyframeData()
@@ -2430,7 +2519,6 @@ void LLKeyframeDataCache::removeKeyframeData(const LLUUID& id)
 	keyframe_data_map_t::iterator found_data = sKeyframeDataMap.find(id);
 	if (found_data != sKeyframeDataMap.end())
 	{
-		delete found_data->second;
 		sKeyframeDataMap.erase(found_data);
 	}
 }
@@ -2438,14 +2526,14 @@ void LLKeyframeDataCache::removeKeyframeData(const LLUUID& id)
 //--------------------------------------------------------------------
 // LLKeyframeDataCache::getKeyframeData()
 //--------------------------------------------------------------------
-LLKeyframeMotion::JointMotionList* LLKeyframeDataCache::getKeyframeData(const LLUUID& id)
+LLKeyframeMotion::JointMotionListPtr LLKeyframeDataCache::getKeyframeData(const LLUUID& id)
 {
 	keyframe_data_map_t::iterator found_data = sKeyframeDataMap.find(id);
 	if (found_data == sKeyframeDataMap.end())
 	{
 		return NULL;
 	}
-	return found_data->second;
+	return &*found_data;			// Construct and return a JointMotionListPt from a pointer to the found AICachedPointer.
 }
 
 //--------------------------------------------------------------------
@@ -2461,7 +2549,6 @@ LLKeyframeDataCache::~LLKeyframeDataCache()
 //-----------------------------------------------------------------------------
 void LLKeyframeDataCache::clear()
 {
-	for_each(sKeyframeDataMap.begin(), sKeyframeDataMap.end(), DeletePairedPointer());
 	sKeyframeDataMap.clear();
 }
 
