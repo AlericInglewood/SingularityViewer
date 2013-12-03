@@ -315,8 +315,8 @@ void LLPhysicsMotion::getString(std::ostringstream &oss)
 	}
 } 
 
-LLPhysicsMotionController::LLPhysicsMotionController(const LLUUID &id) : 
-        LLMotion(id),
+LLPhysicsMotionController::LLPhysicsMotionController(LLUUID const& id, LLMotionController& controller) : 
+        AIMaskedMotion(id, controller, ANIM_AGENT_PHYSICS_MOTION),
         mCharacter(NULL),
 		mIsDefault(true)
 {
@@ -331,15 +331,6 @@ LLPhysicsMotionController::~LLPhysicsMotionController()
         {
                 delete (*iter);
         }
-}
-
-BOOL LLPhysicsMotionController::onActivate() 
-{ 
-        return TRUE; 
-}
-
-void LLPhysicsMotionController::onDeactivate() 
-{
 }
 
 LLMotion::LLMotionInitStatus LLPhysicsMotionController::onInitialize(LLCharacter *character)
