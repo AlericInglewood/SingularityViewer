@@ -81,9 +81,9 @@ void BVHAnimDelta::update_hash(LLMD5& hash_out)
 {
   U32 v;
   U8 loop = mLoop ? 1 : 0;
-  S32 size = 4 + 1 + 4 + 4 + 4 + 4 + 4 + mEmoteName.length();
+  S32 size = 4 + 1 + 4 + 4 + 4 + 4 + 4 + mEmoteName.length() + 1;
   U8* buffer = new U8 [size];
-  LLDataPackerBinaryBuffer buf(buffer, sizeof(buffer));
+  LLDataPackerBinaryBuffer buf(buffer, size);
   buf.packS32(mBasePriority, "mBasePriority");
   buf.packU8(loop, "mLoop");
   v = llfloor(mLoopInPoint * 100000.f);
@@ -96,7 +96,7 @@ void BVHAnimDelta::update_hash(LLMD5& hash_out)
   buf.packU32(v, "mEaseOutDuration");
   buf.packS32(mHandPose, "mHandPose");
   buf.packString(mEmoteName, "mEmoteName");
-  hash_out.update(buffer, sizeof(buffer));
+  hash_out.update(buffer, size);
   delete [] buffer;
 }
 
