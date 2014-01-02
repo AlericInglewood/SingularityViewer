@@ -1302,6 +1302,7 @@ class AIDataPackerBinaryBufferHashed
 
   public:
 	AIDataPackerBinaryBufferHashed(LLDataPackerBinaryBuffer& dp, bool calculate_hash, LLMD5& source_md5) : mDp(dp), mCalculateHash(calculate_hash), mSourceHash(source_md5) { }
+	~AIDataPackerBinaryBufferHashed() { if (mCalculateHash) mSourceHash.finalize(); }
 
 	// Unfortunately, Linden Lab never heard of templates.
 	BOOL unpackU8(U8& value, char const* name);

@@ -271,7 +271,6 @@ bool AIBVHLoader::loadbvh(std::string const& filename, bool in_world, LLPointer<
 				{
 					mMotionp->deserialize(dp, source_md5);
 
-					source_md5.finalize();
 					LLPointer<AIMultiGrid::Delta> delta = new AIMultiGrid::BVHAnimDelta(mMotionp->getDelta());
 					front_end->setSourceHash(source_md5, AIMultiGrid::FrontEnd::one_source_many_assets, delta);
 					success = true;

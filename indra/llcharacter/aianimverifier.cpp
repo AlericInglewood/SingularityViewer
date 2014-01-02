@@ -78,13 +78,14 @@ void AIAnimVerifier::calculateHash(LLMD5& source_md5, LLMD5& asset_md5, LLPointe
 	{
 	  // Extract the Delta from the anim file too, and pass a copy back.
 	  delta = new AIMultiGrid::BVHAnimDelta(keyframe.getDelta());
+
+	  // Calculate asset hash from source hash and the delta.
+	  unsigned char source_digest[16];
+	  source_md5.raw_digest(source_digest);
+	  asset_md5.update(source_digest, 16);			// Absorb the source.
+	  delta->update_hash(asset_md5);				// Absorb the delta; this ignores round off errors in the floating point settings.
+	  asset_md5.finalize();
 	}
-	// Calculate asset hash from source hash and the delta.
-	unsigned char source_digest[16];
-	source_md5.raw_digest(source_digest);
-	asset_md5.update(source_digest, 16);		// Absorb the source.
-	delta->update_hash(asset_md5);				// Absorb the delta; this ignores round off errors in the floating point settings.
-	asset_md5.finalize();
   }
 
   // Clean up.
@@ -94,7 +95,5 @@ void AIAnimVerifier::calculateHash(LLMD5& source_md5, LLMD5& asset_md5, LLPointe
   {
 	THROW_ALERT(LLKeyframeMotion::errorString(error));
   }
-
-  source_md5.finalize();
 }
 
