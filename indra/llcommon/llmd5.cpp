@@ -103,6 +103,9 @@ void LLMD5::update (const uint1 *input, const uint4 input_length) {
   uint4 buffer_space;                // how much space is left in buffer
 
   if (finalized){  // so we can't update!
+#ifdef CWDEBUG
+	  DoutFatal(dc::core, "Can't update a finalized digest!");
+#endif
 	  std::cerr << "LLMD5::update:  Can't update a finalized digest!" << std::endl;
     return;
   }
@@ -130,6 +133,9 @@ void LLMD5::update (const uint1 *input, const uint4 input_length) {
 
     // now, transform each 64-byte piece of the input, bypassing the buffer
   if (input == NULL || input_length == 0){
+#ifdef CWDEBUG
+	DoutFatal(dc::core, "Invalid input!");
+#endif
 	std::cerr << "LLMD5::update:  Invalid input!" << std::endl;
 	return;
   }
@@ -201,6 +207,9 @@ void LLMD5::finalize (){
     };
 
   if (finalized){
+#ifdef CWDEBUG
+	DoutFatal(dc::core, "Already finalized this digest!");
+#endif
     std::cerr << "LLMD5::finalize:  Already finalized this digest!" << std::endl;
     return;
   }
@@ -271,6 +280,9 @@ void LLMD5::raw_digest(unsigned char *s) const
 {
 	if (!finalized)
 	{
+#ifdef CWDEBUG
+		DoutFatal(dc::core, "Can't get digest if you haven't finalized the digest!");
+#endif
 		std::cerr << "LLMD5::raw_digest:  Can't get digest if you haven't "<<
 			"finalized the digest!" << std::endl;
 		s[0] = '\0';
@@ -294,6 +306,9 @@ void LLMD5::hex_digest(char *s) const
 
 	if (!finalized)
 	{
+#ifdef CWDEBUG
+		DoutFatal(dc::core, "Can't get digest if you haven't finalized the digest!");
+#endif
 		std::cerr << "LLMD5::hex_digest:  Can't get digest if you haven't "<<
 		  "finalized the digest!" <<std::endl;
 		s[0] = '\0';
