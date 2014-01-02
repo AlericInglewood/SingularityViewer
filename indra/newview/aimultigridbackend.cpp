@@ -286,8 +286,12 @@ void BackEnd::init(void)
 
   // Clean up failed commit to database.
   std::string updating_filename = getJournalFilename("updating");
+  bool need_repair = false;
+  bool updating_file_exists = false;
   if (LLFile::isfile(updating_filename))
   {
+	need_repair = true;
+	updating_file_exists = true;
 	LLMD5 asset_hash;
 	unsigned char digest[16];
 	size_t len = 0;
@@ -304,6 +308,73 @@ void BackEnd::init(void)
 	  llcont << " (with asset hash " << asset_hash << ")";
 	}
 	llcont << "." << llendl;
+  }
+
+  // Check database version for possible mandatory repair.
+  if (!need_repair)
+  {
+	need_repair = true;
+	U32 version = 0;
+	std::string version_filename = getJournalFilename("version");
+	if (LLFile::isfile(version_filename))
+	{
+	  size_t len = 0;
+	  LLFILE* version_fp = LLFile::fopen(version_filename, "rb");
+	  if (version_fp)
+	  {
+		len = fread(&version, sizeof(version), 1, version_fp);
+		LLFile::close(version_fp);
+	  }
+	}
+
+	// *************************************************************************
+	// The current database version.
+	//
+	// Increment this number whenever a database repair is needed because the
+	// viewer changed (for example when the hash calculated routines changed).
+	static U32 const current_version = 1;
+	//
+	// *************************************************************************
+
+	if (version == current_version)
+	{
+	  need_repair = false;
+	}
+	else
+	{
+	  // Attempt to write the version file with the good version number first:
+	  // we want to make sure that a repair is not going to be performed
+	  // every login if anything fails.
+	  size_t len = 0;
+	  LLFILE* version_fp = LLFile::fopen(version_filename, "wb");
+	  if (version_fp)
+	  {
+		len = fwrite(&current_version, sizeof(current_version), 1, version_fp);
+		LLFile::close(version_fp); // Calls fclose, which also flushes the file.
+	  }
+	  if (len != 1)
+	  {
+		// Ok this is bad. The user has to fix this.
+		llerrs << "Failed to create the version file \"" << version_filename << "\"!" << llendl;
+	  }
+	  // Read it back to make 100% sure this succeeded.
+	  version_fp = LLFile::fopen(version_filename, "rb");
+	  version = 0;
+	  if (version_fp)
+	  {
+		len = fread(&version, sizeof(version), 1, version_fp);
+		LLFile::close(version_fp);
+	  }
+	  if (version != current_version)
+	  {
+		llerrs << "Failed to write the version file \"" << version_filename << "\"!" << llendl;
+	  }
+	}
+  }
+
+  // Run repair if needed.
+  if (need_repair)
+  {
 	try
 	{
 	  if (repair_database())
@@ -323,8 +394,14 @@ void BackEnd::init(void)
 	  }
 	}
   }
-  // Remove the journal file.
-  LLFile::remove(updating_filename);
+
+  // Remove the updating file even if the repair failed: leave it to the user to
+  // run a repair if they want, after they fixed their file system.
+  if (updating_file_exists)
+  {
+	// Remove the journal file.
+	LLFile::remove(updating_filename);
+  }
 }
 
 bool BackEnd::repair_database(void)
