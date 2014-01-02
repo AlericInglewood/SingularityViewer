@@ -1111,6 +1111,7 @@ bool LockedBackEnd::repair_database(void)
 				  write_to_disk(uploaded_asset_w);
 				  // Add it back to the memory cache (in the right place for the changed md5 hash).
 				  gAssets_w->insert(uploaded_asset);
+				  llinfos << "(Re)generated (new) file \"" << meta_filename << "\" from old file \"" << old_meta_filename << "\" because the asset hash changed." << llendl;
 				}
 				catch (AIAlert::Error const& error)
 				{
@@ -1124,6 +1125,7 @@ bool LockedBackEnd::repair_database(void)
 			  }
 			  if (LLFile::isfile(meta_filename))
 			  {
+				llinfos << "Removing old file \"" << old_meta_filename << "\"." << llendl;
 				LLFile::remove(old_meta_filename);
 				// Remember that this hash has changed into a new hash.
 				hash_translation[old_md5] = md5;
@@ -1383,7 +1385,7 @@ bool LockedBackEnd::repair_database(void)
 		  }
 		  else
 		  {
-			llwarns << "The file \"" << filepath << "\" contains a reference to " << md5 << " that (no longer) exists. Removed." << llendl;
+			llwarns << "The file \"" << filepath << "\" contains a reference to " << md5 << " that does not exist (anymore). Removed." << llendl;
 			changed = true;
 		  }
 		}
@@ -1415,7 +1417,7 @@ bool LockedBackEnd::repair_database(void)
 		std::string source_filename = mBackEnd.getSourceFilename(source_md5);
 		if (!LLFile::isfile(source_filename))
 		{
-		  llwarns << "Creating non-existed source hash -> meta data file \"" << source_filename << "\", referenced in meta file of " << asset_md5 << "." << llendl;
+		  llwarns << "Creating non-existing source hash -> meta data file \"" << source_filename << "\", referenced in meta file of " << asset_md5 << "." << llendl;
 		  md5s.push_back(asset_md5);
 		  changed = true;
 		}
@@ -1549,7 +1551,7 @@ bool LockedBackEnd::repair_database(void)
 		}
 		else
 		{
-		  llwarns << "The file \"" << filepath << "\" contains a reference to " << asset_hash << " that (no longer) exists. Removed." << llendl;
+		  llwarns << "The file \"" << filepath << "\" contains a reference to " << asset_hash << " that does not exist (anymore). Removed." << llendl;
 		  changed = true;
 		}
 
