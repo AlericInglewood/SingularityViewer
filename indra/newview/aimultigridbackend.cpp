@@ -159,7 +159,7 @@ std::string BackEnd::getUniqueLostFoundDirname(void) const
   now.split(&year, &month, &day, &hour, &min, &sec);
   for (S32 count = 0;; ++count)
   {
-	dirname = base + llformat("-%d%d%d.%d", year, month, day, count);
+	dirname = base + llformat("-%d%02d%02d.%d", year, month, day, count);
 	if (!gDirUtilp->fileExists(dirname))
 	{
 	  break;
