@@ -265,6 +265,7 @@ BOOL LLMotion::isBlending()
 //-----------------------------------------------------------------------------
 void LLMotion::activate(F32 time)
 {
+	llassert(time <= getAnimTime());	// Is mController always set?
 	mActivationTimestamp = time;
 	mStopped = FALSE;
 	//<singu>

@@ -3848,12 +3848,18 @@ BOOL LLVOAvatar::updateCharacter(LLAgent &agent)
 		F32 time_quantum = clamp_rescale((F32)sInstances.size(), 10.f, 35.f, 0.f, 0.25f);
 		F32 pixel_area_scale = clamp_rescale(mPixelArea, 100, 5000, 1.f, 0.f);
 		F32 time_step = time_quantum * pixel_area_scale;
-		if (time_step != 0.f)
+		if (time_step >= 0.005f)	// Singu note: a quantization less than 5 ms doesn't make sense.
 		{
 			// disable walk motion servo controller as it doesn't work with motion timesteps
 			stopMotion(ANIM_AGENT_WALK_ADJUST);
 			removeAnimationData("Walk Speed");
 		}
+		//<singu>
+		else
+		{
+			time_step = 0.f;
+		}
+		//</singu>
 		mMotionController.setTimeStep(time_step);
 //		llinfos << "Setting timestep to " << time_quantum * pixel_area_scale << llendl;
 	}

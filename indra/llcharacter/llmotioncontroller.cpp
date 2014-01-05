@@ -272,12 +272,17 @@ void LLMotionController::setTimeStep(F32 step)
 			 iter != mActiveMotions.end(); ++iter)
 		{
 			LLMotion* motionp = *iter;
-			F32 activation_time = motionp->mActivationTimestamp;
-			motionp->mActivationTimestamp = (F32)(llfloor(activation_time / step)) * step;
+			llassert(motionp->mActivationTimestamp <= motionp->getAnimTime()); // This must always hold.
+			F32 activation_timestamp = motionp->mActivationTimestamp;
+			// Singu note: use doubles for more precision. timestamp / step can become very large.
+			double d_timestamp = activation_timestamp;
+			double d_step = step;
+			motionp->mActivationTimestamp = std::floor(d_timestamp / d_step) * d_step;
+			llassert(motionp->mActivationTimestamp <= activation_timestamp); // mActivationTimestamp may only become smaller.
 			BOOL stopped = motionp->isStopped();
-			motionp->setStopTime((F32)(llfloor(motionp->getStopTime() / step)) * step);
+			motionp->setStopTime((F32)(std::floor(motionp->getStopTime() / d_step)) * d_step);
 			motionp->setStopped(stopped);
-			motionp->mSendStopTimestamp = (F32)llfloor(motionp->mSendStopTimestamp / step) * step;
+			motionp->mSendStopTimestamp = std::floor(motionp->mSendStopTimestamp / d_step) * d_step;
 		}
 	}
 }
@@ -896,11 +901,13 @@ void LLMotionController::updateMotions(bool force_update)
 			clearBlenders();
 
 			mTimeStepCount = quantum_count;
+			llassert((F32)quantum_count * mTimeStep >= mAnimTime); // mAnimTime may never be set back in time.
 			mAnimTime = (F32)quantum_count * mTimeStep;
 			mLastInterp = 0.f;
 		}
 		else
 		{
+			llassert(update_time >= mAnimTime); // mAnimTime may never be set back in time.
 			mAnimTime = update_time;
 		}
 	}
