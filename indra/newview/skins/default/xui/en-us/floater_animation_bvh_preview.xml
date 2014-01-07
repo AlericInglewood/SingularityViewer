@@ -93,7 +93,7 @@
 	     tool_tip="Controls what face does during animation." width="104">
 	    <combo_item name="[None]" value="[None]">[None]</combo_item>
 		<combo_item name="Aaaaah" value="Aaaaah">Aaaaah</combo_item>
-		<combo_item name="Afraid" value="Afraid">Afraid"</combo_item>
+		<combo_item name="Afraid" value="Afraid">Afraid</combo_item>
 		<combo_item name="Angry" value="Angry">Angry</combo_item>
 		<combo_item name="BigSmile" value="BigSmile">BigSmile</combo_item>
 		<combo_item name="Bored" value="Bored">Bored</combo_item>
