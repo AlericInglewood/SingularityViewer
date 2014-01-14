@@ -20,7 +20,7 @@
     <combo_box bottom_delta="-25" enabled="false" follows="left|top" font="SansSerifSmall" height="20"
         left="10" mouse_opaque="true" width="200" allow_text_entry="false" name="previously_uploaded"
         tool_tip="These are settings of previously uploaded animations.">
-      <combo_item name="select_item">Select previously upload</combo_item>
+      <combo_item name="select_item">Select previous upload</combo_item>
     </combo_box>
     <button bottom_delta="0" follows="left|top" halign="right" height="20" label="Copy UUID" right="-10"
         font="SansSerifSmall" tool_tip="Copy the asset UUID to clipboard" name="copy_uuid" width="70"/>

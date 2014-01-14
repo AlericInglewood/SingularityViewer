@@ -79,20 +79,21 @@ LLFloaterNameDesc::LLFloaterNameDesc(LLPointer<AIMultiGrid::FrontEnd> const& fro
 	  mIsAudio(FALSE),
 	  mFrontEnd(front_end),
 	  mUserEdittedName(false),
-	  mUserEdittedDescription(false)
+	  mUserEdittedDescription(false),
+	  mExtended(false)
 {
 	mFilenameAndPath = front_end->getSourceFilename();
 	mFilename = gDirUtilp->getBaseFileName(mFilenameAndPath, false);
 }
 
 //-----------------------------------------------------------------------------
-// postBuild()
+// check_previous_uploads_and_set_name_description_and_uuid()
 //-----------------------------------------------------------------------------
-BOOL LLFloaterNameDesc::postBuild()
+void LLFloaterNameDesc::check_previous_uploads_and_set_name_description_and_uuid(void)
 {
-	LLRect r;
 	bool is_one_on_one = getChildView("asset_id", TRUE, FALSE) != NULL;
 	mUploadedBefore = false;
+	mExistingUUID.setNull();
 
 	std::string asset_name, asset_description;
 
@@ -109,12 +110,31 @@ BOOL LLFloaterNameDesc::postBuild()
 		else
 		{
 		  mPreviousUploads = mFrontEnd->checkPreviousUploads();
-		  if (!mPreviousUploads.empty())
+		  bool first = true, last = false;
+		  for (std::vector<AIUploadedAsset*>::iterator preset = mPreviousUploads.begin(); preset != mPreviousUploads.end() && !last; ++preset)
 		  {
-			AIUploadedAsset_rat ua_r(*mPreviousUploads[0]);			// Uploads to the current grid are sorted first, the last upload first.
-			asset_name = ua_r->getName();
-			asset_description = ua_r->getDescription();
-			mUploadedBefore = ua_r->find_uuid();
+			AIUploadedAsset_rat ua_r(**preset);
+			LLUUID const* uuid = ua_r->find_uuid();
+			if (uuid)
+			{
+			  mUploadedBefore = true;
+			  if (ua_r->getDelta()->equals(mFrontEnd->getDelta()))
+			  {
+				mExistingUUID = *uuid;
+				last = true;				// Mark that we found an exact match.
+			  }
+			}
+			// Use name and description of the first entry (which will be of the last upload
+			// to this grid, or the last upload to any grid if this source wasn't uploaded
+			// to this grid before). However, if the current settings (delta) are exactly the
+			// same as some previous upload to this grid then use the name and description that
+			// was used for that upload.
+			if (first || last)
+			{
+			  first = false;
+			  asset_name = ua_r->getName();
+			  asset_description = ua_r->getDescription();
+			}
 		  }
 		}
 	  }
@@ -152,6 +172,22 @@ BOOL LLFloaterNameDesc::postBuild()
 	LLStringUtil::stripNonprintable(asset_description);
 	LLStringUtil::trim(asset_description);
 
+	if (!mUserEdittedName)
+	{
+		getChild<LLUICtrl>("name_form")->setValue(LLSD(asset_name));
+	}
+	if (!mUserEdittedDescription)
+	{
+		getChild<LLUICtrl>("description_form")->setValue(LLSD(asset_description));
+	}
+}
+
+//-----------------------------------------------------------------------------
+// postBuild()
+//-----------------------------------------------------------------------------
+BOOL LLFloaterNameDesc::postBuild()
+{
+	check_previous_uploads_and_set_name_description_and_uuid();
 	setTitle(mFilename);
 
 	centerWithin(gViewerWindow->getRootView()->getRect());
@@ -159,10 +195,10 @@ BOOL LLFloaterNameDesc::postBuild()
 	S32 line_width = getRect().getWidth() - 2 * PREVIEW_HPAD;
 	S32 y = getRect().getHeight() - 2 * PREVIEW_LINE_HEIGHT;
 
+	LLRect r;
 	r.setLeftTopAndSize( PREVIEW_HPAD, y, line_width, PREVIEW_LINE_HEIGHT );    
 
 	getChild<LLUICtrl>("name_form")->setCommitCallback(boost::bind(&LLFloaterNameDesc::doCommitName, this));
-	getChild<LLUICtrl>("name_form")->setValue(LLSD(asset_name));
 
 	LLLineEditor *NameEditor = getChild<LLLineEditor>("name_form");
 	if (NameEditor)
@@ -176,7 +212,6 @@ BOOL LLFloaterNameDesc::postBuild()
 
 	r.setLeftTopAndSize( PREVIEW_HPAD, y, line_width, PREVIEW_LINE_HEIGHT );  
 	getChild<LLUICtrl>("description_form")->setCommitCallback(boost::bind(&LLFloaterNameDesc::doCommitDescription, this));
-	getChild<LLUICtrl>("description_form")->setValue(LLSD(asset_description));
 
 	LLLineEditor *DescEditor = getChild<LLLineEditor>("description_form");
 	if (DescEditor)
@@ -184,6 +219,15 @@ BOOL LLFloaterNameDesc::postBuild()
 		DescEditor->setMaxTextLength(DB_INV_ITEM_DESC_STR_LEN);
 		DescEditor->setPrevalidate(&LLLineEditor::prevalidatePrintableNotPipe);
 	}
+
+	LLView* previously_uploaded = getChildView("previously_uploaded", TRUE, FALSE);
+	if (previously_uploaded)
+	{
+		LLComboBox* combo = static_cast<LLComboBox*>(previously_uploaded);
+		combo->setCommitCallback(boost::bind(&LLFloaterNameDesc::onChangePreset, this, _1));
+	}
+	// Link the "copy_uuid" button.
+	childSetAction("copy_uuid", &LLFloaterNameDesc::onClickGetKey, this);
 
 	y -= llfloor(PREVIEW_LINE_HEIGHT * 1.2f);
 
@@ -197,11 +241,11 @@ BOOL LLFloaterNameDesc::postBuild()
 	return TRUE;
 }
 
-void LLFloaterNameDesc::postBuildUploadedBefore(std::string const& asset_name, S32 extend)
+void LLFloaterNameDesc::updateUploadedBefore(std::string const& asset_name, S32 extend)
 {
 	// Only one of these exists. The first one for one-on-one sources, when the source file
 	// being uploaded is linked to an asset UUID. The second one when for source with a
-	// delta (currently only BVH animation files), when there can be a whole list of
+	// delta (currently BVH animation files and textures), when there can be more than one
 	// previously uploaded assets related to one source file.
 	LLView* asset_id = getChildView("asset_id", TRUE, FALSE);
 	LLView* previously_uploaded = getChildView("previously_uploaded", TRUE, FALSE);
@@ -218,28 +262,33 @@ void LLFloaterNameDesc::postBuildUploadedBefore(std::string const& asset_name, S
 	  {
 		// Show the "already exists" stuff.
 
-		// Move the bottom of the floater 'extend' pixels down.
-		LLRect rect = getRect();
-		rect.mBottom -= extend;
-		reshape(rect.getWidth(), rect.getHeight(), TRUE);
+		if (!mExtended)
+		{
+		  // Only extend once.
+		  mExtended = true;
 
-		// Fill in the grid name in the "already_exists_text".
-		LLSD args;
-		args["ASSET"] = asset_name;
-		args["GRID"] = gHippoGridManager->getConnectedGrid()->getGridNick();
-		childSetText("already_exists_text", LLTrans::getString("already_uploaded", args));
+		  // Move the bottom of the floater 'extend' pixels down.
+		  LLRect rect = getRect();
+		  rect.mBottom -= extend;
+		  reshape(rect.getWidth(), rect.getHeight(), TRUE);
+
+		  // Fill in the grid name in the "already_exists_text".
+		  LLSD args;
+		  args["ASSET"] = asset_name;
+		  args["GRID"] = gHippoGridManager->getConnectedGrid()->getGridNick();
+		  childSetText("already_exists_text", LLTrans::getString("already_uploaded", args));
+		}
 		// Fill in the UUID.
 		static_cast<LLNameEditor*>(asset_id)->setText(mExistingUUID.asString());
 	  }
-	  // Link the "copy_uuid" button.
-	  childSetAction("copy_uuid", &LLFloaterNameDesc::onClickGetKey, this);
 	}
 	if (previously_uploaded)
 	{
 	  // The combo box is currently always shown.
 	  LLComboBox* combo = static_cast<LLComboBox*>(previously_uploaded);
+	  LLSD selected_value = combo->getSelectedValue();
+	  LLSD::Integer selected_id = -1;
 	  combo->removeall();
-	  combo->setCommitCallback(boost::bind(&LLFloaterNameDesc::onChangePreset, this, _1));
 	  AIMultiGrid::Grid const current_grid(gHippoGridManager->getConnectedGrid()->getGridNick());
 	  LLSD::Integer id = 0;
 	  for (std::vector<AIUploadedAsset*>::iterator iter = mPreviousUploads.begin(); iter != mPreviousUploads.end(); ++iter, ++id)
@@ -271,12 +320,20 @@ void LLFloaterNameDesc::postBuildUploadedBefore(std::string const& asset_name, S
 		  text += grid->getGrid().getGridNick();
 		  added_grid = true;
 		}
+		if (selected_value.isMap() &&
+			selected_value["name"].asString() == value["name"].asString() &&
+			selected_value["description"].asString() == value["description"].asString() &&
+			selected_value.has("uuid") == value.has("uuid") &&
+			(!selected_value.has("uuid") || selected_value["uuid"].asUUID() == value["uuid"].asUUID()))
+		{
+		  selected_id = id;
+		}
 		LLScrollListItem* item = combo->add(text, value);
 		LLScrollListCell* column = item->getColumn(0);
 		column->setToolTip(ua_r->getDescription());
 	  }
 	  // Only enable the combo box when it is not empty.
-	  combo->setEnabled(combo->selectFirstItem());
+	  combo->setEnabled((selected_id != -1 && combo->setCurrentByIndex(selected_id)) || combo->selectFirstItem());
 	}
 
 	// Fix visibility.
@@ -291,6 +348,43 @@ void LLFloaterNameDesc::postBuildUploadedBefore(std::string const& asset_name, S
 	  getChildView("copy_uuid")->setEnabled(uploaded_before);
 	  previously_uploaded->setEnabled(!mPreviousUploads.empty());
 	}
+}
+
+void LLFloaterNameDesc::checkForPreset(AIMultiGrid::Delta const* delta)
+{
+	LLSD args;
+	args["UPLOADFEE"] = gHippoGridManager->getConnectedGrid()->getUploadFee();
+
+	LLSD::Integer id = 0;
+	for (std::vector<AIUploadedAsset*>::iterator preset = mPreviousUploads.begin(); preset != mPreviousUploads.end(); ++preset, ++id)
+	{
+		AIUploadedAsset_rat AIUploadedAsset_r(**preset);
+		AIMultiGrid::Delta const* preset_delta = AIUploadedAsset_r->getDelta().get();
+		if (preset_delta && preset_delta->equals(delta))
+		{
+			getChild<LLComboBox>("previously_uploaded")->setCurrentByIndex(id);
+			if (!mUserEdittedName)
+			{
+			  getChildView("name_form")->setValue(LLSD(AIUploadedAsset_r->getName()));
+			}
+			if (!mUserEdittedDescription)
+			{
+			  getChildView("description_form")->setValue(LLSD(AIUploadedAsset_r->getDescription()));
+			}
+			LLUUID const* uuid = AIUploadedAsset_r->find_uuid();
+			if (uuid)
+			{
+				mExistingUUID = *uuid;
+				getChildView("copy_uuid")->setEnabled(TRUE);
+				getChild<LLButton>("ok_btn")->setLabel(LLTrans::getString("reupload", args));
+				return;
+			}
+			break;
+		}
+	}
+	mExistingUUID.setNull();
+	getChildView("copy_uuid")->setEnabled(FALSE);
+	getChild<LLButton>("ok_btn")->setLabel(LLTrans::getString("upload", args));
 }
 
 void LLFloaterNameDesc::onChangePreset(LLUICtrl* ctrl)
@@ -355,9 +449,6 @@ void LLFloaterNameDesc::onCommit()
 {
 }
 
-//-----------------------------------------------------------------------------
-// onCommit()
-//-----------------------------------------------------------------------------
 void LLFloaterNameDesc::doCommitName()
 {
 	mUserEdittedName = true;
@@ -413,7 +504,7 @@ BOOL LLFloaterSoundPreview::postBuild()
 		return FALSE;
 	}
 	// If already uploaded before, move the buttons 42 pixels down and show the 'already_exists' text, the UUID and the "copy UUID" button.
-	postBuildUploadedBefore("sound", 42);
+	updateUploadedBefore("sound", 42);
 	getChild<LLUICtrl>("ok_btn")->setCommitCallback(boost::bind(&LLFloaterNameDesc::onBtnOK, this));
 	return TRUE;
 }
@@ -434,7 +525,7 @@ BOOL LLFloaterAnimPreview::postBuild()
 		return FALSE;
 	}
 	// If already uploaded before, move the buttons 42 pixels down and show the 'already_exists' text, the UUID and the "copy UUID" button.
-	postBuildUploadedBefore("animation", 42);
+	updateUploadedBefore("animation", 42);
 	getChild<LLUICtrl>("ok_btn")->setCommitCallback(boost::bind(&LLFloaterNameDesc::onBtnOK, this));
 	return TRUE;
 }

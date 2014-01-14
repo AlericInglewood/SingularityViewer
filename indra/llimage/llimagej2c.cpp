@@ -36,6 +36,7 @@
 #include "../llxml/llcontrol.h"
 #include "llimagej2c.h"
 #include "llmd5.h"
+#include "aitexturedelta.h"
 
 typedef LLImageJ2CImpl* (*CreateLLImageJ2CFunction)();
 typedef void (*DestroyLLImageJ2CFunction)(LLImageJ2CImpl*);
@@ -466,7 +467,7 @@ void LLImageJ2C::setReversible(const BOOL reversible)
 }
 
 
-BOOL LLImageJ2C::loadAndValidate(const std::string &filename, LLMD5& md5)
+BOOL LLImageJ2C::loadAndValidate(const std::string &filename, LLMD5& md5, LLPointer<AIMultiGrid::TextureDelta>& delta)
 {
 	BOOL res = TRUE;
 	
@@ -504,7 +505,7 @@ BOOL LLImageJ2C::loadAndValidate(const std::string &filename, LLMD5& md5)
 			//<singu>
 			if (res)
 			{
-				res = calculateHash(data, file_size, md5);
+				res = calculateHash(md5, delta);
 			}
 			//</singu>
 		}
@@ -566,7 +567,7 @@ bool isMarker(U8 const* data, U8 code)
 	return data[0] == 0xff && data[1] == code;
 }
 
-BOOL LLImageJ2C::calculateHash(U8 const* data, U32 file_size, LLMD5& md5)
+BOOL LLImageJ2C::calculateHash(LLMD5& md5, LLPointer<AIMultiGrid::TextureDelta>& delta)
 {
 	// JPEG 2000 delimiters.
 	U8 const SOC = 0x4f;	// Start of codestream.
@@ -574,8 +575,12 @@ BOOL LLImageJ2C::calculateHash(U8 const* data, U32 file_size, LLMD5& md5)
 	U8 const EOC = 0xd9;	// End of codestream.
 	// Fixed information segment.
 	U8 const SIZ = 0x51;	// Image and tile size.
+	U8 const COD = 0x52;	// Coding style default.
 	// Informational segments.
 	U8 const COM = 0x64;	// Comment.
+
+	U8 const* data = getData();
+	S32 file_size = getDataSize();
 
 	// Avoid reading uninitialized data.
 	if (file_size < 6) return FALSE;
@@ -589,7 +594,7 @@ BOOL LLImageJ2C::calculateHash(U8 const* data, U32 file_size, LLMD5& md5)
 	marker += 2;
 
 	// Determine an upper limit for the header.
-	int const header_len = llmin(file_size, (U32)(FIRST_PACKET_SIZE + 2));	// Something larger than the real header size.
+	int const header_len = llmin(file_size, FIRST_PACKET_SIZE + 2);	// Something larger than the real header size.
 
 	// The next segment should be SIZ.
 	bool isSIZ = isMarker(marker, SIZ);
@@ -598,6 +603,9 @@ BOOL LLImageJ2C::calculateHash(U8 const* data, U32 file_size, LLMD5& md5)
 
 	// Skip segments until we find the Start Of Data.
 	bool sawCOM = false;
+	bool sawCOD = false;
+	bool isCOD = false;
+	bool lossless = false;
 	do
 	{
 		marker += 2;
@@ -607,16 +615,36 @@ BOOL LLImageJ2C::calculateHash(U8 const* data, U32 file_size, LLMD5& md5)
 		{
 			return FALSE;
 		}
+		if (isCOD)
+		{
+			// Previous marker was COD.
+			// ff 52 00 0c 00 00 00 05 01 05 04 04 00 00 ff
+			//       -----       -----                   ^__ current marker.
+			//       len=12        \__ number of layers is 5.
+			// Assume lossy unless the number of layers is 1.
+			lossless = marker[4 - len] == 0 && marker[5 - len] == 1;
+		}
+		isCOD = false;
 		bool isMarker = marker[0] == 0xff;
 		llassert(isMarker);
 		if (!isMarker) return FALSE;
 		sawCOM |= marker[1] == COM;
+		if (marker[1] == COD)
+		{
+			llassert(!sawCOD);		// There should only be one COD.
+			sawCOD = true;
+			isCOD = true;
+		}
 	}
 	while (marker[1] != SOD);
 
 	// Sanity check: make sure we skipped the comment by now.
 	llassert(sawCOM);
 	if (!sawCOM) return FALSE;
+
+	// Sanity check; make sure we saw a COD.
+	llassert(sawCOD);
+	if (!sawCOD) return FALSE;
 
 	// Only hash from SOD and onwards.
 	size_t hash_length = file_size - (marker - data);
@@ -628,6 +656,13 @@ BOOL LLImageJ2C::calculateHash(U8 const* data, U32 file_size, LLMD5& md5)
 
 	// Calculate hash.
 	md5.update(marker, hash_length);
+
+	// Return decoded delta.
+	delta = new AIMultiGrid::TextureDelta(lossless);
+
+	// Include the delta in the hash for completeness (probably not necessary since likely the hash would already be different).
+	unsigned char delta_data = lossless;
+	md5.update(&delta_data, 1);
 	md5.finalize();
 
 	return TRUE;

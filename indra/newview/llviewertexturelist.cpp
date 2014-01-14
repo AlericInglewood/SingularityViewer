@@ -67,6 +67,7 @@
 #include "llagent.h"
 #include "llviewerdisplay.h"
 #include "llflexibleobject.h"
+#include "aitexturedelta.h"
 
 ////////////////////////////////////////////////////////////////////////////
 
@@ -1088,127 +1089,6 @@ void LLViewerTextureList::decodeAllImages(F32 max_time)
 	<< " fetch_pending " << fetch_pending
 	<< " create_time " << create_time
 	<< LL_ENDL;
-}
-
-
-BOOL LLViewerTextureList::createUploadFile(const std::string& filename,
-										 const std::string& out_filename,
-										 const U8 codec,
-										 LLMD5& source_md5,
-										 LLMD5& asset_md5)
-{
-	// Load the image
-	LLPointer<LLImageFormatted> image = LLImageFormatted::createFromType(codec);
-	if (image.isNull())
-	{
-		LLImage::setLastError("Couldn't open the image to be uploaded.");
-		return FALSE;
-	}	
-	if (!image->load(filename))
-	{
-		LLImage::setLastError("Couldn't load the image to be uploaded.");
-		return FALSE;
-	}
-	// Decompress or expand it in a raw image structure
-	LLPointer<LLImageRaw> raw_image = new LLImageRaw;
-	if (!image->decode(raw_image, 0.0f))
-	{
-		LLImage::setLastError("Couldn't decode the image to be uploaded.");
-		return FALSE;
-	}
-	// Check the image constraints
-	if ((image->getComponents() != 3) && (image->getComponents() != 4))
-	{
-		LLImage::setLastError("Image files with less than 3 or more than 4 components are not supported.");
-		return FALSE;
-	}
-	//<singu>
-	if (!raw_image->calculateHash(source_md5))
-	{
-		source_md5 = LLMD5();
-	}
-	//</singu>
-	// Convert to j2c (JPEG2000) and save the file locally
-	LLPointer<LLImageJ2C> compressedImage = convertToUploadFile(raw_image);	
-	if (compressedImage.isNull())
-	{
-		LLImage::setLastError("Couldn't convert the image to jpeg2000.");
-		llinfos << "Couldn't convert to j2c, file : " << filename << llendl;
-		return FALSE;
-	}
-	if (!compressedImage->save(out_filename))
-	{
-		LLImage::setLastError("Couldn't create the jpeg2000 image for upload.");
-		llinfos << "Couldn't create output file : " << out_filename << llendl;
-		return FALSE;
-	}
-	return verifyUploadFile(out_filename, codec, asset_md5);
-}
-
-static bool positive_power_of_two(int dim)
-{
-  return dim > 0 && !(dim & (dim - 1));
-}
-
-BOOL LLViewerTextureList::verifyUploadFile(const std::string& out_filename, const U8 codec, LLMD5& md5)
-{
-	// Test to see if the encode and save worked
-	LLPointer<LLImageJ2C> integrity_test = new LLImageJ2C;
-	if (!integrity_test->loadAndValidate(out_filename, md5))	//Singu note: passing md5 to get a hash of the file.
-	{
-		LLImage::setLastError(std::string("The ") + ((codec == IMG_CODEC_J2C) ? "" : "created ") + "jpeg2000 image is corrupt: " + LLImage::getLastError());
-		llinfos << "Image file : " << out_filename << " is corrupt" << llendl;
-		return FALSE;
-	}
-	if (codec == IMG_CODEC_J2C)
-	{
-		if (integrity_test->getComponents() < 3 || integrity_test->getComponents() > 4)
-		{
-			LLImage::setLastError("Image files with less than 3 or more than 4 components are not supported.");
-			return FALSE;
-		}
-		else if (!positive_power_of_two(integrity_test->getWidth()) ||
-			     !positive_power_of_two(integrity_test->getHeight()))
-		{
-			LLImage::setLastError("The width or height is not a (positive) power of two.");
-			return FALSE;
-		}
-	}
-	return TRUE;
-}
-
-// note: modifies the argument raw_image!!!!
-LLPointer<LLImageJ2C> LLViewerTextureList::convertToUploadFile(LLPointer<LLImageRaw> raw_image)
-{
-	raw_image->biasedScaleToPowerOfTwo(LLViewerFetchedTexture::MAX_IMAGE_SIZE_DEFAULT);
-	LLPointer<LLImageJ2C> compressedImage = new LLImageJ2C();
-	compressedImage->setRate(0.f);
-	
-	if (gSavedSettings.getBOOL("LosslessJ2CUpload") &&
-		(raw_image->getWidth() * raw_image->getHeight() <= LL_IMAGE_REZ_LOSSLESS_CUTOFF * LL_IMAGE_REZ_LOSSLESS_CUTOFF))
-		compressedImage->setReversible(TRUE);
-	
-
-/*	if (gSavedSettings.getBOOL("Jpeg2000AdvancedCompression"))
-	{
-		// This test option will create jpeg2000 images with precincts for each level, RPCL ordering
-		// and PLT markers. The block size is also optionally modifiable.
-		// Note: the images hence created are compatible with older versions of the viewer.
-		// Read the blocks and precincts size settings
-		S32 block_size = gSavedSettings.getS32("Jpeg2000BlocksSize");
-		S32 precinct_size = gSavedSettings.getS32("Jpeg2000PrecinctsSize");
-		llinfos << "Advanced JPEG2000 Compression: precinct = " << precinct_size << ", block = " << block_size << llendl;
-		compressedImage->initEncode(*raw_image, block_size, precinct_size, 0);
-	}*/
-	
-	if (!compressedImage->encode(raw_image, 0.0f))
-	{
-		llinfos << "convertToUploadFile : encode returns with error!!" << llendl;
-		// Clear up the pointer so we don't leak that one
-		compressedImage = NULL;
-	}
-	
-	return compressedImage;
 }
 
 // Returns min setting for TextureMemory (in MB)

@@ -176,9 +176,9 @@ LLFloaterBvhPreview::LLFloaterBvhPreview(LLPointer<AIMultiGrid::FrontEnd> const&
 	mIDList["Wink"] = ANIM_AGENT_EXPRESS_WINK;
 	mIDList["Worry"] = ANIM_AGENT_EXPRESS_WORRY;
 
-	//<edit>
+	//<singu>
 	mPresetting = false;
-	//</edit>
+	//</singu>
 }
 
 //-----------------------------------------------------------------------------
@@ -270,9 +270,7 @@ bool AIBVHLoader::loadbvh(std::string const& filename, bool in_world, LLPointer<
 				try
 				{
 					mMotionp->deserialize(dp, source_md5);
-
-					LLPointer<AIMultiGrid::Delta> delta = new AIMultiGrid::BVHAnimDelta(mMotionp->getDelta());
-					front_end->setSourceHash(source_md5, AIMultiGrid::FrontEnd::one_source_many_assets, delta);
+					front_end->setSourceHash(source_md5);
 					success = true;
 				}
 				catch (AIAlert::Error const& error)
@@ -302,12 +300,20 @@ BOOL LLFloaterBvhPreview::postBuild()
 {
 	LLRect r;
 
+	//<singu>
+	// Moved here from below because it's used in the next line.
+	mInWorld = gSavedSettings.getBOOL("PreviewAnimInWorld");
+
+	// Load the BVH file now because that sets the source hash, which is used
+	// by LLFloaterNameDesc::postBuild() to find back previous uploads.
+	AIBVHLoader loader;
+	bool success = loader.loadbvh(mFilenameAndPath, mInWorld, mFrontEnd);
+	//</singu>
+
 	if (!LLFloaterNameDesc::postBuild())
 	{
 		return FALSE;
 	}
-
-	mInWorld = gSavedSettings.getBOOL("PreviewAnimInWorld");
 
 	getChild<LLUICtrl>("name_form")->setCommitCallback(boost::bind(&LLFloaterBvhPreview::onCommitName, this));
 
@@ -367,10 +373,8 @@ BOOL LLFloaterBvhPreview::postBuild()
 
 	r.set(r.mRight + PREVIEW_HPAD, y, getRect().getWidth() - PREVIEW_HPAD, y - BTN_HEIGHT);
 
-	//<edit>
+	//<singu>
 	// This is where the code that is now (mostly) in AIBVHLoader::loadbvh used to be.
-	AIBVHLoader loader;
-	bool success = loader.loadbvh(mFilenameAndPath, mInWorld, mFrontEnd);
 
 	LLKeyframeMotion* motionp = NULL;	// Avoid compiler warning.
 	if (success)
@@ -406,10 +410,10 @@ BOOL LLFloaterBvhPreview::postBuild()
 		out_str.setArg("[STATUS]", "");	// There is no status if we get here.
 		getChild<LLUICtrl>("bad_animation_text")->setValue(out_str.getString());
 	}
-	//</edit>
+	//</singu>
 
 	// If already uploaded before, move the buttons 20 pixels down and show the previously uploaded combobox, and the "copy UUID" button.
-	postBuildUploadedBefore("animation", 40);
+	updateUploadedBefore("animation", 40);
 
 		if (success)
 		{
@@ -514,40 +518,9 @@ void LLFloaterBvhPreview::checkForPreset(void)
 	else
 		return;
 
-	LLSD args;
-	args["UPLOADFEE"] = gHippoGridManager->getConnectedGrid()->getUploadFee();
 	LLKeyframeMotion* motionp = (LLKeyframeMotion*)avatarp->findMotion(mMotionID);
-	AIMultiGrid::BVHAnimDelta const& bvh_anim_delta = motionp->getDelta();
-	LLSD::Integer id = 0;
-	for (std::vector<AIUploadedAsset*>::iterator preset = mPreviousUploads.begin(); preset != mPreviousUploads.end(); ++preset, ++id)
-	{
-		AIUploadedAsset_rat AIUploadedAsset_r(**preset);
-		AIMultiGrid::BVHAnimDelta const* delta = dynamic_cast<AIMultiGrid::BVHAnimDelta const*>(AIUploadedAsset_r->getDelta().get());
-		if (delta && delta->equals(bvh_anim_delta))
-		{
-			getChild<LLComboBox>("previously_uploaded")->setCurrentByIndex(id);
-			if (!mUserEdittedName)
-			{
-			  getChildView("name_form")->setValue(LLSD(AIUploadedAsset_r->getName()));
-			}
-			if (!mUserEdittedDescription)
-			{
-			  getChildView("description_form")->setValue(LLSD(AIUploadedAsset_r->getDescription()));
-			}
-			LLUUID const* uuid = AIUploadedAsset_r->find_uuid();
-			if (uuid)
-			{
-				mExistingUUID = *uuid;
-				getChildView("copy_uuid")->setEnabled(TRUE);
-				getChild<LLButton>("ok_btn")->setLabel(LLTrans::getString("reupload", args));
-				return;
-			}
-			break;
-		}
-	}
-	mExistingUUID.setNull();
-	getChildView("copy_uuid")->setEnabled(FALSE);
-	getChild<LLButton>("ok_btn")->setLabel(LLTrans::getString("upload", args));
+	AIMultiGrid::BVHAnimDelta const& delta = motionp->getDelta();
+	LLFloaterNameDesc::checkForPreset(&delta);
 }
 
 //-----------------------------------------------------------------------------
@@ -1331,12 +1304,11 @@ void LLFloaterBvhPreview::onBtnOK(void* userdata)
 
 			S32 size = dp.getCurrentSize();
 
-			//<edit>
+			//<singu>
 			LLMD5 asset_md5;
 			asset_md5.update(buffer, size);
 			asset_md5.finalize();
-			floaterp->mFrontEnd->setAssetHash(asset_md5);
-			//</edit>
+			//</singu>
 
 			file.setMaxSize(size);
 			if (file.write((U8*)buffer, size))
@@ -1367,7 +1339,7 @@ void LLFloaterBvhPreview::onBtnOK(void* userdata)
 				// </edit>
 #endif
 				{
-					floaterp->mFrontEnd->addDelta(new AIMultiGrid::BVHAnimDelta(motionp->getDelta()));
+					floaterp->mFrontEnd->setAssetHash(asset_md5, new AIMultiGrid::BVHAnimDelta(motionp->getDelta()));
 					floaterp->mFrontEnd->upload_new_resource(floaterp->mTransactionID, // tid
 						    LLAssetType::AT_ANIMATION,
 						    name,

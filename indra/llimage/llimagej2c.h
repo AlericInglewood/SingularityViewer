@@ -30,6 +30,10 @@
 #include "llimage.h"
 #include "llassettype.h"
 
+namespace AIMultiGrid {
+class TextureDelta;
+}
+
 class LLImageJ2CImpl;
 class LLImageJ2C : public LLImageFormatted
 {
@@ -57,12 +61,13 @@ public:
 	// Encode with comment text 
 	BOOL encode(const LLImageRaw *raw_imagep, const char* comment_text, F32 encode_time=0.0);
 
-	BOOL calculateHash(U8 const* data, U32 file_size, LLMD5& md5);	//Singu extension.
+	BOOL calculateHash(LLMD5& md5, LLPointer<AIMultiGrid::TextureDelta>& delta);	//Singu extension.
 	BOOL validate(U8 *data, U32 file_size);
-	BOOL loadAndValidate(const std::string &filename, LLMD5& md5);	//Singu note: added md5 for AIMultiGrid support (is passed to calculateHash).
+	BOOL loadAndValidate(const std::string &filename, LLMD5& md5, LLPointer<AIMultiGrid::TextureDelta>& delta);	//Singu note: added md5 and delta for AIMultiGrid support (is passed to calculateHash).
 
 	// Encode accessors
 	void setReversible(const BOOL reversible); // Use non-lossy?
+	BOOL getReversible(void) const { return mReversible; }			// Singu extension.
 	void setRate(F32 rate);
 	void setMaxBytes(S32 max_bytes);
 	S32 getMaxBytes() const { return mMaxBytes; }

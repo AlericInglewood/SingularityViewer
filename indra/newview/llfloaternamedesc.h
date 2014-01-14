@@ -54,12 +54,14 @@ public:
 
 protected:
 	virtual BOOL postBuild();
-	void postBuildUploadedBefore(std::string const& asset_name, S32 extend);
 	static void onClickGetKey(void* userdata);
-	//<edit>
+	//<singu>
+	void updateUploadedBefore(std::string const& asset_name, S32 extend);
+	void check_previous_uploads_and_set_name_description_and_uuid();
 	void onChangePreset(LLUICtrl* ctrl);
 	virtual void onChangePresetDelta(AIMultiGrid::Delta*) { }
-	//</edit>
+	void checkForPreset(AIMultiGrid::Delta const* delta);
+	//</singu>
 
 public:
 	void		onBtnOK();
@@ -76,14 +78,15 @@ protected:
 
 	std::string		mFilenameAndPath;
 	std::string		mFilename;
-	// <edit>
+	// <singu>
 	LLPointer<AIMultiGrid::FrontEnd> mFrontEnd;		// The upload manager state machine.
 	bool mUploadedBefore;							// True if this asset already exists on the _current_ grid.
 	LLUUID mExistingUUID;							// UUID of previously uploaded asset. Only valid when mUploadedBefore is true.
 	std::vector<AIUploadedAsset*> mPreviousUploads;	// A list of all previous uploads (to any grid), only set for one_source_many_assets source types.
 	bool			mUserEdittedName;
 	bool			mUserEdittedDescription;
-	// </edit>
+	bool			mExtended;
+	// </singu>
 };
 
 class LLFloaterSoundPreview : public LLFloaterNameDesc

@@ -130,6 +130,9 @@ void AIXMLElement::write_child(char const* name, T const& element)
   }
 }
 
+template<>
+void AIXMLElement::write_child(char const* name, bool const& element);
+
 template<typename T>
 void AIXMLElement::child(char const* name, T const& element)
 {

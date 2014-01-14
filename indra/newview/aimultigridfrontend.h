@@ -51,9 +51,13 @@ class HippoGridInfo;
 class AIUploadedAsset;
 class LLNewAgentInventoryResponder;
 class AIArgs;
+class LLImageRaw;
+class LLImageJ2C;
 namespace AIAlert { class Error; }
 
 namespace AIMultiGrid {
+
+class TextureDelta;
 
 struct UploadResponderFactoryBase {
   typedef void (*Callback)(LLUUID const&, void*, bool);		// Must be the same type as LLNewAgentInventoryResponder::Callback.
@@ -98,12 +102,12 @@ class FrontEnd : public AIStateMachine
 	std::string mDisplayName;
 	S32 mExpectedUploadCost;
 
-	// Parameter passed to addDelta.
+	// Parameter passed to setAssetHash.
 	LLPointer<Delta> mDelta;
 
 	// The following members are used in upload_new_resource_continued.
 	bool mCreatedTempFile;			// Set to true when mCreatedTempFile is temporary and created.
-	std::string mTmpFilename;		// The file that is copied to VFS for uploading, either a temporary file (if mCreatedTempFile is true) or equal to mSourceFilename.
+	std::string mTmpFilename;		// The file that is copied to VFS for uploading when mCreatedTempFile is set (otherwise mSourceFilename is used).
 
 	// The following members are valid in the callback function.
 	bool mHttpUpload;		// Set when this was an http upload.
@@ -115,6 +119,7 @@ class FrontEnd : public AIStateMachine
 	LLMD5 mSourceHash;				// Idem, md5 hash of above file.
 	ESource mSourceHashType;		// Whether mSourceHash has a one-on-one relationship to mAssetHash or that the source is not complete (as is the case for BVH).
 	bool mNativeFormat;				// Set if the to-be-uploaded source file is already in the format that can be uploaded directly to the server.
+	U32 mCodec;						// As detected in prepare_upload.
 
 	LLMD5 mAssetHash;				// The md5 hash for the (to be uploaded) asset file.
 
@@ -138,6 +143,21 @@ class FrontEnd : public AIStateMachine
 	BackEndAccess mBackEndAccess;	// Using this to access the back end will lock the database for any other BackEndAccess, until this object is destructed.
 	bool mLocked;					// Set if this state machine obtained the lock.
 	bool mAbort;					// Set if we need to abort because something went wrong while the database is locked.
+
+  public:
+	//-------------------------------------------------------------------------
+	// Texture specific stuff.
+
+	// Decode texture source 'filename' with codec 'codec' and calculate source hash. Returns a pointer to the decoded raw image if successful.
+	static LLPointer<LLImageRaw> createRawImage(std::string const& filename, U8 const codec);
+	// Same, but also calculate the source hash.
+	static LLPointer<LLImageRaw> createRawImage(std::string const& filename, U8 const codec, LLMD5& source_md5);
+	// Convert 'raw_image' to a J2C asset and write it to 'out_filename'. Calculates the asset hash and sets 'delta'.
+	bool createJ2CUploadFile(LLPointer<LLImageRaw> const& raw_image, LLMD5& asset_md5, LLPointer<AIMultiGrid::TextureDelta>& delta);
+	// This used to be LLViewerTextureList::convertToUploadFile. Converts 'raw_image' to a J2C image.
+	static LLPointer<LLImageJ2C> convertToUploadFile(LLPointer<LLImageRaw> raw_image);
+	// This used to be LLViewerTextureList::verifyUploadFile.
+	static bool verifyUploadFile(std::string const& out_filename, bool native, LLMD5& md5, LLPointer<AIMultiGrid::TextureDelta>& delta);
 
 	//-------------------------------------------------------------------------
 
@@ -163,8 +183,8 @@ class FrontEnd : public AIStateMachine
 	FrontEnd(CWD_ONLY(bool debug = true));
 
 	void setSourceFilename(std::string const& source_filename);
-	void setSourceHash(LLMD5 const& source_md5, ESource type = one_on_one, LLPointer<Delta> const& delta = LLPointer<Delta>());
-	void setAssetHash(LLMD5 const& asset_md5);
+	void setSourceHash(LLMD5 const& source_md5);
+	void setAssetHash(LLMD5 const& asset_md5, LLPointer<Delta> const& delta = LLPointer<Delta>());
 
   protected:
 	/*virtual*/ ~FrontEnd() { }
@@ -189,6 +209,9 @@ class FrontEnd : public AIStateMachine
 	// Return whether or not it's an upload in the native format.
 	bool isNativeFormat(void) const { llassert(mAssetType != LLAssetType::AT_NONE); /* Call prepare_upload() first. */ return mNativeFormat; }
 
+	// Return the codec as detected by prepare_upload().
+	U32 getCodec(void) const { llassert(mAssetType != LLAssetType::AT_NONE); /* Call prepare_upload() first. */ return mCodec; }
+
 	// After calling prepare_upload() this can be called to determine if that source file was uploaded before.
 	void find_previous_uploads(void);
 
@@ -201,9 +224,6 @@ class FrontEnd : public AIStateMachine
 
 	// After a call to find_previous_uploads() this can be called to find out if the file was uploaded before.
 	bool uploaded_before(void) const;
-
-	// Pass a pointer to data on top of the source file, that was needed to generate the asset file.
-	void addDelta(Delta* delta) { mDelta = delta; }
 
 	// Upload the source file that was passed to prepare_upload.
 	void upload_new_resource_continued(

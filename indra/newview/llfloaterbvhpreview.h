@@ -137,11 +137,11 @@ public:
 									   void* user_data,
 									   S32 status, LLExtStat ext_status);
 
-	//<edit>
+	//<singu>
 	// Overridden from LLFloaterNameDesc.
 	/*virtual*/ void onChangePresetDelta(AIMultiGrid::Delta* delta);	// Accept a preset and update all settings.
 	void checkForPreset(void);											// Accept a setting change and check if the new settings match an existing preset.
-	//</edit>
+	//</singu>
 
 private:
 	void setAnimCallbacks() ;
@@ -161,10 +161,10 @@ protected:
 	LLTransactionID		mTransactionID;
 	BOOL				mInWorld;
 	LLAnimPauseRequest	mPauseRequest;
-	//<edit>
+	//<singu>
 	F32					mDuration;				// Singu extension. Cache for the duration of the BVH animation.
 	bool				mPresetting;			// Singu extension. Set to indicate that we're committing a preset (as opposed to the user actually changing a setting).
-	//</edit>
+	//</singu>
 
 	std::map<std::string, LLUUID>	mIDList;
 };

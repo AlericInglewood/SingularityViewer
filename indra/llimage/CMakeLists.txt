@@ -11,6 +11,7 @@ include(LLVFS)
 include(JPEG)
 include(PNG)
 include(ZLIB)
+include(LLXML)
 
 include_directories(
     ${LLCOMMON_INCLUDE_DIRS}
@@ -19,9 +20,11 @@ include_directories(
     ${JPEG_INCLUDE_DIRS}
     ${PNG_INCLUDE_DIRS}
     ${ZLIB_INCLUDE_DIRS}
+    ${LLXML_INCLUDE_DIRS}
     )
 
 set(llimage_SOURCE_FILES
+    aitexturedelta.cpp
     llimage.cpp
     llimagebmp.cpp
     llimagedxt.cpp
@@ -36,6 +39,7 @@ set(llimage_SOURCE_FILES
 set(llimage_HEADER_FILES
     CMakeLists.txt
 
+    aitexturedelta.h
     llimage.h
     llimagebmp.h
     llimagedxt.h

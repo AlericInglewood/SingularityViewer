@@ -114,9 +114,9 @@ protected:
 class LLFloaterImagePreview : public LLFloaterNameDesc
 {
 public:
-	// <edit>
+	//<singu>
 	explicit LLFloaterImagePreview(LLPointer<AIMultiGrid::FrontEnd> const& front_end);
-	// </edit>
+	//</singu>
 	virtual ~LLFloaterImagePreview();
 
 	virtual BOOL postBuild();
@@ -128,12 +128,20 @@ public:
 
 	static void onMouseCaptureLostImagePreview(LLMouseHandler*);
 
+	//<singu>
+	void onBtnOK(void);
+	void onCommitLossless(void);
+
+	// Overridden from LLFloaterNameDesc.
+	/*virtual*/ void onChangePresetDelta(AIMultiGrid::Delta* delta);	// Accept a preset and update all settings.
+	void checkForPreset(void);											// Accept a setting change and check if the new settings match an existing preset.
+	//</singu>
+
 	void clearAllPreviewTextures();
 
 protected:
 	static void		onPreviewTypeCommit(LLUICtrl*,void*);
 	void			draw();
-	bool			loadImage(const std::string& filename);
 
 	LLPointer<LLImageRaw> mRawImagep;
 	LLPointer<LLImagePreviewAvatar> mAvatarPreview;
@@ -143,9 +151,10 @@ protected:
 	LLRect			mPreviewRect;
 	LLRectf			mPreviewImageRect;
 	LLPointer<LLViewerTexture> mImagep ;
-	// <edit>
+	//<singu>
 	S32				mImageOffset;
-	// </edit>
+	bool			mPresetting;			// Set to indicate that we're committing a preset (as opposed to the user actually changing the lossless checkbox).
+	//</singu>
 };
 
 #endif  // LL_LLFLOATERIMAGEPREVIEW_H

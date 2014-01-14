@@ -65,6 +65,7 @@
 #include "llassetuploadresponders.h"
 #include "lluploadfloaterobservers.h"
 #include "aicurl.h"
+#include "aimultigridfrontend.h"
 
 #include "boost/lexical_cast.hpp"
 #ifndef LL_WINDOWS
@@ -1635,7 +1636,7 @@ void LLMeshUploadThread::wholeModelToLLSD(LLSD& dest, bool include_textures)
 					if(texture->hasSavedRawImage())
 					{											
 						LLPointer<LLImageJ2C> upload_file =
-							LLViewerTextureList::convertToUploadFile(texture->getSavedRawImage());
+							AIMultiGrid::FrontEnd::convertToUploadFile(texture->getSavedRawImage());
 						texture_str.write((const char*) upload_file->getData(), upload_file->getDataSize());
 					}
 				}

@@ -79,6 +79,7 @@
 #include "llviewernetwork.h"
 
 #include "llassetuploadresponders.h"
+#include "aimultigridfrontend.h"
 
 #include "lltrans.h"
 
@@ -762,7 +763,7 @@ void LLFloaterReporter::takeScreenshot()
 		llwarns << "Unable to take screenshot" << llendl;
 		return;
 	}
-	LLPointer<LLImageJ2C> upload_data = LLViewerTextureList::convertToUploadFile(raw);
+	LLPointer<LLImageJ2C> upload_data = AIMultiGrid::FrontEnd::convertToUploadFile(raw);
 
 	// create a resource data
 	mResourceDatap->mInventoryType = LLInventoryType::IT_NONE;

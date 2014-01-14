@@ -1,8 +1,8 @@
 /**
- * @file aimultigriddelta.h
- * @brief Declaration of class Delta
+ * @file aitexturedelta.h
+ * @brief Declaration of class TextureDelta
  *
- * Copyright (c) 2013, Aleric Inglewood.
+ * Copyright (c) 2014, Aleric Inglewood.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,37 +24,47 @@
  * CHANGELOG
  *   and additional copyright holders.
  *
- *   02/10/2013
+ *   01/01/2014
  *   Initial version, written by Aleric Inglewood @ SL
  */
 
-#ifndef AIMULTIGRIDDELTA_H
-#define AIMULTIGRIDDELTA_H
+#ifndef TEXTUREDELTA_H
+#define TEXTUREDELTA_H
 
-#include "llrefcount.h"
 #include <iosfwd>
-
-class AIXMLElementParser;
-class LLMD5;
+#include "aimultigriddelta.h"
 
 namespace AIMultiGrid {
 
 //-----------------------------------------------------------------------------
-// class Delta
+// class TextureDelta
 
-// Base class of classes defining extra data in an asset file that is not in the corresponding source file.
+// The extra data in a J2C asset file that is not in the corresponding image source file.
 
-class Delta : public LLRefCount
+class TextureDelta : public Delta
 {
-  public:
-	virtual ~Delta() { }
+  protected:
+	bool mLossless;			// Whether or not the conversion to j2c has been done lossless.
 
   public:
-	virtual void toXML(std::ostream& os, int indentation) const = 0;
-	virtual void update_hash(LLMD5& hash_out) = 0;
+	TextureDelta(void);
+	TextureDelta(bool lossless);
+	TextureDelta(AIXMLElementParser const& parser);
+
+	// Compare.
+	bool equals(Delta const* delta) const;
+
+	// Accessors.
+	bool getLossless(void) const { return mLossless; }
+
+	// Manipulators.
+	void setLossless(bool lossless) { mLossless = lossless; }
+
+	/*virtual*/ void toXML(std::ostream& os, int indentation) const;
+	/*virtual*/ void update_hash(LLMD5& hash_out);
 };
 
 } // namespace AIMultiGrid
 
-#endif // AIMULTIGRIDDELTA_H
+#endif // AITEXTUREDELTA_H
 

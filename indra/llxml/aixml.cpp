@@ -308,6 +308,18 @@ void AIXMLElement::child(LLDate const& element)
   close_child();
 }
 
+template<>
+void AIXMLElement::write_child(char const* name, bool const& element)
+{
+  mOs << std::string(mIndentation, ' ') << '<' << name << '>' << (element ? "true" : "false") << "</" << name << ">\n";
+  if (!mOs.good())
+  {
+	std::ostringstream ss;
+	ss << std::string(mIndentation, ' ') << '<' << name << '>' << (element ? "true" : "false") << "</" << name << ">\\n";
+	THROW_FALERT("AIXMLElement_write_child_Failed_to_write_DATA", AIArgs("[DATA]", ss.str()));
+  }
+}
+
 //-----------------------------------------------------------------------------
 // AIXMLStream
 
@@ -413,7 +425,7 @@ T AIXMLElementParser::read_integer(char const* type, std::string const& value) c
   if (result < (std::numeric_limits<T>::min)() || result > (std::numeric_limits<T>::max)())
   {
 	THROW_MALERT("AIXMLElementParser_read_integer_Invalid_TYPE_VALUE_in_FILEDESC_FILENAME",
-		AIArgs("[TYPE]", type)("[VALUE]", value)("FILEDESC", mFileDesc)("[FILENAME]", mFilename));
+		AIArgs("[TYPE]", type)("[VALUE]", value)("[FILEDESC", mFileDesc)("[FILENAME]", mFilename));
   }
   return result;
 }
@@ -476,14 +488,14 @@ F64 AIXMLElementParser::read_string(std::string const& value) const
 template<>
 bool AIXMLElementParser::read_string(std::string const& value) const
 {
-  if (value == "true")
+  if (value == "true" || value == "1")
   {
 	return true;
   }
-  else if (value != "false")
+  else if (value != "false" && value != "0")
   {
 	THROW_MALERT("AIXMLElementParser_read_string_Invalid_boolean_VALUE_in_FILEDESC_FILENAME",
-		AIArgs("[VALUE]", value)("FILEDESC]", mFileDesc)("[FILENAME]", mFilename));
+		AIArgs("[VALUE]", value)("[FILEDESC]", mFileDesc)("[FILENAME]", mFilename));
   }
   return false;
 }

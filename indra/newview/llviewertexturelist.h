@@ -52,6 +52,10 @@ class LLMessageSystem;
 class LLTextureView;
 class LLMD5;
 
+namespace AIMultiGrid {
+class TextureDelta;
+}
+
 typedef	void (*LLImageCallback)(BOOL success,
 								LLViewerFetchedTexture *src_vi,
 								LLImageRaw* src,
@@ -68,9 +72,7 @@ class LLViewerTextureList
 	friend class LLViewerTextureManager;
 	
 public:
-	static BOOL createUploadFile(const std::string& filename, const std::string& out_filename, const U8 codec, LLMD5& source_md5, LLMD5& asset_md5);	//Singu note: added '*_md5'.
-	static BOOL verifyUploadFile(const std::string& out_filename, const U8 codec, LLMD5& md5);	//Singu note: added 'md5'.
-	static LLPointer<LLImageJ2C> convertToUploadFile(LLPointer<LLImageRaw> raw_image);
+	// Singu note: createUploadFile, verifyUploadFile and convertToUploadFile have been moved to AIMultiGrid::FrontEnd.
 	static void processImageNotInDatabase( LLMessageSystem *msg, void **user_data );
 	static S32 calcMaxTextureRAM();
 	static void receiveImageHeader(LLMessageSystem *msg, void **user_data);

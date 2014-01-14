@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
 <floater can_close="true" can_drag_on_left="false" can_minimize="false"
-     can_resize="false" height="440" min_height="140" min_width="300"
+     can_resize="false" height="480" min_height="140" min_width="300"
      name="Image Preview" title="" width="300">
 	<text bottom_delta="-40" follows="top|left" height="15" left="10" name="name_label">
 		Name:
@@ -48,13 +48,16 @@
 			Sculpted Prim
 		</combo_item>
 	</combo_box>
-	<text bottom_delta="-14" follows="top|left" left="10" name="already_exists_text" />
-	<name_editor bevel_style="in" border_style="line"
-			   border_thickness="1" bottom_delta="-23" enabled="false" follows="left|top"
-			   font="SansSerifSmall" height="16" is_unicode="false" left="10"
-			   max_length="36" mouse_opaque="false" name="asset_id" width="210"
-			   tool_tip = "This is the Universally Unique IDentifier key of the previously uploaded texture. You can use it to texture objects without having the texture in your inventory." />
-	<button bottom_delta="-3" follows="left|top" halign="right" height="20" label="Copy UUID" right="-10" font="SansSerifSmall" tool_tip="Copy the asset UUID to clipboard" name="copy_uuid" width="70"/>
+
+    <text bottom_delta="-14" follows="top|left" left="10" name="previously_uploaded_text">Previous upload(s):</text>
+    <combo_box bottom_delta="-25" enabled="false" follows="left|top" font="SansSerifSmall" height="20"
+        left="10" mouse_opaque="true" width="200" allow_text_entry="false" name="previously_uploaded"
+        tool_tip="These are settings of previously uploaded animations.">
+      <combo_item name="select_item">Select previous upload</combo_item>
+    </combo_box>
+    <button bottom_delta="0" follows="left|top" halign="right" height="20" label="Copy UUID" right="-10"
+        font="SansSerifSmall" tool_tip="Copy the asset UUID to clipboard" name="copy_uuid" width="70"/>
+
 	<text bottom="250" follows="top|left" left="10" name="bad_image_text">
 		Unable to read image.
 

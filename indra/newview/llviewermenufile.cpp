@@ -66,6 +66,7 @@
 #include "llassettype.h"
 #include "llinventorytype.h"
 #include "aimultigridfrontend.h"
+#include "aitexturedelta.h"
 // </edit>
 
 // linden libraries
@@ -80,6 +81,7 @@
 #include "lluictrlfactory.h"
 #include "lluuid.h"
 #include "llvorbisencode.h"
+#include "llimagej2c.h"
 
 // system libraries
 #include <boost/tokenizer.hpp>
@@ -512,10 +514,24 @@ static void handle_compress_image_continued(AIFilePicker* filepicker)
 		llinfos << "Input:  " << infile << llendl;
 		llinfos << "Output: " << outfile << llendl;
 
-		BOOL success;
+		BOOL success = false;
 
-		LLMD5 source_md5, asset_md5;
-		success = LLViewerTextureList::createUploadFile(infile, outfile, IMG_CODEC_TGA, source_md5, asset_md5);
+		//<singu>
+		if (LLPointer<LLImageRaw> raw_image = AIMultiGrid::FrontEnd::createRawImage(infile, IMG_CODEC_TGA))
+		{
+			if (LLPointer<LLImageJ2C> compressedImage = AIMultiGrid::FrontEnd::convertToUploadFile(raw_image))
+			{
+				if (!compressedImage->save(outfile))
+				{
+					llinfos << "Couldn't create output file : \"" << outfile << "\"." << llendl;
+				}
+			}
+			else
+			{
+				llinfos << "Couldn't convert raw_image created from \"" << infile << "\" to j2c." << llendl;
+			}
+		}
+		//</singu>
 
 		if (success)
 		{

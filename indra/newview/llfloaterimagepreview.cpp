@@ -61,6 +61,8 @@
 #include "llstring.h"
 
 #include "hippogridmanager.h"
+#include "aimultigridfrontend.h"
+#include "aitexturedelta.h"
 
 const S32 PREVIEW_BORDER_WIDTH = 2;
 const S32 PREVIEW_RESIZE_HANDLE_SIZE = S32(RESIZE_HANDLE_WIDTH * OO_SQRT2) + PREVIEW_BORDER_WIDTH;
@@ -83,7 +85,8 @@ LLFloaterImagePreview::LLFloaterImagePreview(LLPointer<AIMultiGrid::FrontEnd> co
 	mImagep(NULL),
 	mImageOffset(0)
 {
-	loadImage(mFilenameAndPath);
+	// Singu note: loadImage was code duplication. Instead we call AIMultiGrid::FrontEnd::createRawImage (from postBuild) now.
+	//loadImage(mFilenameAndPath);
 }
 
 //-----------------------------------------------------------------------------
@@ -91,6 +94,18 @@ LLFloaterImagePreview::LLFloaterImagePreview(LLPointer<AIMultiGrid::FrontEnd> co
 //-----------------------------------------------------------------------------
 BOOL LLFloaterImagePreview::postBuild()
 {
+	//<singu>
+	// Read the source file and set the source hash before calling LLFloaterNameDesc::postBuild().
+	LLMD5 source_md5;
+	mRawImagep = AIMultiGrid::FrontEnd::createRawImage(mFilenameAndPath, mFrontEnd->getCodec(), source_md5);
+	if (mRawImagep.notNull())
+	{
+		mFrontEnd->setSourceHash(source_md5);
+		// Scale the image to a power of two (max 1024).
+		mRawImagep->biasedScaleToPowerOfTwo(1024);
+	}
+	//</singu>
+
 	if (!LLFloaterNameDesc::postBuild())
 	{
 		return FALSE;
@@ -109,8 +124,9 @@ BOOL LLFloaterImagePreview::postBuild()
 		PREVIEW_HPAD + PREF_BUTTON_HEIGHT + PREVIEW_HPAD);
 	mPreviewImageRect.set(0.f, 1.f, 1.f, 0.f);
 
-	// If already uploaded before, move the image and everything below it 42 pixels down.
-	postBuildUploadedBefore("image", 42);
+	//<singu>
+	// Handle UI specific to having been uploaded before already.
+	updateUploadedBefore("image", 40);
 #if 0 // Uncomment if image needs to be shifted back up
 	if (mUploadedBefore)
 	{
@@ -120,6 +136,12 @@ BOOL LLFloaterImagePreview::postBuild()
 	  mPreviewRect.mBottom += mImageOffset;
 	}
 #endif
+	// Set everything to the first preset, if any.
+	if (!mPreviousUploads.empty())
+	{
+		onChangePreset(getChild<LLUICtrl>("previously_uploaded"));
+	}
+	//</singu>
 
 	getChildView("bad_image_text")->setVisible(FALSE);
 
@@ -131,8 +153,26 @@ BOOL LLFloaterImagePreview::postBuild()
 		mSculptedPreview = new LLImagePreviewSculpted(256, 256);
 		mSculptedPreview->setPreviewTarget(mRawImagep, 2.0f);
 
-		if (mRawImagep->getWidth() * mRawImagep->getHeight () <= LL_IMAGE_REZ_LOSSLESS_CUTOFF * LL_IMAGE_REZ_LOSSLESS_CUTOFF)
+		//<singu>
+		if (mFrontEnd->isNativeFormat())
+		{
+			// Note if this is not native upload then delta isn't set yet.
+			AIMultiGrid::TextureDelta* delta = static_cast<AIMultiGrid::TextureDelta*>(mFrontEnd->getDelta().get());
+			getChildView("lossless_check")->setValue(delta->getLossless());
+		}
+		if (mRawImagep->getWidth() * mRawImagep->getHeight () > LL_IMAGE_REZ_LOSSLESS_CUTOFF * LL_IMAGE_REZ_LOSSLESS_CUTOFF)
+		{
+			// Singu note: if an image is too large, there is no choice for lossless/lossy: it is always lossy. Hide the checkbox completely.
+			getChildView("lossless_check")->setEnabled(FALSE);
+			getChildView("lossless_check")->setVisible(FALSE);
+		}
+		else if (!mFrontEnd->isNativeFormat()) // Singu note: lossless/lossy is encoded in the source file: it really means the number of tcp layers (1 or 5).
+		{
+			// Only enable the checkbox for non-native uploads.
 			getChildView("lossless_check")->setEnabled(TRUE);
+			getChild<LLUICtrl>("lossless_check")->setCommitCallback(boost::bind(&LLFloaterImagePreview::onCommitLossless, this));
+		}
+		//</singu>
 
 		// <edit>
 		gSavedSettings.setBOOL("TemporaryUpload",FALSE);
@@ -148,10 +188,61 @@ BOOL LLFloaterImagePreview::postBuild()
 		getChildView("ok_btn")->setEnabled(FALSE);
 	}
 
-	getChild<LLUICtrl>("ok_btn")->setCommitCallback(boost::bind(&LLFloaterNameDesc::onBtnOK, this));
+	getChild<LLUICtrl>("ok_btn")->setCommitCallback(boost::bind(&LLFloaterImagePreview::onBtnOK, this));
 
 	return TRUE;
 }
+
+//<singu>
+//-----------------------------------------------------------------------------
+// onBtnOK()
+//-----------------------------------------------------------------------------
+void LLFloaterImagePreview::onBtnOK(void)
+{
+	LLFloaterNameDesc::onBtnOK();
+}
+
+//-----------------------------------------------------------------------------
+// onCommitLossLess()
+//-----------------------------------------------------------------------------
+void LLFloaterImagePreview::onCommitLossless(void)
+{
+	// Lossless was toggled. Recalculate everything.
+	LLMD5 asset_md5;
+	LLPointer<AIMultiGrid::TextureDelta> delta;
+	mFrontEnd->createJ2CUploadFile(mRawImagep, asset_md5, delta);		// Overwrite the temporary file with a new one.
+	mFrontEnd->setAssetHash(asset_md5, delta);							// Set the new hash value and delta.
+	// Find a previous upload with the new asset/delta and adjust name/description and UUID accordingly.
+	check_previous_uploads_and_set_name_description_and_uuid();
+	updateUploadedBefore("image", 40);
+	if (!mPresetting)
+	{
+		checkForPreset();
+	}
+}
+
+void LLFloaterImagePreview::checkForPreset(void)
+{
+	AIMultiGrid::TextureDelta delta(gSavedSettings.getBOOL("LosslessJ2CUpload"));
+	LLFloaterNameDesc::checkForPreset(&delta);
+}
+
+void LLFloaterImagePreview::onChangePresetDelta(AIMultiGrid::Delta* delta)
+{
+	AIMultiGrid::TextureDelta* texture_delta = static_cast<AIMultiGrid::TextureDelta*>(delta);
+	if (texture_delta)
+	{
+		// Update the widgets to the new preset.
+		BOOL lossless = texture_delta->getLossless();
+		gSavedSettings.setBOOL("LosslessJ2CUpload", lossless);
+		getChild<LLUICtrl>("lossless_check")->setValue(LLSD(lossless));
+		// Commit the new preset.
+		mPresetting = true;
+		onCommitLossless();
+		mPresetting = false;
+	}
+}
+//</singu>
 
 //-----------------------------------------------------------------------------
 // LLFloaterImagePreview()
@@ -338,7 +429,7 @@ void LLFloaterImagePreview::draw()
 	}
 }
 
-
+#if 0	// Singu note: this is not used anymore. It is code duplication of FrontEnd::createRawImage.
 //-----------------------------------------------------------------------------
 // loadImage()
 //-----------------------------------------------------------------------------
@@ -442,6 +533,7 @@ bool LLFloaterImagePreview::loadImage(const std::string& src_filename)
 	
 	return true;
 }
+#endif
 
 //-----------------------------------------------------------------------------
 // handleMouseDown()

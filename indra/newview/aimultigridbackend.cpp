@@ -38,6 +38,7 @@
 #include "aixml.h"
 #include "aifile.h"
 #include "aibvhanimdelta.h"
+#include "aitexturedelta.h"
 #include "lldir.h"
 #include "llnotificationsutil.h"
 #include "llcontrol.h"
@@ -332,7 +333,7 @@ void BackEnd::init(void)
 	//
 	// Increment this number whenever a database repair is needed because the
 	// viewer changed (for example when the hash calculated routines changed).
-	static U32 const current_version = 1;
+	static U32 const current_version = 3;
 	//
 	// *************************************************************************
 
@@ -1125,8 +1126,13 @@ bool LockedBackEnd::repair_database(void)
 		}
 
 		// Pretend we are about to upload this in order to determine the type, real hash value and delta.
-		if (!front_end->prepare_upload(filepath, false, true))
+		bool success = front_end->prepare_upload(filepath, false, true);
+		if (!success || !front_end->getAssetHash().isFinalized())
 		{
+		  if (success)
+		  {
+			llwarns << "No asset hash was set for \"" << filepath << "\"!?!" << llendl;
+		  }
 		  // Move asset files that are unreadable, corrupt or that we fail to determine the type or hash of, to lost+found.
 		  move_to_lostfound(filepath, fi_assets, sdi);
 		  continue;
@@ -1242,7 +1248,7 @@ bool LockedBackEnd::repair_database(void)
 		  bool need_write = false;
 		  AIUploadedAsset_wat uploaded_asset_w(*uploaded_asset);
 		  LLPointer<Delta> delta = uploaded_asset_w->getDelta();
-		  bool type_has_delta = asset_type == LLAssetType::AT_ANIMATION;
+		  bool type_has_delta = (asset_type == LLAssetType::AT_ANIMATION || asset_type == LLAssetType::AT_TEXTURE);
 
 		  if ((delta && !type_has_delta) || (!delta && type_has_delta))
 		  {
@@ -1288,7 +1294,13 @@ bool LockedBackEnd::repair_database(void)
 				{
 				  BVHAnimDelta* asset_delta = dynamic_cast<BVHAnimDelta*>(front_end->getDelta().get());
 				  BVHAnimDelta* meta_delta = dynamic_cast<BVHAnimDelta*>(uploaded_asset_w->mDelta.get());
-				  equal = !asset_delta || (meta_delta && meta_delta->equals(*asset_delta));
+				  equal = !asset_delta || (meta_delta && meta_delta->equals(asset_delta));
+				}
+				case LLAssetType::AT_TEXTURE:
+				{
+				  TextureDelta* asset_delta = dynamic_cast<TextureDelta*>(front_end->getDelta().get());
+				  TextureDelta* meta_delta = dynamic_cast<TextureDelta*>(uploaded_asset_w->mDelta.get());
+				  equal = !asset_delta || (meta_delta && meta_delta->equals(asset_delta));
 				}
 				default:
 				  break;
@@ -1395,15 +1407,30 @@ bool LockedBackEnd::repair_database(void)
 		// Reconstruct a list of verified md5s.
 		std::deque<LLMD5> new_md5s;
 		bool changed = false;
+		LLMD5 source_hash;
+		source_hash.clone(hash_str);
+		bool source_hash_changed = false;
+		std::string new_filepath = filepath;	// In case we need source hash translation.
+		size_t md5_count = 0;
 		for (std::deque<LLMD5>::iterator iter = md5s.begin(); iter != md5s.end(); ++iter)
 		{
+		  ++md5_count;
 		  LLMD5 md5 = *iter;
 		  std::map<LLMD5, LLMD5>::iterator translation_iter = hash_translation.find(md5);
 		  if (translation_iter != hash_translation.end())
 		  {
-			md5 = translation_iter->second;
-			llinfos << "Updating the file \"" << filepath << "\" which contained a reference to " << *iter << " which has changed into " << md5 << "." << llendl;
+			llinfos << "Updating the file \"" << filepath << "\" which contained a reference to " << md5 << " which has changed into " << translation_iter->second << "." << llendl;
 			changed = true;
+			// If this is true then the source is a native asset (ie a j2c file) and its hash needs to be changed too.
+			// Since this obviously only happens for native source files, md5s.size() is expected to be 1.
+			// Instead of asserting, just don't do source hash translation when that is not the case.
+			source_hash_changed = md5s.size() == 1 && source_hash == md5;
+			md5 = translation_iter->second;
+			if (source_hash_changed)
+			{
+			  new_filepath = mBackEnd.getSourceFilename(md5);
+			  llinfos << "Moving the file \"" << filepath << "\" to \"" << new_filepath << "\" because the source hash equals the asset hash which has changed." << llendl;
+			}
 		  }
 		  AIUploadedAsset* uploaded_asset = NULL;
 		  asset_map_type::iterator uai;
@@ -1418,51 +1445,74 @@ bool LockedBackEnd::repair_database(void)
 		  if (uploaded_asset)
 		  {
 			AIUploadedAsset_wat uploaded_asset_w(*uploaded_asset);
-			LLMD5 source_hash;
-			source_hash.clone(hash_str);
 			if (!uploaded_asset_w->mSourceMd5.isFinalized())
 			{
-			  llwarns << "The file \"" << filepath << "\" contains a reference to " << md5 << " that had no source hash! Added." << llendl;
+			  if (source_hash_changed)
+			  {
+				source_hash = md5;
+			  }
+			  llwarns << "The file \"" << new_filepath << "\" contains a reference to " << md5 << " that had no source hash! Added." << llendl;
 			  uploaded_asset_w->setSource("unknown (database recovery)", LLDate::now(), source_hash);
 			  write_to_disk(uploaded_asset_w);
 			  mFixed = true;
 			  new_md5s.push_back(md5);
 			}
-			else if (uploaded_asset_w->mSourceMd5 == source_hash)
+			else if (uploaded_asset_w->mSourceMd5 == source_hash || (source_hash_changed && uploaded_asset_w->mSourceMd5 == md5))
 			{
+			  if (source_hash_changed)
+			  {
+				source_hash = md5;
+			  }
+			  if (uploaded_asset_w->mSourceMd5 != source_hash)
+			  {
+				llwarns << "The file \"" << new_filepath << "\" contains a reference to " << md5 << " that has an untranslated source hash! "
+					"Replacing source " << uploaded_asset_w->mSourceMd5 << " with " << source_hash << "." << llendl;
+				uploaded_asset_w->setSource(uploaded_asset_w->getFilename(), uploaded_asset_w->getDate(), source_hash);
+				write_to_disk(uploaded_asset_w);
+				mFixed = true;
+			  }
 			  new_md5s.push_back(md5);
 			  // If there are more than one asset hash values, but the type is one-on-one, then just use the first one.
 			  if (uploaded_asset_w->getAssetType() != LLAssetType::AT_ANIMATION)
 			  {
-				if (md5s.size() > 1)
+				// In fact, AT_TEXTURE can have two references: lossy and lossless. Only keep the first two.
+				size_t maxsize = (uploaded_asset_w->getAssetType() == LLAssetType::AT_TEXTURE) ? 2 : 1;
+				if (md5_count >= maxsize)
 				{
-				  llwarns << "The file \"" << filepath << " contains more than one reference, but is of a the one-on-one type " << uploaded_asset_w->getAssetType() << "!" << llendl;
-				  llwarns << "Removing the references to:";
-				  for (++iter; iter != md5s.end(); ++iter)
+				  // Skip all subsequent md5s, if any.
+				  if (++iter != md5s.end())
 				  {
-					md5 = *iter;
-					translation_iter = hash_translation.find(md5);
-					if (translation_iter != hash_translation.end())
+					llwarns << "The file \"" << new_filepath << " contains more than ";
+					llcont << ((maxsize == 1) ? "one reference , but is of a the one-on-one" : "two references, and is");
+					llcont << " type " << uploaded_asset_w->getAssetType() << "!" << llendl;
+					llwarns << "Removing the references to:";
+					do
 					{
-					  md5 = translation_iter->second;
+					  md5 = *iter;
+					  translation_iter = hash_translation.find(md5);
+					  if (translation_iter != hash_translation.end())
+					  {
+						md5 = translation_iter->second;
+					  }
+					  llcont << " " << md5;
 					}
-					llcont << " " << md5;
+					while (++iter != md5s.end());
+					llcont << llendl;
+					changed = true;
 				  }
-				  llcont << llendl;
-				  changed = true;
+				  break;
 				}
-				break;
 			  }
 			}
 			else
 			{
-			  llwarns << "The file \"" << filepath << "\" contains a reference to " << md5 << " that refers to a different source! Removed." << llendl;
+			  llwarns << "The file \"" << new_filepath << "\" contains a reference to " << md5 << " that refers to a different source! Removed." << llendl;
 			  changed = true;
 			}
 		  }
 		  else
 		  {
-			llwarns << "The file \"" << filepath << "\" contains a reference to " << md5 << " that does not exist (anymore). Removed." << llendl;
+			llwarns << "The file \"" << new_filepath << "\" contains a reference to " << md5 << " that does not exist (anymore). Removed." << llendl;
 			changed = true;
 		  }
 		}
@@ -1474,7 +1524,11 @@ bool LockedBackEnd::repair_database(void)
 		  }
 		  else
 		  {
-			write_to_disk(new_md5s, filepath);
+			if (new_filepath != filepath)
+			{
+			  LLFile::remove(filepath);
+			}
+			write_to_disk(new_md5s, new_filepath);
 		  }
 		  mFixed = true;
 		}

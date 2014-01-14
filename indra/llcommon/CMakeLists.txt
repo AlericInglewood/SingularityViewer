@@ -112,6 +112,7 @@ set(llcommon_HEADER_FILES
     aialert.h
     aifile.h
     aiframetimer.h
+    aimultigriddelta.h
     airecursive.h
     aisyncclient.h
     aithreadid.h

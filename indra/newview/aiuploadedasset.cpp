@@ -35,6 +35,7 @@
 #include "aiuploadedasset.h"
 #include "aixml.h"
 #include "aibvhanimdelta.h"
+#include "aitexturedelta.h"
 #include "hippogridmanager.h"
 
 namespace AIMultiGrid {
@@ -133,6 +134,14 @@ UploadedAsset::UploadedAsset(AIXMLElementParser const& parser)
   {
 	LLPointer<BVHAnimDelta> delta = new BVHAnimDelta;
 	if (parser.child("bvhanimdelta", *delta))
+	{
+	  mDelta = delta;
+	}
+  }
+  if (mAssetType == LLAssetType::AT_TEXTURE)
+  {
+	LLPointer<TextureDelta> delta = new TextureDelta;
+	if (parser.child("texturedelta", *delta))
 	{
 	  mDelta = delta;
 	}

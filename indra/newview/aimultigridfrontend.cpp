@@ -62,9 +62,11 @@
 #include "aioggvorbisverifier.h"
 #include "aianimverifier.h"
 #include "aibvhanimdelta.h"
+#include "aitexturedelta.h"
 #include "llvoavatarself.h"
 #include "llviewerobjectlist.h"
 #include "llfloaterbvhpreview.h"
+#include "llimagej2c.h"
 
 // This statemachine replaces Linden Labs 'upload_new_resource'.
 //
@@ -203,22 +205,25 @@ void FrontEnd::setSourceFilename(std::string const& source_filename)
   mCollectedDataMask |= source_filename_bit;
 }
 
-void FrontEnd::setSourceHash(LLMD5 const& source_md5, ESource type, LLPointer<Delta> const& delta)
+void FrontEnd::setSourceHash(LLMD5 const& source_md5)
 {
   llassert_always(source_md5.isFinalized());
   mSourceHash = source_md5;
-  // delta can only be set for one_source_many_assets.
-  llassert(type == one_source_many_assets || delta.isNull());
-  mSourceHashType = type;
-  mDelta = delta;
   mCollectedDataMask |= source_hash_bit;
 }
 
-void FrontEnd::setAssetHash(LLMD5 const& asset_md5)
+void FrontEnd::setAssetHash(LLMD5 const& asset_md5, LLPointer<Delta> const& delta)
 {
+  mSourceHashType = delta ? one_source_many_assets : one_on_one;
+  mDelta = delta;
   llassert_always(asset_md5.isFinalized());
   mAssetHash = asset_md5;
   mCollectedDataMask |= asset_hash_bit;
+  // For textures we toggle the asset hash between lossy and lossless (for small enough texture).
+  // This function can therefore be called more than once and we have to reset the associated
+  // assets found with find_previous_uploads().
+  mUploadedAsset = NULL;
+  mUploadedAssets.clear();
 }
 
 void FrontEnd::callback(LLUUID const& uuid, void* userdata, bool success)
@@ -360,8 +365,18 @@ void FrontEnd::upload_error(char const* label, AIArgs const& args)
   }
 }
 
-// Determine mAssetType from file magic or extension
-// and calculate the source and asset hash.
+// Determine mAssetType from file magic or extension and calculate the source
+// and asset hash for bulk uploads and one-on-one sources.
+//
+// For bulk uploads FrontEnd::upload_new_resource_continued must be called upon return.
+// That is also allowed when this is a native file.
+//
+// If we are called from AIFileUpload::filepicker_callback (FloaterLocalAssetBrowser::onClickUpload)
+// a LLFloater*Preview (LLFloaterImagePreview) will be spawned that will call FrontEnd::upload_new_resource_continued
+// when the user clicks "Upload".
+//
+// The preview floaters for asset types with delta (animations and textures) are responsible to call
+// FrontEnd::setSourceHash once, and FrontEnd::setAssetHash when the upload is committed.
 bool FrontEnd::prepare_upload(std::string const& src_filename, bool bulk_upload, bool repair_database)
 {
   setSourceFilename(src_filename);
@@ -374,8 +389,7 @@ bool FrontEnd::prepare_upload(std::string const& src_filename, bool bulk_upload,
 
   std::string exten = gDirUtilp->getExtension(src_filename);
 
-  mTmpFilename = gDirUtilp->getTempFilename();
-  U32 codec = LLImageBase::getCodecFromExtension(exten);
+  mCodec = LLImageBase::getCodecFromExtension(exten);
 
   // Try to open the file and read it's magic to determine the type, instead of relying on file extension.
   // Set mAssetType accordingly.
@@ -413,24 +427,28 @@ bool FrontEnd::prepare_upload(std::string const& src_filename, bool bulk_upload,
 	  // Possibly a Portable Network Graphics file file.
 	  mAssetType = LLAssetType::AT_TEXTURE;
 	  mNativeFormat = false;
+	  mCodec = IMG_CODEC_PNG;
 	}
 	else if (strncmp(magic, "BM", 2) == 0)
 	{
 	  // Possibly a Windows (.bmp), or Device-Independent (.dib), Bitmap image.
 	  mAssetType = LLAssetType::AT_TEXTURE;
 	  mNativeFormat = false;
+	  mCodec = IMG_CODEC_BMP;
 	}
 	else if (strncmp(magic, "\377\330\377\340", 4) == 0)
 	{
 	  // Possibly a JPEG/JFIF file.
 	  mAssetType = LLAssetType::AT_TEXTURE;
 	  mNativeFormat = false;
+	  mCodec = IMG_CODEC_JPEG;
 	}
 	else if (strncmp(magic, "\377O\377Q", 4) == 0)
 	{
 	  // Possibly a JPEG 2000 stream.
 	  mAssetType = LLAssetType::AT_TEXTURE;
 	  mNativeFormat = true;
+	  mCodec = IMG_CODEC_J2C;
 	}
 	else if (strncmp(magic, "HIER", 4) == 0)
 	{
@@ -459,11 +477,11 @@ bool FrontEnd::prepare_upload(std::string const& src_filename, bool bulk_upload,
 	  AIAlert::add_modal("AINoFileExtension", AIArgs("[FILE]", gDirUtilp->getBaseFileName(src_filename)));
 	  return false;
 	}
-	else if (codec != IMG_CODEC_INVALID)
+	else if (mCodec != IMG_CODEC_INVALID)
 	{
 	  // Image
 	  mAssetType = LLAssetType::AT_TEXTURE;
-	  mNativeFormat = codec == IMG_CODEC_J2C;
+	  mNativeFormat = mCodec == IMG_CODEC_J2C;
 	}
 	else if (exten == "wav")
 	{
@@ -493,32 +511,50 @@ bool FrontEnd::prepare_upload(std::string const& src_filename, bool bulk_upload,
 	}
   }
 
+  if (!mNativeFormat)
+  {
+	mTmpFilename = gDirUtilp->getTempFilename();
+  }
+
   if (mAssetType == LLAssetType::AT_TEXTURE && mNativeFormat)
   {
 	LLMD5 md5;
-	if (!LLViewerTextureList::verifyUploadFile(src_filename, codec, md5))
+	LLPointer<TextureDelta> delta;
+	if (!verifyUploadFile(src_filename, true, md5, delta))
 	{
 	  upload_error("AIProblemWithFile_ERROR", AIArgs("[FILE]", src_filename)("[ERROR]", LLImage::getLastError()));
 	  return false;
 	}
 	setSourceHash(md5);
-	setAssetHash(md5);
+	setAssetHash(md5, delta);
   }
   else if (mAssetType == LLAssetType::AT_TEXTURE)
   {
+	if (bulk_upload)
+	{
+	  // For bulk uploads make lossless the default for TGA, and lossy the default for other formats.
+	  // Otherwise leave LosslessJ2CUpload alone so it doesn't change over sequential manual uploads.
+	  gSavedSettings.setBOOL("LosslessJ2CUpload", mCodec == IMG_CODEC_TGA);
+	}
 	LLMD5 source_md5, asset_md5;
 	// It's an image file, the upload procedure is the same for all.
-	mCreatedTempFile = true;
-	if (!LLViewerTextureList::createUploadFile(src_filename, mTmpFilename, codec, source_md5, asset_md5))
+	LLPointer<AIMultiGrid::TextureDelta> delta;
+	bool success = false;
+	LLPointer<LLImageRaw> raw_image = createRawImage(src_filename, mCodec, source_md5);
+	if (raw_image && createJ2CUploadFile(raw_image, asset_md5, delta))
+	{
+	  success = true;
+	}
+	if (!success)
 	{
 	  upload_error("AIProblemWithFile_ERROR", AIArgs("[FILE]", src_filename)("[ERROR]", LLImage::getLastError()));
 	  return false;
 	}
-	if (source_md5.isFinalized())
-	{
-	  setSourceHash(source_md5);
-	}
-	setAssetHash(asset_md5);
+	setSourceHash(source_md5);
+	setAssetHash(asset_md5, delta);
+	// Non-native non-bulk sets the hash values and delta again from LLFloaterImagePreview
+	// when the lossy/losscheck was changed. We set it here so that we can find back previous
+	// uploads before the preview floater is started.
   }
   else if (mAssetType == LLAssetType::AT_SOUND && mNativeFormat)
   {
@@ -560,62 +596,209 @@ bool FrontEnd::prepare_upload(std::string const& src_filename, bool bulk_upload,
 	  }
 	  return false;
 	}
-	if (source_md5.isFinalized())
-	{
-	  setSourceHash(source_md5);
-	}
+	setSourceHash(source_md5);
 	setAssetHash(asset_md5);
+  }
+  else if (mAssetType == LLAssetType::AT_ANIMATION && mNativeFormat)
+  {
+	// Create a dummy avatar needed to calculate the hash of animations.
+	LLPointer<LLVOAvatar> dummy_avatar = (LLVOAvatar*)gObjectList.createObjectViewer(LL_PCODE_LEGACY_AVATAR, NULL);
+	dummy_avatar->mIsDummy = TRUE;
+
+	LLMD5 source_md5, asset_md5;
+	LLPointer<BVHAnimDelta> delta;
+	AIAnimVerifier verifier(src_filename);
+	try
+	{
+	  verifier.calculateHash(source_md5, asset_md5, delta, dummy_avatar.get());
+	}
+	catch (AIAlert::Error const& error)
+	{
+	  upload_error("AIProblemWithFile", AIArgs("[FILE]", src_filename), error);
+	  return false;
+	}
+
+	// Kill the dummy, we're done with it.
+	dummy_avatar->markDead();
+
+	setSourceHash(source_md5);
+	setAssetHash(asset_md5, delta);
   }
   else if (mAssetType == LLAssetType::AT_ANIMATION)
   {
-	if (mNativeFormat)
-	{
-	  // Create a dummy avatar needed to calculate the hash of animations.
-	  LLPointer<LLVOAvatar> dummy_avatar = (LLVOAvatar*)gObjectList.createObjectViewer(LL_PCODE_LEGACY_AVATAR, NULL);
-	  dummy_avatar->mIsDummy = TRUE;
-
-	  LLMD5 source_md5, asset_md5;
-	  LLPointer<BVHAnimDelta> delta;
-	  AIAnimVerifier verifier(src_filename);
-	  try
-	  {
-		verifier.calculateHash(source_md5, asset_md5, delta, dummy_avatar.get());
-	  }
-	  catch (AIAlert::Error const& error)
-	  {
-		upload_error("AIProblemWithFile", AIArgs("[FILE]", src_filename), error);
-		return false;
-	  }
-
-	  // Kill the dummy, we're done with it.
-	  dummy_avatar->markDead();
-
-	  setSourceHash(source_md5, one_source_many_assets, delta);
-	  setAssetHash(asset_md5);
-	}
-	else if (bulk_upload)
+	if (bulk_upload)
 	{
 	  upload_error("AIDoNotSupportBulkBVHAnimationUpload", AIArgs());
 	  return false;
 	}
-	else
-	{
-	  // This calculates and sets the source hash.
-	  AIBVHLoader loader;
-	  if (!loader.loadbvh(src_filename, false, this))
-	  {
-		llwarns << "Loading \"" << src_filename << "\" failed." << llendl;
-	  }
-	}
+	//else
+	// Non-native non-bulk sets the hash values and delta from LLFloaterBvhPreview.
   }
 
-  // FrontEnd::upload_new_resource_continued must be called upon return.
   return true;
 }
 
-// Should only be called for one-on-one asset types.
+//-----------------------------------------------------------------------------
+// Texture specific functions.
+// Most of this, except for the hash values and delta, used to be part of LLViewerTextureList.
+// Moved here because it has everything to do with uploading (aka FrontEnd) and nothing with LLViewerTextureList.
+// Afterwards the original LLViewerTextureList functions were chopped into pieces, merged with FrontEnd
+// variables, reindented and just generally unrecognizably changed.
+//
+
+//static
+LLPointer<LLImageRaw> FrontEnd::createRawImage(std::string const& filename, U8 const codec)
+{
+  // Load the image
+  LLPointer<LLImageFormatted> image = LLImageFormatted::createFromType(codec);
+  if (image.isNull())
+  {
+	LLImage::setLastError("Couldn't open the image to be uploaded.");
+	return NULL;
+  }
+  if (!image->load(filename))
+  {
+	LLImage::setLastError("Couldn't load the image to be uploaded.");
+	return NULL;
+  }
+  // Decompress or expand it in a raw image structure
+  LLPointer<LLImageRaw> raw_image = new LLImageRaw;
+  if (!image->decode(raw_image, 0.0f))
+  {
+	LLImage::setLastError("Couldn't decode the image to be uploaded.");
+	return NULL;
+  }
+  // Check the image constraints
+  if ((image->getComponents() != 3) && (image->getComponents() != 4))
+  {
+	LLImage::setLastError("Image files with less than 3 or more than 4 components are not supported.");
+	return NULL;
+  }
+
+  return raw_image;
+}
+
+//static
+LLPointer<LLImageRaw> FrontEnd::createRawImage(std::string const& filename, U8 const codec, LLMD5& source_md5)
+{
+  LLPointer<LLImageRaw> raw_image = createRawImage(filename, codec);
+  if (raw_image && !raw_image->calculateHash(source_md5))
+  {
+	// This can't happen or createRawImage would already have failed.
+	LLImage::setLastError("Internal error.");
+	raw_image = NULL;
+  }
+  return raw_image;
+}
+
+bool FrontEnd::createJ2CUploadFile(LLPointer<LLImageRaw> const& raw_image, LLMD5& asset_md5, LLPointer<AIMultiGrid::TextureDelta>& delta)
+{
+  // Convert to j2c (JPEG2000) and save the file locally
+  LLPointer<LLImageJ2C> compressedImage = convertToUploadFile(raw_image);
+  if (compressedImage.isNull())
+  {
+	LLImage::setLastError("Couldn't convert the image to jpeg2000.");
+	llinfos << "Couldn't convert raw_image to j2c." << llendl;
+	return false;
+  }
+  mCreatedTempFile = true;
+  if (!compressedImage->save(mTmpFilename))
+  {
+	LLImage::setLastError("Couldn't create the jpeg2000 image for upload.");
+	llinfos << "Couldn't create output file : " << mTmpFilename << llendl;
+	return false;
+  }
+  if (!verifyUploadFile(mTmpFilename, mNativeFormat, asset_md5, delta))
+  {
+	return false;
+  }
+  // Verify that we could decode whether or not the image was lossy or lossless.
+  llassert(!mNativeFormat &&																	// We shouldn't even get here for native uploads.
+	  delta->getLossless() == (gSavedSettings.getBOOL("LosslessJ2CUpload") &&
+		                       raw_image->getWidth() * raw_image->getHeight() <=
+							   LL_IMAGE_REZ_LOSSLESS_CUTOFF * LL_IMAGE_REZ_LOSSLESS_CUTOFF));
+  return true;
+}
+
+static bool positive_power_of_two(int dim)
+{
+  return dim > 0 && !(dim & (dim - 1));
+}
+
+//static
+bool FrontEnd::verifyUploadFile(std::string const& out_filename, bool native, LLMD5& md5, LLPointer<AIMultiGrid::TextureDelta>& delta)
+{
+  // Test to see if the encode and save worked
+  LLPointer<LLImageJ2C> integrity_test = new LLImageJ2C;
+  if (!integrity_test->loadAndValidate(out_filename, md5, delta))
+  {
+	LLImage::setLastError(std::string("The ") + (native ? "" : "created ") + "jpeg2000 image is corrupt: " + LLImage::getLastError());
+	llinfos << "Image file : " << out_filename << " is corrupt" << llendl;
+	return false;
+  }
+  if (native)
+  {
+	if (integrity_test->getComponents() < 3 || integrity_test->getComponents() > 4)
+	{
+	  LLImage::setLastError("Image files with less than 3 or more than 4 components are not supported.");
+	  return false;
+	}
+	else if (!positive_power_of_two(integrity_test->getWidth()) ||
+			 !positive_power_of_two(integrity_test->getHeight()))
+	{
+	  LLImage::setLastError("The width or height is not a (positive) power of two.");
+	  return false;
+	}
+  }
+  return true;
+}
+
+// Note: modifies the argument raw_image.
+//static
+LLPointer<LLImageJ2C> FrontEnd::convertToUploadFile(LLPointer<LLImageRaw> raw_image)
+{
+  raw_image->biasedScaleToPowerOfTwo(LLViewerFetchedTexture::MAX_IMAGE_SIZE_DEFAULT);
+  LLPointer<LLImageJ2C> compressedImage = new LLImageJ2C();
+  compressedImage->setRate(0.f);
+
+  if (gSavedSettings.getBOOL("LosslessJ2CUpload") &&
+	  (raw_image->getWidth() * raw_image->getHeight() <= LL_IMAGE_REZ_LOSSLESS_CUTOFF * LL_IMAGE_REZ_LOSSLESS_CUTOFF))
+	  compressedImage->setReversible(TRUE);
+
+#if 0	// Was commented out in the old code.
+  if (gSavedSettings.getBOOL("Jpeg2000AdvancedCompression"))
+  {
+	// This test option will create jpeg2000 images with precincts for each level, RPCL ordering
+	// and PLT markers. The block size is also optionally modifiable.
+	// Note: the images hence created are compatible with older versions of the viewer.
+	// Read the blocks and precincts size settings
+	S32 block_size = gSavedSettings.getS32("Jpeg2000BlocksSize");
+	S32 precinct_size = gSavedSettings.getS32("Jpeg2000PrecinctsSize");
+	llinfos << "Advanced JPEG2000 Compression: precinct = " << precinct_size << ", block = " << block_size << llendl;
+	compressedImage->initEncode(*raw_image, block_size, precinct_size, 0);
+  }
+#endif
+
+  if (!compressedImage->encode(raw_image, 0.0f))
+  {
+	llinfos << "convertToUploadFile : encode returns with error!" << llendl;
+	// Clear up the pointer so we don't leak.
+	compressedImage = NULL;
+  }
+
+  return compressedImage;
+}
+
+// End of texture specific part.
+//-----------------------------------------------------------------------------
+
 bool FrontEnd::checkPreviousUpload(std::string& name, std::string& description, LLUUID& id)
 {
+  // Only call this function when prepare_upload() returned true.
+  llassert_always(mAssetType != LLAssetType::AT_NONE);
+  // Should only be called for one-on-one asset types.
+  llassert(mAssetType != LLAssetType::AT_ANIMATION && mAssetType != LLAssetType::AT_TEXTURE);
+
   bool was_locked = mBackEndAccess.lock();
   find_previous_uploads();
   bool found = false;
@@ -733,6 +916,9 @@ void FrontEnd::upload_new_resource_continued(
 {
   // First call prepare_upload.
   llassert_always((mCollectedDataMask & source_filename_bit));
+
+  // Don't try to upload a non-native source file!
+  llassert_always(mCreatedTempFile || mNativeFormat);
 
   // Generate the temporary UUID.
   LLTransactionID tid;

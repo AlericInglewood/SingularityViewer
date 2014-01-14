@@ -36,8 +36,6 @@
 #include "stdtypes.h"
 #include "aimultigriddelta.h"
 
-class AIXMLElementParser;
-
 namespace AIMultiGrid {
 
 //-----------------------------------------------------------------------------
@@ -63,7 +61,7 @@ class BVHAnimDelta : public Delta
 	BVHAnimDelta(AIXMLElementParser const& parser);
 
 	// Compare.
-	bool equals(BVHAnimDelta const& ad) const;
+	bool equals(Delta const* delta) const;
 
 	// Accessors.
 	S32 getBasePriority(void) const { return mBasePriority; }

@@ -62,17 +62,19 @@ BVHAnimDelta::BVHAnimDelta(S32 base_priority, bool loop, F32 loop_in_point, F32 
 {
 }
 
-bool BVHAnimDelta::equals(BVHAnimDelta const& ad) const
+bool BVHAnimDelta::equals(Delta const* delta) const
 {
+  BVHAnimDelta const* ad = dynamic_cast<BVHAnimDelta const*>(delta);
   return
-	  mBasePriority == ad.mBasePriority &&
-	  mLoop == ad.mLoop &&
-	  std::fabs(mLoopInPoint - ad.mLoopInPoint) < 0.00001 &&
-	  std::fabs(mLoopOutPoint - ad.mLoopOutPoint) < 0.00001 &&
-	  std::fabs(mEaseInDuration - ad.mEaseInDuration) < 0.00001 &&
-	  std::fabs(mEaseOutDuration - ad.mEaseOutDuration) < 0.00001 &&
-	  mHandPose == ad.mHandPose &&
-	  mEmoteName == ad.mEmoteName;
+	  ad &&
+	  mBasePriority == ad->mBasePriority &&
+	  mLoop == ad->mLoop &&
+	  std::fabs(mLoopInPoint - ad->mLoopInPoint) < 0.00001 &&
+	  std::fabs(mLoopOutPoint - ad->mLoopOutPoint) < 0.00001 &&
+	  std::fabs(mEaseInDuration - ad->mEaseInDuration) < 0.00001 &&
+	  std::fabs(mEaseOutDuration - ad->mEaseOutDuration) < 0.00001 &&
+	  mHandPose == ad->mHandPose &&
+	  mEmoteName == ad->mEmoteName;
 }
 
 // This produces the same hash value for two almost equal BVHAnimDelta objects
