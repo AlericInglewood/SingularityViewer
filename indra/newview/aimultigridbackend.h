@@ -136,6 +136,7 @@ class LockedBackEnd {
 
   private:
 	asset_map_type::iterator readAndCacheUploadedAsset(LLMD5 const& hash);	// Reads and decodes uploaded asset file into a new AIUploadedAsset which is inserted in gAssets and returned.
+	void readAndCacheAllUploadedAssets(void);								// Same for every asset file in the database (calls the one above).
 };
 
 class LockAttemps {

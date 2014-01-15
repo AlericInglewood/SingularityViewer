@@ -1046,6 +1046,77 @@ asset_map_type::iterator LockedBackEnd::readAndCacheUploadedAsset(LLMD5 const& a
   return gAssetsEnd;
 }
 
+void LockedBackEnd::readAndCacheAllUploadedAssets(void)
+{
+  // Run over all meta files.
+  std::string path = gDirUtilp->add(mBackEnd.mBaseFolder, database_structure[fi_by_asset_md5]);
+  for (int sdi = 0; sdi < 16; ++sdi)
+  {
+    std::string subdir = path + gDirUtilp->getDirDelimiter() + subdirs[sdi];
+    std::vector<std::string> files = gDirUtilp->getFilesInDir(subdir);
+    for (std::vector<std::string>::iterator filename = files.begin(); filename != files.end(); ++filename)
+    {
+      // Reconstruct the full path.
+      std::string filepath = subdir + gDirUtilp->getDirDelimiter() + *filename;
+
+      // Convert the filename to a hash value.
+      std::string hash_str = gDirUtilp->getBaseFileName(*filename, true);
+      std::string ext = gDirUtilp->getExtension(*filename);
+      // Make sure the filename looks like an md5 hash.
+      if (ext != "xml" || hash_str.length() != 32 || hash_str.find_first_not_of(subdirs) != std::string::npos)
+      {
+        llinfos << "Skipping alien file \"" << filepath << "\"." << llendl;
+        continue;
+      }
+
+      // Check if the file is in the right subdirectory.
+      if (hash_str[0] != subdirs[sdi])
+      {
+        // That way it would never be found, so move it to the right place.
+        std::string new_filepath = path + gDirUtilp->getDirDelimiter() + hash_str[0] + gDirUtilp->getDirDelimiter() + *filename;
+        if (LLFile::isfile(new_filepath))
+        {
+          llwarns << "Moving file \"" << filepath << "\", which is in the wrong subdirectory, to \"" << mLostFound->dir_name() << "\" because \"" << new_filepath << "\" already exists!" << llendl;
+          mLostFound->backup_and_remove(filepath, fi_by_asset_md5, sdi);
+          continue;
+        }
+        else
+        {
+          llwarns << "Moving file \"" << filepath << "\" to \"" << new_filepath << "\"." << llendl;
+          AIFile::rename(filepath, new_filepath);
+          filepath = new_filepath;
+          mFixed = true;
+        }
+      }
+
+      // Decode the name into it's digest.
+      LLMD5 md5;
+      md5.clone(hash_str);
+
+      // Read the file using the normal readAndCacheUploadedAsset function.
+      bool success;
+      try
+      {
+        success = readAndCacheUploadedAsset(md5) != gAssetsEnd;
+      }
+      catch (AIAlert::Error const& error)
+      {
+        llwarns << AIAlert::text(error) << llendl;
+        // Move the file to lost+found and skip to the next file on any error.
+        mLostFound->backup_and_remove(filepath, fi_by_asset_md5, sdi);
+        continue;
+      }
+      if (!success)
+      {
+        // This should normally never happen (it means that filepath isn't a file, but it is!)
+        // in other words, I don't know what is wrong if we get here and therefore do not bail,
+        // but try to continue with the repair by just ignoring this file :/
+        llwarns << "Failed to read back file \"" << *filename << "\" using hash " << md5 << " !!??" << llendl;
+        continue;
+      }
+    }
+  }
+}
 
 bool LockedBackEnd::repair_database(void)
 {
@@ -1072,78 +1143,8 @@ bool LockedBackEnd::repair_database(void)
 
   try
   {
-
-	//---------------------------------------------------------------------------
 	// Fill the memory cache with all by_asset_md5 files.
-
-	// Run over all meta files.
-	std::string path = gDirUtilp->add(mBackEnd.mBaseFolder, database_structure[fi_by_asset_md5]);
-	for (int sdi = 0; sdi < 16; ++sdi)
-	{
-	  std::string subdir = path + gDirUtilp->getDirDelimiter() + subdirs[sdi];
-	  std::vector<std::string> files = gDirUtilp->getFilesInDir(subdir);
-	  for (std::vector<std::string>::iterator filename = files.begin(); filename != files.end(); ++filename)
-	  {
-		// Reconstruct the full path.
-		std::string filepath = subdir + gDirUtilp->getDirDelimiter() + *filename;
-
-		// Convert the filename to a hash value.
-		std::string hash_str = gDirUtilp->getBaseFileName(*filename, true);
-		std::string ext = gDirUtilp->getExtension(*filename);
-		// Make sure the filename looks like an md5 hash.
-		if (ext != "xml" || hash_str.length() != 32 || hash_str.find_first_not_of(subdirs) != std::string::npos)
-		{
-		  llinfos << "Skipping alien file \"" << filepath << "\"." << llendl;
-		  continue;
-		}
-
-		// Check if the file is in the right subdirectory.
-		if (hash_str[0] != subdirs[sdi])
-		{
-		  // That way it would never be found, so move it to the right place.
-		  std::string new_filepath = path + gDirUtilp->getDirDelimiter() + hash_str[0] + gDirUtilp->getDirDelimiter() + *filename;
-		  if (LLFile::isfile(new_filepath))
-		  {
-			llwarns << "Moving file \"" << filepath << "\", which is in the wrong subdirectory, to \"" << mLostfoundDirname << "\" because \"" << new_filepath << "\" already exists!" << llendl;
-			move_to_lostfound(filepath, fi_by_asset_md5, sdi);
-			continue;
-		  }
-		  else
-		  {
-			llwarns << "Moving file \"" << filepath << "\" to \"" << new_filepath << "\"." << llendl;
-			AIFile::rename(filepath, new_filepath);
-			filepath = new_filepath;
-			mFixed = true;
-		  }
-		}
-
-		// Decode the name into it's digest.
-		LLMD5 md5;
-		md5.clone(hash_str);
-
-		// Read the file using the normal readAndCacheUploadedAsset function.
-		bool success;
-		try
-		{
-		  success = readAndCacheUploadedAsset(md5) != gAssetsEnd;
-		}
-		catch (AIAlert::Error const& error)
-		{
-		  llwarns << AIAlert::text(error) << llendl;
-		  // Move the file to lost+found and skip to the next file on any error.
-		  move_to_lostfound(filepath, fi_by_asset_md5, sdi);
-		  continue;
-		}
-		if (!success)
-		{
-		  // This should normally never happen (it means that filepath isn't a file, but it is!)
-		  // in other words, I don't know what is wrong if we get here and therefore do not bail,
-		  // but try to continue with the repair by just ignoring this file :/
-		  llwarns << "Failed to read back file \"" << *filename << "\" using hash " << md5 << " !!??" << llendl;
-		  continue;
-		}
-	  }
-	}
+	readAndCacheAllUploadedAssets();
 
 	// Next we read all asset files.
 	std::map<LLMD5, LLMD5> hash_translation;
