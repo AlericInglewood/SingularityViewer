@@ -49,6 +49,7 @@ namespace AIMultiGrid {
 
 class BackEnd;
 class BackEndAccess;
+class LostAndFound;
 
 // In-memory cache types.
 typedef std::set<AIUploadedAsset*, AIUploadedAsset::ordering> asset_map_type;
@@ -86,9 +87,9 @@ class LockedBackEnd {
 	static asset_map_type::iterator const gAssetsEnd;
 
 	// Member variables used during repair_database.
-	std::string mLostfoundDirname;						// Path to the currently in use lost+found folder.
-	bool mLostfound_used;								// Set to true when anything is moved to the lost+found folder.
-	bool mFixed;										// Return value of repair_database.
+	friend class LostAndFound;
+	bool mFixed;										// Return value of repair_database and rename_gridnick.
+	LostAndFound* mLostFound;
 
   private:
 	void write_to_disk(AIUploadedAsset_wat const& uploaded_asset_w);
@@ -99,10 +100,11 @@ class LockedBackEnd {
 	void read_from_disk(std::deque<LLMD5>& md5s, std::string const& source_filename);
 	void read_from_disk(LLMD5& md5, std::string const& uuid_filename);
 
-	void move_to_lostfound(std::string const& filepath, int fi, int sdi = -1);
+	// Used by LostAndFound.
+	std::string const& getBaseFolder(void) const;
 
   public:
-	LockedBackEnd(BackEnd& back_end) : mBackEnd(back_end) { }
+	LockedBackEnd(BackEnd& back_end) : mBackEnd(back_end), mLostFound(NULL) { }
 
 	// Flush the in-memory cache of the database.
 	void clear_memory_cache(void);
@@ -196,7 +198,6 @@ class BackEnd : public LLSingleton<BackEnd>
 	std::string getUUIDFilename(LLUUID const& id) const;
 	std::string getSourceFilename(LLMD5 const& sourceMd5) const;
 	std::string getJournalFilename(char const* filename) const;
-	std::string getUniqueLostFoundDirname(void) const;
 };
 
 } // namespace AIMultiGrid

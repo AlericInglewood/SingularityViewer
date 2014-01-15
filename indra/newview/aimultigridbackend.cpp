@@ -106,6 +106,99 @@ char const* const xml_type[] = {
 
 namespace AIMultiGrid {
 
+int const mkdir_error = 0;
+int const corrupt_database = 1;
+
+//-----------------------------------------------------------------------------
+// LostAndFound
+
+// Exception safe helper class for creation and clean up of lost+found directory.
+// Note that if the constructor throws then the destructor is not called. This is intentional.
+class LostAndFound
+{
+  private:
+	LockedBackEnd* mLockedBackEnd;
+	std::string mDirName;					// Path to the currently in use lost+found folder.
+	bool mUsed;								// Set to true when anything is moved to the lost+found folder.
+
+  public:
+	LostAndFound(LockedBackEnd* locked_back_end);
+	~LostAndFound();
+
+	// Accessors.
+	std::string const& dir_name(void) const { return mDirName; }
+	bool used(void) const { return mUsed; }
+
+	// Move filepath to lost+found/<fi>[/<sdi>].
+	void backup_and_remove(std::string const& filepath, int fi, int sdi = -1);
+};
+
+LostAndFound::LostAndFound(LockedBackEnd* locked_back_end) : mLockedBackEnd(locked_back_end), mUsed(false)
+{
+  // Find an unused lost+find directory (to make sure we can rename files to it without getting collisions with old files).
+  std::string base = gDirUtilp->add(mLockedBackEnd->getBaseFolder(), "lost+found");
+  LLDate now = LLDate::now();
+  S32 year, month, day, hour, min, sec;
+  now.split(&year, &month, &day, &hour, &min, &sec);
+  for (S32 count = 0;; ++count)
+  {
+	mDirName = base + llformat("-%d%02d%02d.%d", year, month, day, count);
+	if (!gDirUtilp->fileExists(mDirName))
+	{
+	  break;
+	}
+  }
+  // Try to create it.
+  try
+  {
+	AIFile::mkdir(mDirName);
+  }
+  catch (AIAlert::Error const& error)
+  {
+	THROW_ALERTC(mkdir_error, error);
+  }
+  mLockedBackEnd->mLostFound = this;
+}
+
+LostAndFound::~LostAndFound()
+{
+  mLockedBackEnd->mLostFound = NULL;
+  if (!mUsed)
+  {
+	// This may not throw.
+	LLFile::rmdir(mDirName);
+  }
+}
+
+void LostAndFound::backup_and_remove(std::string const& filepath, int fi, int sdi)
+{
+  std::string filename = gDirUtilp->getBaseFileName(filepath, false);
+  std::string newpath = gDirUtilp->add(mDirName, database_structure[fi]);
+  try
+  {
+	AIFile::mkdir(newpath);
+	if (sdi >= 0 && sdi < 16)
+	{
+	  newpath += gDirUtilp->getDirDelimiter() + subdirs[sdi];
+	}
+	else
+	{
+	  newpath += gDirUtilp->getDirDelimiter() + filename[0];
+	}
+	AIFile::mkdir(newpath);
+  }
+  catch (AIAlert::Error const& error)
+  {
+	// Re-throw as mkdir error.
+	THROW_ALERTC(mkdir_error, error);
+  }
+  newpath = gDirUtilp->add(newpath, filename);
+  llwarns << "Moving file \"" << filepath << "\" to \"" << newpath << "\"." << llendl;
+  AIFile::rename(filepath, newpath);
+  mUsed = true;
+  mLockedBackEnd->mFixed = true;
+}
+
 //-----------------------------------------------------------------------------
 // BackEnd
 
@@ -151,24 +244,6 @@ std::string BackEnd::getJournalFilename(char const* filename) const
   return gDirUtilp->add(mBaseFolder, database_structure[fi_journal] + delim + filename);
 }
 
-std::string BackEnd::getUniqueLostFoundDirname(void) const
-{
-  std::string dirname;
-  std::string base = gDirUtilp->add(mBaseFolder, "lost+found");
-  LLDate now = LLDate::now();
-  S32 year, month, day, hour, min, sec;
-  now.split(&year, &month, &day, &hour, &min, &sec);
-  for (S32 count = 0;; ++count)
-  {
-	dirname = base + llformat("-%d%02d%02d.%d", year, month, day, count);
-	if (!gDirUtilp->fileExists(dirname))
-	{
-	  break;
-	}
-  }
-  return dirname;
-}
-
 void BackEnd::createFileLock(void)
 {
   bool success = false;
@@ -196,9 +271,6 @@ void BackEnd::createFileLock(void)
   }
   while (!success);
 }
-
-int const mkdir_error = 0;
-int const corrupt_database = 1;
 
 // Return true if the subdirectories exists, false otherwise.
 // If 'create' is true, attempt to create missing subdirectories.
@@ -610,6 +682,11 @@ void LockedBackEnd::read_from_disk(LLMD5& md5, std::string const& uuid_filename)
   uuid_map.child(md5);
 }
 
+std::string const& LockedBackEnd::getBaseFolder(void) const
+{
+  return mBackEnd.mBaseFolder;
+}
+
 void LockedBackEnd::registerUpload(
 	LLMD5 const& assetMd5,
 	LLAssetType::EType type,
@@ -969,33 +1046,6 @@ asset_map_type::iterator LockedBackEnd::readAndCacheUploadedAsset(LLMD5 const& a
   return gAssetsEnd;
 }
 
-void LockedBackEnd::move_to_lostfound(std::string const& filepath, int fi, int sdi)
-{
-  std::string filename = gDirUtilp->getBaseFileName(filepath, false);
-  std::string newpath = gDirUtilp->add(mLostfoundDirname, database_structure[fi]);
-  try
-  {
-	AIFile::mkdir(newpath);
-	if (sdi >= 0 && sdi < 16)
-	{
-	  newpath += gDirUtilp->getDirDelimiter() + subdirs[sdi];
-	}
-	else
-	{
-	  newpath += gDirUtilp->getDirDelimiter() + filename[0];
-	}
-	AIFile::mkdir(newpath);
-  }
-  catch (AIAlert::Error const& error)
-  {
-	THROW_ALERTC(mkdir_error, error);
-  }
-  newpath = gDirUtilp->add(newpath, filename);
-  llwarns << "Moving file \"" << filepath << "\" to \"" << newpath << "\"." << llendl;
-  AIFile::rename(filepath, newpath);
-  mLostfound_used = true;
-  mFixed = true;
-}
 
 bool LockedBackEnd::repair_database(void)
 {
@@ -1017,18 +1067,8 @@ bool LockedBackEnd::repair_database(void)
   // Clear it.
   clear_memory_cache();
 
-  // Find an unused lost+find directory (to make sure we can rename files to it without getting collisions with old files).
-  mLostfoundDirname = mBackEnd.getUniqueLostFoundDirname();
-  // Try to create it.
-  try
-  {
-	AIFile::mkdir(mLostfoundDirname);
-  }
-  catch (AIAlert::Error const& error)
-  {
-	THROW_ALERTC(mkdir_error, error);
-  }
-  mLostfound_used = false;
+  // Create a new lost+found directory.
+  LostAndFound lost_and_found(this);
 
   try
   {
@@ -1108,7 +1148,7 @@ bool LockedBackEnd::repair_database(void)
 	// Next we read all asset files.
 	std::map<LLMD5, LLMD5> hash_translation;
 	LLPointer<FrontEnd> front_end = new FrontEnd;
-	path = gDirUtilp->add(mBackEnd.mBaseFolder, database_structure[fi_assets]);
+	std::string path = gDirUtilp->add(mBackEnd.mBaseFolder, database_structure[fi_assets]);
 	for (int sdi = 0; sdi < 16; ++sdi)
 	{
 	  std::string subdir = path + gDirUtilp->getDirDelimiter() + subdirs[sdi];
@@ -1134,7 +1174,7 @@ bool LockedBackEnd::repair_database(void)
 			llwarns << "No asset hash was set for \"" << filepath << "\"!?!" << llendl;
 		  }
 		  // Move asset files that are unreadable, corrupt or that we fail to determine the type or hash of, to lost+found.
-		  move_to_lostfound(filepath, fi_assets, sdi);
+		  mLostFound->backup_and_remove(filepath, fi_assets, sdi);
 		  continue;
 		}
 
@@ -1160,8 +1200,8 @@ bool LockedBackEnd::repair_database(void)
 			llwarns << "Moving file \"" << filepath << "\", ";
 			if (*filename != hash_str) { llcont << "which has the wrong name, "; }
 			if ((*filename)[0] != subdirs[sdi]) { llcont << "which is in the wrong subdirectory, "; }
-			llcont << "to \"" << mLostfoundDirname << "\" because \"" << new_filepath << "\" already exists!" << llendl;
-			move_to_lostfound(filepath, fi_assets, sdi);
+			llcont << "to \"" << mLostFound->dir_name() << "\" because \"" << new_filepath << "\" already exists!" << llendl;
+			mLostFound->backup_and_remove(filepath, fi_assets, sdi);
 			continue;
 		  }
 		  llwarns << "Moving file \"" << filepath << "\" to \"" << new_filepath << "\"." << llendl;
@@ -1216,7 +1256,7 @@ bool LockedBackEnd::repair_database(void)
 			  else
 			  {
 				llwarns << "Failed to generate new meta data file \"" << meta_filename << "\" for new hash value." << llendl;
-				move_to_lostfound(old_meta_filename, fi_assets, sdi);
+				mLostFound->backup_and_remove(old_meta_filename, fi_assets, sdi);
 				continue;
 			  }
 			}
@@ -1238,8 +1278,8 @@ bool LockedBackEnd::repair_database(void)
 		if (!uploaded_asset)
 		{
 		  // Found an asset without meta data...
-		  llwarns << "Found " << asset_type << " asset file " << hash_str << " without meta data! Moving it to " << mLostfoundDirname << llendl;
-		  move_to_lostfound(filepath, fi_assets, sdi);
+		  llwarns << "Found " << asset_type << " asset file " << hash_str << " without meta data! Moving it to " << mLostFound->dir_name() << llendl;
+		  mLostFound->backup_and_remove(filepath, fi_assets, sdi);
 		  continue;
 		}
 
@@ -1264,8 +1304,8 @@ bool LockedBackEnd::repair_database(void)
 			if (delta)
 			{
 			  // Move asset file and meta file to lost+found.
-			  move_to_lostfound(filepath, fi_assets, sdi);
-			  move_to_lostfound(meta_filename, fi_by_asset_md5, sdi);
+			  mLostFound->backup_and_remove(filepath, fi_assets, sdi);
+			  mLostFound->backup_and_remove(meta_filename, fi_by_asset_md5, sdi);
 			  gAssets_w->erase(iter);
 			  continue;
 			}
@@ -1334,7 +1374,7 @@ bool LockedBackEnd::repair_database(void)
 	  {
 		std::string meta_filename = mBackEnd.getUploadedAssetFilename(asset_md5);
 		llwarns << "The meta data file \"" << meta_filename << "\" has no associated asset data file (\"" << asset_filename << "\" is missing). That is not very useful. Moving it out of the way." << llendl;
-		move_to_lostfound(meta_filename, fi_assets);
+		mLostFound->backup_and_remove(meta_filename, fi_assets);
 		gAssets_w->erase(metadata++);
 		continue;
 	  }
@@ -1370,8 +1410,8 @@ bool LockedBackEnd::repair_database(void)
 		  std::string new_filepath = new_subdir + gDirUtilp->getDirDelimiter() + *filename;
 		  if (LLFile::isfile(new_filepath))
 		  {
-			llwarns << "Moving file \"" << filepath << "\", which is in the wrong subdirectory, to \"" << mLostfoundDirname << "\" because \"" << new_filepath << "\" already exists!" << llendl;
-			move_to_lostfound(filepath, fi_by_source_md5, sdi);
+			llwarns << "Moving file \"" << filepath << "\", which is in the wrong subdirectory, to \"" <<  mLostFound->dir_name() << "\" because \"" << new_filepath << "\" already exists!" << llendl;
+			mLostFound->backup_and_remove(filepath, fi_by_source_md5, sdi);
 			continue;
 		  }
 		  else
@@ -1395,7 +1435,7 @@ bool LockedBackEnd::repair_database(void)
 		  // Move the file to lost+found and skip to the next file on any error.
 		  try
 		  {
-			move_to_lostfound(filepath, fi_by_source_md5, sdi);
+			mLostFound->backup_and_remove(filepath, fi_by_source_md5, sdi);
 		  }
 		  catch (AIAlert::Error const& error)
 		  {
@@ -1605,8 +1645,8 @@ bool LockedBackEnd::repair_database(void)
 		  std::string new_filepath = new_subdir + gDirUtilp->getDirDelimiter() + *filename;
 		  if (LLFile::isfile(new_filepath))
 		  {
-			llwarns << "Moving file \"" << filepath << "\", which is in the wrong subdirectory, to \"" << mLostfoundDirname << "\" because \"" << new_filepath << "\" already exists!" << llendl;
-			move_to_lostfound(filepath, fi_by_uuid, sdi);
+			llwarns << "Moving file \"" << filepath << "\", which is in the wrong subdirectory, to \"" << mLostFound->dir_name() << "\" because \"" << new_filepath << "\" already exists!" << llendl;
+			mLostFound->backup_and_remove(filepath, fi_by_uuid, sdi);
 			continue;
 		  }
 		  else
@@ -1630,7 +1670,7 @@ bool LockedBackEnd::repair_database(void)
 		  // Move the file to lost+found and skip to the next file on any error.
 		  try
 		  {
-			move_to_lostfound(filepath, fi_by_uuid, sdi);
+			mLostFound->backup_and_remove(filepath, fi_by_uuid, sdi);
 		  }
 		  catch (AIAlert::Error const& error)
 		  {
@@ -1690,7 +1730,7 @@ bool LockedBackEnd::repair_database(void)
 		{
 		  if (!valid)
 		  {
-			move_to_lostfound(filepath, fi_by_uuid, sdi);
+			mLostFound->backup_and_remove(filepath, fi_by_uuid, sdi);
 		  }
 		  else
 		  {
@@ -1728,11 +1768,6 @@ bool LockedBackEnd::repair_database(void)
   catch (AIAlert::Error const& error)
   {
 	THROW_ALERTC(corrupt_database, error);
-  }
-
-  if (!mLostfound_used)
-  {
-	LLFile::rmdir(mLostfoundDirname);
   }
 
   return mFixed;
