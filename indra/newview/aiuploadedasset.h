@@ -91,7 +91,7 @@ class GridUUID
 {
   private:
 	Grid mGrid;
-	LLUUID mUUID;		// Mutable because it's not part of the key, and needs to be changed after insertion into a std::set<GridUUID> :(.
+	LLUUID mUUID;		// This is not part of the key and is after insertion into a grid2uuid_map_type.
 
   public:
 	GridUUID(Grid const& grid, LLUUID const& id) : mGrid(grid), mUUID(id) { }
@@ -200,6 +200,7 @@ class UploadedAsset
 	friend class LockedBackEnd;
 	void setSource(std::string const& name, LLDate const& date, LLMD5 const& sourceMd5);
 	void setNameDescription(std::string const& name, std::string const& description, LLDate const& date);
+	grid2uuid_map_type& getGrid2UUIDmap(void) { return mAssetUUIDs; }
 };
 
 } // namespace AIMultiGrid

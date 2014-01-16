@@ -127,6 +127,9 @@ class LockedBackEnd {
 	// Run a consistency on the database and attempt to fix it.
 	bool repair_database(void);
 
+	// Replace the nick in <grid nick="from_gridnick"> with "to_gridnick".
+	bool rename_gridnick(std::string const& from_gridnick, std::string const& to_gridnick);
+
 	// The getUploadedAsset functions are slow as they accesses the disk, but only the first time for each id / md5 hash, since the result is cached.
 
 	AIUploadedAsset* getUploadedAsset(LLUUID const& id);				// Returns previously uploaded asset with id, or NULL if none exists.
@@ -189,6 +192,9 @@ class BackEnd : public LLSingleton<BackEnd>
 
 	// Merge with another database.
 	mergedb_nt merge_database(std::string base_folder);
+
+	// Rename a grid nick 'from_gridnick' to 'to_gridnick'.
+	static bool rename_gridnick(BackEndAccess& back_end, std::string const& from_gridnick, std::string const& to_gridnick);
 
   private:
 	bool checkSubdirs(bool create);

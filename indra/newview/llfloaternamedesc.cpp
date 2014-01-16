@@ -305,7 +305,8 @@ void LLFloaterNameDesc::updateUploadedBefore(std::string const& asset_name, S32 
 		  text += current_grid.getGridNick();
 		  added_grid = true;
 		}
-		AIMultiGrid::grid2uuid_map_type const& grid2uuid_map = ua_r->getGrid2UUIDmap();
+        AIMultiGrid::UploadedAsset const& ua = *ua_r;
+		AIMultiGrid::grid2uuid_map_type const& grid2uuid_map = ua.getGrid2UUIDmap();
 		for (AIMultiGrid::grid2uuid_map_type::const_iterator grid = grid2uuid_map.begin(); grid != grid2uuid_map.end(); ++grid)
 		{
 		  if (grid->getGrid() == current_grid)

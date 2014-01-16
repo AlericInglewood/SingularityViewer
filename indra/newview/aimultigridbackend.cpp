@@ -479,12 +479,22 @@ void BackEnd::init(void)
 
 bool BackEnd::repair_database(void)
 {
-  DoutEntering(dc::notice, "BackEnd::repair_database() with mBaseFolder = \"" << mBaseFolder << "\".");
   llinfos << "Locking database for repair..." << llendl;
   BackEndAccess back_end;
   back_end.lock();
   bool fixed = back_end->repair_database();
   llinfos << "Repair finished. Unlocking database." << llendl;
+  return fixed;
+}
+
+//static
+bool BackEnd::rename_gridnick(BackEndAccess& back_end, std::string const& from_gridnick, std::string const& to_gridnick)
+{
+  llinfos << "Locking database for renaming..." << llendl;
+  // This is a no-op when the database was already locked.
+  back_end.lock();
+  bool fixed = back_end->rename_gridnick(from_gridnick, to_gridnick);
+  llinfos << "Renaming finished. Unlocking database." << llendl;
   return fixed;
 }
 
@@ -1774,5 +1784,117 @@ bool LockedBackEnd::repair_database(void)
   return mFixed;
 }
 
+// Returns and throws the same as repair_database.
+bool LockedBackEnd::rename_gridnick(std::string const& from_gridnick, std::string const& to_gridnick)
+{
+  llwarns << "Renaming gridnick \"" << from_gridnick << "\" to \"" << to_gridnick << "\" in \"" << mBackEnd.mBaseFolder << "\"." << llendl;
+
+  // Create a new lost+found directory.
+  LostAndFound lost_and_found(this);
+
+  try
+  {
+    mFixed = false;
+
+    // Fill the memory cache with all by_asset_md5 files.
+    readAndCacheAllUploadedAssets();
+
+    // Run over all collected meta data in the memory cache and fix the grid nick if needed.
+    gAssets_wat gAssets_w(gAssets);
+    Dout(dc::notice, "gAssets has " << gAssets_w->size() << " elements.");
+    for (asset_map_type::iterator metadata = gAssets_w->begin(); metadata != gAssets_w->end(); ++metadata)
+    {
+      AIUploadedAsset_wat uploaded_asset_w(**metadata);
+	  std::string asset_filename = mBackEnd.getAssetFilename(uploaded_asset_w->getAssetMd5());
+      grid2uuid_map_type& grid2uuid_map = uploaded_asset_w->getGrid2UUIDmap();
+      // First copy mAssetUUIDs to a new container, replacing the gridnicks.
+      grid2uuid_map_type new_grid2uuid_map;
+      bool changed = false;
+      Dout(dc::notice, "Scanning file \"" << asset_filename << "\" with grid2uuid_map.size() = " << grid2uuid_map.size());
+      for (grid2uuid_map_type::iterator grid_uuid = grid2uuid_map.begin(); grid_uuid != grid2uuid_map.end(); ++grid_uuid)
+      {
+        Grid const& grid = grid_uuid->getGrid();
+        LLUUID const& uuid = grid_uuid->getUUID();
+        std::string const& gridnick = grid.getGridNick();
+        Dout(dc::notice, "Found grid nick \"" << gridnick << "\".");
+        if (gridnick == from_gridnick)
+        {
+          if (!changed)
+          {
+            llinfos << "Changing grid nick \"" << gridnick << "\" in file \"" << asset_filename << "\" into \"" << to_gridnick << "\"!" << llendl;
+          }
+          new_grid2uuid_map.insert(GridUUID(Grid(to_gridnick), uuid));
+          changed = true;
+        }
+        else
+        {
+          new_grid2uuid_map.insert(*grid_uuid);
+        }
+      }
+      if (changed)
+      {
+        Dout(dc::notice, "The file was changed.");
+        // Just replace the whole map: changing the grid nick might have changed the order.
+        // Changing the map does not change the ordering of the asset_map_type, so that can be done in-place.
+        grid2uuid_map = new_grid2uuid_map;
+        // And write it to disk.
+        write_to_disk(uploaded_asset_w);
+      }
+      else
+      {
+        Dout(dc::notice, "The file was not changed.");
+      }
+    }
+  }
+  catch (AIAlert::ErrorCode const& error)
+  {
+    throw;
+  }
+  catch (AIAlert::Error const& error)
+  {
+    THROW_ALERTC(corrupt_database, error);
+  }
+
+  llinfos << "Finished renaming gridnick." << llendl;
+
+  return mFixed;
+}
+
 } // namespace AIMultiGrid
+
+#if 0
+void debug_test(void)
+{
+  using namespace AIMultiGrid;
+
+  for(U32 sleeptime = 100;; sleeptime <<= 2)
+  {
+    try
+    {
+      BackEndAccess back_end_access;
+      if (BackEnd::rename_gridnick(back_end_access, "nationdream", "dreamnation"))
+      {
+        // Inform the user when there was the need to repair the database, while doing the renaming.
+        AIAlert::add_modal("AIUploadsCheckDBfixed");
+      }
+    }
+    catch (DatabaseLocked&)
+    {
+      if (sleeptime < 2000)
+      {
+        llwarns << "rename_gridnick() failed because the database is locked!" << llendl;
+        // Ugh! Lets try again a few times even though that freezes the viewer for 3 seconds.
+        ms_sleep(sleeptime);
+        continue;
+      }
+      AIAlert::add_modal("AIMultiGridDatabaseLocked");
+    }
+    catch (AIAlert::Error const& error)
+    {
+      AIAlert::add_modal(error, "AIMultiGridAbortUploadRepairDatabase");
+    }
+    break;
+  }
+}
+#endif
 
