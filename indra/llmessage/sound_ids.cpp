@@ -105,6 +105,7 @@ const LLUUID SND_WOOD_PLASTIC     ("c70141d4-ba06-41ea-bcbc-35ea81cb8335");
 const LLUUID SND_WOOD_RUBBER      ("7d1826f4-24c4-4aac-8c2e-eff45df37783");
 const LLUUID SND_WOOD_WOOD        ("063c97d3-033a-4e9b-98d8-05c8074922cb");
 
+const LLUUID SND_STEP             ("e8af4a28-aa83-4310-a7c4-c047e15ea0df");     // Sound of stepping on sand.
 
 const LLUUID SND_SLIDE_FLESH_FLESH      ("614eec22-f73d-4fdc-8691-a37dc5c58333");
 const LLUUID SND_SLIDE_FLESH_PLASTIC    (SND_NULL);

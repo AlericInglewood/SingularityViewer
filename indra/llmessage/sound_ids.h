@@ -106,6 +106,7 @@ extern const LLUUID SND_WOOD_PLASTIC;
 extern const LLUUID SND_WOOD_RUBBER;
 extern const LLUUID SND_WOOD_WOOD;
 
+extern const LLUUID SND_STEP;
 
 extern const LLUUID SND_SLIDE_FLESH_FLESH;
 extern const LLUUID SND_SLIDE_FLESH_PLASTIC;

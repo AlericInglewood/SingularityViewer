@@ -980,7 +980,7 @@ F32 LLVOAvatar::sRenderDistance = 256.f;
 S32	LLVOAvatar::sNumVisibleAvatars = 0;
 S32	LLVOAvatar::sNumLODChangesThisFrame = 0;
 
-const LLUUID LLVOAvatar::sStepSoundOnLand("e8af4a28-aa83-4310-a7c4-c047e15ea0df");
+const LLUUID LLVOAvatar::sStepSoundOnLand = SND_STEP;
 const LLUUID LLVOAvatar::sStepSounds[LL_MCODE_END] =
 {
 	SND_STONE_RUBBER,
@@ -5694,7 +5694,7 @@ BOOL LLVOAvatar::startMotion(const LLUUID& id, F32 time_offset)
 	//                    hand and finger position and often breaks correct
 	//                    fit of prim nails, rings etc. when flying and
 	//                    using an AO.
-	if ("62c5de58-cb33-5743-3d07-9e4cd4352864" == id.getString() && gSavedSettings.getBOOL("DisableInternalFlyUpAnimation"))
+	if (ANIM_AGENT_HOVER_UP == id && gSavedSettings.getBOOL("DisableInternalFlyUpAnimation"))
 	{
 		return TRUE;
 	}
