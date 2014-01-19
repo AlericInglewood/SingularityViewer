@@ -81,6 +81,7 @@ include_directories(
     )
 
 set(viewer_SOURCE_FILES
+    aicommonuuid.cpp
     aimultigridbackend.cpp
     aimultigridbackendaccess.cpp
     aimultigridfrontend.cpp
@@ -604,6 +605,7 @@ set(viewer_HEADER_FILES
     CMakeLists.txt
     ViewerInstall.cmake
 
+    aicommonuuid.h
     aimultigridbackend.h
     aimultigridbackendaccess.h
     aimultigridfrontend.h

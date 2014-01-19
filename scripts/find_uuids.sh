@@ -1,14 +1,14 @@
 #! /bin/bash
 
-INDRA="$(cd `dirname $0`/../indra && pwd)"
+ROOT="$(cd `dirname $0`/.. && pwd)"
 
-if expr match "$INDRA" " " >/dev/null; then
-  echo "$0 doesn't work when there is a space in the path name \"$INDRA\"."
+if expr match "$ROOT" " " >/dev/null; then
+  echo "$0 doesn't work when there is a space in the path name \"$ROOT\"."
   exit 1
 fi
 
 # Only scan LL source files.
-FOLDERS="$INDRA/newview $(/bin/ls -d $INDRA/ll*)"
+FOLDERS="$ROOT/indra/newview $(/bin/ls -d $ROOT/indra/ll*)"
 
 # There should never be UUIDs declared in header files (because they aren't POD).
 SOURCE_FILES="$(for d in $FOLDERS; do find "$d" ! -name 'tests' -type f -name '*.cpp' ! -wholename '*/tests/*'; done)"
@@ -123,14 +123,16 @@ cat TexturesAssetSet.xml | grep -o -E '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]
 cat SoundsAssetSet.xml CollisionSoundsAssetSet.xml | grep -o -E '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' | tr "A-F" "a-f" | sort -u > opensim.sound.uuids
 cat AnimationsAssetSet.xml | grep -o -E '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' | tr "A-F" "a-f" | sort -u > opensim.anim.uuids
 
+rm TexturesAssetSet.xml SoundsAssetSet.xml CollisionSoundsAssetSet.xml AnimationsAssetSet.xml
+
 # Find common UUIDs.
-cat texture.uuids wiki.texture.uuids | sort -u | cat - opensim.texture.uuids | sort | uniq -d > common.texture.uuids
-cat sound.uuids wiki.sound.uuids | sort -u | cat - opensim.sound.uuids | sort | uniq -d > common.sound.uuids
+cat texture.uuids wiki.texture.uuids | sort -u | cat - opensim.texture.uuids | sort | uniq -d > $ROOT/etc/common.texture.uuids
+cat sound.uuids wiki.sound.uuids | sort -u | cat - opensim.sound.uuids | sort | uniq -d > $ROOT/etc/common.sound.uuids
 cat anim.uuids wiki.anim.uuids | sort -u | cat - opensim.anim.uuids | sort | uniq -d > common.anim.uuids
 
 # Get a count.
-nr_common_textures=$(cat common.texture.uuids | wc --lines)
-nr_common_sounds=$(cat common.sound.uuids | wc --lines)
+nr_common_textures=$(cat $ROOT/etc/common.texture.uuids | wc --lines)
+nr_common_sounds=$(cat $ROOT/etc/common.sound.uuids | wc --lines)
 nr_common_anims=$(cat common.anim.uuids | wc --lines)
 
 # Sanity check (animations UUIDs are not shared).
@@ -142,5 +144,7 @@ fi
 rm common.anim.uuids
 
 echo "Found $nr_common_textures common texture UUIDs (see common.texture.uuids) and $nr_common_sounds common sound UUIDs (see common.sound.uuids)"
-ls -l common.texture.uuids common.sound.uuids
+ls -l $ROOT/etc/common.texture.uuids $ROOT/etc/common.sound.uuids
+
+echo "Run scripts/gen-is_common_uuid.sh to generate indra/newview/aicommonuuid.cpp from this."
 
