@@ -617,18 +617,18 @@ double entropy(std::string const& filepath)
 // LockedBackEnd
 
 // Thread safe cache objects for Assets, Sources and UUIDs.
-gAssets_t LockedBackEnd::gAssets;
-gSources_t LockedBackEnd::gSources;
-gUUIDs_t LockedBackEnd::gUUIDs;
+gAssets_t BackEnd::gAssets;
+gSources_t BackEnd::gSources;
+gUUIDs_t BackEnd::gUUIDs;
 
 // Cache end() to avoid the need to lock every time.
-asset_map_type::iterator const LockedBackEnd::gAssetsEnd = gAssets_wat(LockedBackEnd::gAssets)->end();
+asset_map_type::iterator const BackEnd::gAssetsEnd = gAssets_wat(BackEnd::gAssets)->end();
 
 void LockedBackEnd::clear_memory_cache(void)
 {
-  gAssets_wat gAssets_w(gAssets);
-  gSources_wat gSources_w(gSources);
-  gUUIDs_wat gUUIDs_w(gUUIDs);
+  gSources_wat gSources_w(BackEnd::gSources);
+  gUUIDs_wat gUUIDs_w(BackEnd::gUUIDs);
+  gAssets_wat gAssets_w(BackEnd::gAssets);
   gAssets_w->clear();
   gSources_w->clear();
   gUUIDs_w->clear();
@@ -851,10 +851,15 @@ void LockedBackEnd::registerUpload(
 		  if (need_insertion)
 		  {
 			// In RAM.
-			gAssets_wat(gAssets)->insert(uploaded_asset);
+			gAssets_wat(BackEnd::gAssets)->insert(uploaded_asset);
 		  }
 		  // To harddisk.
 		  write_to_disk(uploaded_asset_w);
+
+          // Get iterator to memory cache.
+          asset_map_type::iterator uai = gAssets_wat(BackEnd::gAssets)->find(uploaded_asset);
+          // Should always exist.
+          llassert_always(uai != BackEnd::gAssetsEnd);
 
 		  if (uploaded_asset_w->mSourceMd5.isFinalized())
 		  {
@@ -897,6 +902,7 @@ void LockedBackEnd::registerUpload(
 			  if (order_changed)
 			  {
 				write_to_disk(md5s, source_filename);
+                // We don't update the memory cache here, lets do that when this file is read again (if at all).
 			  }
 			}
 		  }
@@ -910,6 +916,8 @@ void LockedBackEnd::registerUpload(
 			if (!LLAPRFile::isExist(uuid_filename))
 			{
 			  write_to_disk(uploaded_asset_w->mAssetMd5, uuid_filename);
+              // Update memory cache.
+              gUUIDs_wat(BackEnd::gUUIDs)->insert(uuid2asset_map_type::value_type(iter->getUUID(), uai));
 			}
 		  }
 		}
@@ -954,17 +962,37 @@ void LockedBackEnd::registerUpload(
   }
 }
 
-AIUploadedAsset* LockedBackEnd::getUploadedAsset(LLUUID const& id)
+AIUploadedAsset* BackEnd::getUploadedAsset(LLUUID const& id)
 {
-  // Try to find it in memory cache.
+  // Try to find it in memory cache first, before locking the database.
   {
-	gUUIDs_rat gUUIDs_r(gUUIDs);
+	gUUIDs_rat gUUIDs_r(BackEnd::gUUIDs);
 	uuid2asset_map_type::const_iterator iter = gUUIDs_r->find(id);
 	if (iter != gUUIDs_r->end())
 	{
-	  return *iter->second;
+      // iter->second is gAssetsEnd if this is the second time we call this function and the UUID isn't known.
+      return (iter->second == gAssetsEnd) ? NULL : *iter->second;
 	}
   }
+  // Release the lock on gUUIDs before grabbing the database lock.
+
+  // Lock database and try again (including looking on the harddisk).
+  BackEndAccess back_end;
+  back_end.lock();
+  return back_end->getUploadedAsset(id);
+}
+
+AIUploadedAsset* LockedBackEnd::getUploadedAsset(LLUUID const& id)
+{
+  // Try to find it in memory cache.
+  gUUIDs_wat gUUIDs_w(BackEnd::gUUIDs);
+  uuid2asset_map_type::const_iterator iter = gUUIDs_w->find(id);
+  if (iter != gUUIDs_w->end())
+  {
+    // iter->second is gAssetsEnd if this is the second time we call this function and the UUID isn't known.
+    return (iter->second == BackEnd::gAssetsEnd) ? NULL : *iter->second;
+  }
+  // Must keep the lock on gUUIDs until it is updated.
 
   // Try to find it in the database.
   std::string uuid_filename = mBackEnd.getUUIDFilename(id);
@@ -973,50 +1001,51 @@ AIUploadedAsset* LockedBackEnd::getUploadedAsset(LLUUID const& id)
 	LLMD5 md5;
 	read_from_disk(md5, uuid_filename);
 	// Get the uploaded asset data.
-	asset_map_type::iterator uai = readAndCacheUploadedAsset(md5);
-	if (uai == gAssetsEnd)
+	asset_map_type::iterator uai = readAndCacheUploadedAsset(gAssets_wat(BackEnd::gAssets), md5);
+	if (uai == BackEnd::gAssetsEnd)
 	{
 	  llwarns << "Uploaded-asset database file \"" << uuid_filename << "\" exists, but points to non-existing asset " << md5 << "!" << llendl;
 	  return NULL;
 	}
 	// Cache the result.
-	gUUIDs_wat(gUUIDs)->insert(uuid2asset_map_type::value_type(id, uai));
+	gUUIDs_w->insert(uuid2asset_map_type::value_type(id, uai));
 	return *uai;
   }
 
-  // Not found.
+  // Not found. Cache this fact to avoid trying to read it from disk every time.
+  gUUIDs_w->insert(uuid2asset_map_type::value_type(id, BackEnd::gAssetsEnd));
   return NULL;
 }
 
 AIUploadedAsset* LockedBackEnd::getUploadedAsset(LLMD5 const& asset_hash)
 {
   // Try to find it in memory cache.
+  AIUploadedAsset key(asset_hash);
+  gAssets_wat gAssets_w(BackEnd::gAssets);
+  asset_map_type::const_iterator iter = gAssets_w->find(&key);
+  if (iter != gAssets_w->end())
   {
-	AIUploadedAsset key(asset_hash);
-	gAssets_rat gAssets_r(gAssets);
-	asset_map_type::const_iterator iter = gAssets_r->find(&key);
-	if (iter != gAssets_r->end())
-	{
-	  return *iter;
-	}
+    return *iter;
   }
+  // Must keep the lock on gAssets until it is updated.
+
   // Try to find it in the database.
-  asset_map_type::iterator uai = readAndCacheUploadedAsset(asset_hash);
-  return (uai == gAssetsEnd) ? NULL : *uai;
+  asset_map_type::iterator uai = readAndCacheUploadedAsset(gAssets_w, asset_hash);
+  return (uai == BackEnd::gAssetsEnd) ? NULL : *uai;
 }
 
 uais_type LockedBackEnd::getUploadedAssets(LLMD5 const& source_hash)
 {
   // Try to find it in memory cache.
+  gSources_wat gSources_w(BackEnd::gSources);
+  source2asset_map_type::const_iterator iter = gSources_w->find(source_hash);
+  if (iter != gSources_w->end())
   {
-	gSources_rat gSources_r(gSources);
-	source2asset_map_type::const_iterator iter = gSources_r->find(source_hash);
-	if (iter != gSources_r->end())
-	{
-	  // Return a copy, then release the lock on gSources.
-	  return iter->second;
-	}
+    // Return a copy, then release the lock on gSources.
+    return iter->second;
   }
+  // Must keep the lock on gSources until it is updated.
+
   // Try to find it in the database.
   uais_type uais;
   std::string source_filename = mBackEnd.getSourceFilename(source_hash);
@@ -1026,23 +1055,26 @@ uais_type LockedBackEnd::getUploadedAssets(LLMD5 const& source_hash)
 	read_from_disk(md5s, source_filename);
 	// Get the uploaded asset data.
 	// Convert the md5 hashes to previously uploaded assets.
-	for (std::deque<LLMD5>::iterator md5i = md5s.begin(); md5i != md5s.end(); ++md5i)
-	{
-	  asset_map_type::iterator uai = readAndCacheUploadedAsset(*md5i);
-	  if (uai == gAssetsEnd)
-	  {
-		llwarns << "Uploaded-asset database file \"" << source_filename << "\" exists, but points to non-existing asset " << *md5i << "!" << llendl;
-		continue;
-	  }
-	  uais.push_back(uai);
-	}
+    {
+      gAssets_wat gAssets_w(BackEnd::gAssets);
+      for (std::deque<LLMD5>::iterator md5i = md5s.begin(); md5i != md5s.end(); ++md5i)
+      {
+        asset_map_type::iterator uai = readAndCacheUploadedAsset(gAssets_w, *md5i);
+        if (uai == BackEnd::gAssetsEnd)
+        {
+          llwarns << "Uploaded-asset database file \"" << source_filename << "\" exists, but points to non-existing asset " << *md5i << "!" << llendl;
+          continue;
+        }
+        uais.push_back(uai);
+      }
+    }
 	// Cache the result.
-	gSources_wat(gSources)->insert(source2asset_map_type::value_type(source_hash, uais));
+	gSources_w->insert(source2asset_map_type::value_type(source_hash, uais));
   }
   return uais;
 }
 
-asset_map_type::iterator LockedBackEnd::readAndCacheUploadedAsset(LLMD5 const& asset_hash)
+asset_map_type::iterator LockedBackEnd::readAndCacheUploadedAsset(gAssets_wat const& gAssets_w, LLMD5 const& asset_hash)
 {
   std::string asset_filename = mBackEnd.getUploadedAssetFilename(asset_hash);
   if (LLFile::isfile(asset_filename))
@@ -1051,9 +1083,9 @@ asset_map_type::iterator LockedBackEnd::readAndCacheUploadedAsset(LLMD5 const& a
 	UploadedAsset ua(asset_hash);
 	read_from_disk(ua, asset_filename);
 	// Insert a new AIUploadedAsset in the in-memory cache and return an iterator to it.
-	return gAssets_wat(gAssets)->insert(new AIUploadedAsset(ua)).first;
+	return gAssets_w->insert(new AIUploadedAsset(ua)).first;
   }
-  return gAssetsEnd;
+  return BackEnd::gAssetsEnd;
 }
 
 void LockedBackEnd::readAndCacheAllUploadedAssets(void)
@@ -1107,7 +1139,7 @@ void LockedBackEnd::readAndCacheAllUploadedAssets(void)
       bool success;
       try
       {
-        success = readAndCacheUploadedAsset(md5) != gAssetsEnd;
+        success = readAndCacheUploadedAsset(gAssets_wat(BackEnd::gAssets), md5) != BackEnd::gAssetsEnd;
       }
       catch (AIAlert::Error const& error)
       {
@@ -1142,9 +1174,9 @@ bool LockedBackEnd::repair_database(void)
   }
 
   // Lock the memory cache.
-  gAssets_wat gAssets_w(gAssets);
-  gSources_wat gSources_w(gSources);
-  gUUIDs_wat gUUIDs_w(gUUIDs);
+  gSources_wat gSources_w(BackEnd::gSources);
+  gUUIDs_wat gUUIDs_w(BackEnd::gUUIDs);
+  gAssets_wat gAssets_w(BackEnd::gAssets);
   // Clear it.
   clear_memory_cache();
 
@@ -1231,8 +1263,8 @@ bool LockedBackEnd::repair_database(void)
 			  old_md5.clone(*filename);
 			  AIUploadedAsset key(old_md5);
 			  asset_map_type::iterator uploaded_asset_iter = gAssets_w->find(&key);
-			  if (uploaded_asset_iter != gAssetsEnd)	// This should really always be true: we just read all asset meta data files into this set,
-			  {											// or if they couldn't be parsed they were moved to lost+found.
+			  if (uploaded_asset_iter != BackEnd::gAssetsEnd)	// This should really always be true: we just read all asset meta data files into this set,
+			  {											        // or if they couldn't be parsed they were moved to lost+found.
 				// Erase it from the memory cache.
 				AIUploadedAsset* uploaded_asset = *uploaded_asset_iter;
 				gAssets_w->erase(uploaded_asset_iter);
@@ -1280,7 +1312,7 @@ bool LockedBackEnd::repair_database(void)
 		{
 		  AIUploadedAsset key(md5);
 		  iter = gAssets_w->find(&key);
-		  if (iter != gAssetsEnd)
+		  if (iter != BackEnd::gAssetsEnd)
 		  {
 			uploaded_asset = *iter;
 		  }
@@ -1488,7 +1520,7 @@ bool LockedBackEnd::repair_database(void)
 		  {
 			AIUploadedAsset key(md5);
 			uai = gAssets_w->find(&key);
-			if (uai != gAssetsEnd)
+			if (uai != BackEnd::gAssetsEnd)
 			{
 			  uploaded_asset = *uai;
 			}
@@ -1709,7 +1741,7 @@ bool LockedBackEnd::repair_database(void)
 		{
 		  AIUploadedAsset key(asset_hash);
 		  uai = gAssets_w->find(&key);
-		  if (uai != gAssetsEnd)
+		  if (uai != BackEnd::gAssetsEnd)
 		  {
 			uploaded_asset = *uai;
 		  }
@@ -1789,18 +1821,24 @@ bool LockedBackEnd::rename_gridnick(std::string const& from_gridnick, std::strin
 {
   llwarns << "Renaming gridnick \"" << from_gridnick << "\" to \"" << to_gridnick << "\" in \"" << mBackEnd.mBaseFolder << "\"." << llendl;
 
+  mFixed = false;
+
+  // Lock the memory cache.
+  gSources_wat gSources_w(BackEnd::gSources);
+  gUUIDs_wat gUUIDs_w(BackEnd::gUUIDs);
+  gAssets_wat gAssets_w(BackEnd::gAssets);
+  // Clear it.
+  clear_memory_cache();
+
   // Create a new lost+found directory.
   LostAndFound lost_and_found(this);
 
   try
   {
-    mFixed = false;
-
     // Fill the memory cache with all by_asset_md5 files.
     readAndCacheAllUploadedAssets();
 
     // Run over all collected meta data in the memory cache and fix the grid nick if needed.
-    gAssets_wat gAssets_w(gAssets);
     Dout(dc::notice, "gAssets has " << gAssets_w->size() << " elements.");
     for (asset_map_type::iterator metadata = gAssets_w->begin(); metadata != gAssets_w->end(); ++metadata)
     {

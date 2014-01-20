@@ -41,6 +41,7 @@
 #include "aiuploadedasset.h"	// AIUploadedAsset, AIUploadedAsset_wat, GridUUID, LLAssetType::EType, LLMD5, LLUUID, LLDate, std::set, std::string
 #include "aimultigriddelta.h"	// Delta
 #include "aicondition.h"		// AICondition
+#include "aicommonuuid.h"       // is_common_uuid
 #include "llsingleton.h"		// LLSingleton
 #include "llthread.h"			// LLMutex
 #include "llfile.h"				// LLFILE
@@ -80,11 +81,6 @@ class LockedBackEnd {
   private:
 	BackEnd& mBackEnd;
 	LLMutex mJournalMutex;
-
-	static gAssets_t gAssets;
-	static gSources_t gSources;
-	static gUUIDs_t gUUIDs;
-	static asset_map_type::iterator const gAssetsEnd;
 
 	// Member variables used during repair_database.
 	friend class LostAndFound;
@@ -138,8 +134,10 @@ class LockedBackEnd {
 	uais_type getUploadedAssets(LLMD5 const& source_hash);				// Returns a vector with all previously UploadedAssets for this source.
 
   private:
-	asset_map_type::iterator readAndCacheUploadedAsset(LLMD5 const& hash);	// Reads and decodes uploaded asset file into a new AIUploadedAsset which is inserted in gAssets and returned.
-	void readAndCacheAllUploadedAssets(void);								// Same for every asset file in the database (calls the one above).
+	asset_map_type::iterator readAndCacheUploadedAsset(gAssets_wat const& gAssets_w, LLMD5 const& hash);	// Reads and decodes uploaded asset file into
+                                                                                                            // a new AIUploadedAsset which is inserted in
+                                                                                                            // gAssets and returned.
+	void readAndCacheAllUploadedAssets(void);							// Same for every asset file in the database (calls the one above).
 };
 
 class LockAttemps {
@@ -170,6 +168,11 @@ class BackEnd : public LLSingleton<BackEnd>
 	lock_condition_t mLockCondition;	// Accessed directly by FrontEnd.
 	boost::interprocess::file_lock mFLock;
 
+	static gAssets_t gAssets;
+	static gSources_t gSources;
+	static gUUIDs_t gUUIDs;
+	static asset_map_type::iterator const gAssetsEnd;
+
   private:
 	friend class BackEndAccess;
 	LockedBackEnd mLocked;				// May only be accessed through BackEndAccess.
@@ -195,6 +198,11 @@ class BackEnd : public LLSingleton<BackEnd>
 
 	// Rename a grid nick 'from_gridnick' to 'to_gridnick'.
 	static bool rename_gridnick(BackEndAccess& back_end, std::string const& from_gridnick, std::string const& to_gridnick);
+
+    // Checks for the existence of id in the database. The result is cached so its fine to call it often for the same UUID.
+    AIUploadedAsset* getUploadedAsset(LLUUID const& id);
+
+    bool is_known(LLUUID const& id) { return is_common_uuid(id) || getUploadedAsset(id); }
 
   private:
 	bool checkSubdirs(bool create);
