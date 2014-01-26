@@ -49,11 +49,41 @@ struct AIOggPage
   AIOggPage(void);
   ~AIOggPage();
 
-  void read(LLFILE* fp);
+  void read(void);
   void updateHash(LLMD5& md5);
 
   template<typename T>
   static T read(unsigned char* buffer, int pos);
+
+  virtual size_t read(unsigned char* buffer, size_t size) = 0;
+};
+
+struct AIOggPageFile : public AIOggPage
+{
+  AIFile mFile;
+
+  AIOggPageFile(std::string const& filename) : mFile(filename, "rb") { }
+
+  virtual size_t read(unsigned char* buffer, size_t size)
+  {
+    return fread(buffer, 1, size, mFile);
+  }
+};
+
+struct AIOggPageBuffer : public AIOggPage
+{
+  unsigned char* mHead;
+  unsigned char const* mBufferEnd;
+
+  AIOggPageBuffer(unsigned char* buffer, size_t size) : mHead(buffer), mBufferEnd(buffer + size) { }
+
+  virtual size_t read(unsigned char* buffer, size_t size)
+  {
+    size_t s = llmin(size, (size_t)(mBufferEnd - mHead));
+    std::memcpy(buffer, mHead, s);
+    mHead += s;
+    return s;
+  }
 };
 
 AIOggPage::AIOggPage(void) :
@@ -90,11 +120,11 @@ T AIOggPage::read(unsigned char* buffer, int pos)
 // NOTE: Comments that start with a '*' are quotes from http://www.xiph.org/vorbis/doc/Vorbis_I_spec.html#x1-130000A.2
 //       The layout and meaning of the Ogg header is specified on http://www.xiph.org/ogg/doc/framing.html
 //
-void AIOggPage::read(LLFILE* fp)
+void AIOggPage::read(void)
 {
   // Read a part of the Ogg header.
   unsigned char header[27];
-  size_t len = fread(header, 1, sizeof(header), fp);
+  size_t len = read(header, sizeof(header));
 
   //-----------------------------------------------------------------------------------------------
   // capture_pattern
@@ -208,7 +238,7 @@ void AIOggPage::read(LLFILE* fp)
   //-----------------------------------------------------------------------------------------------
   // segment_table (containing packet lacing values)
   unsigned char segment_table[255];
-  len = fread(segment_table, 1, segments, fp);
+  len = read(segment_table, segments);
   if (len != segments)
   {
 	// File truncated?
@@ -232,7 +262,7 @@ void AIOggPage::read(LLFILE* fp)
   // Read the Ogg data into memory so that the file pointer points to the next page,
   // and the we can optionally calculate the md5 hash of this data.
   llassert_always(mDataLen <= 255 * 255);
-  len = fread(mBuffer, 1, mDataLen, fp);
+  len = read(mBuffer, mDataLen);
   if (len != mDataLen)
   {
 	// File truncated?
@@ -299,18 +329,10 @@ void AIOggPage::updateHash(LLMD5& md5)
   md5.update(mBuffer, mDataLen);
 }
 
-AIOggVorbisVerifier::AIOggVorbisVerifier(std::string const& filename) :
-  mFilename(filename)
-{
-}
-
 void AIOggVorbisVerifier::calculateHash(LLMD5& md5)
 {
-  // Open the file.
-  AIFile fp(mFilename, "rb");
-
   // Initialize the verifier.
-  AIOggPage page;
+  AIOggPage* page = mBuffer ? (AIOggPage*) new AIOggPageBuffer(mBuffer, mSize) : (AIOggPage*) new AIOggPageFile(mFilename);
 
   // Read Ogg pages until the data stream starts.
   // From http://www.xiph.org/vorbis/doc/Vorbis_I_spec.html#x1-130000A.2 :
@@ -323,21 +345,21 @@ void AIOggVorbisVerifier::calculateHash(LLMD5& md5)
   // * The granule position of these first pages containing only headers is zero.
   do
   {
-	page.read(fp);
+	page->read();
   }
-  while (page.mGranulePosition == 0);
+  while (page->mGranulePosition == 0);
 
   // Calculate the hash of the data portion (skipping the ogg headers).
   // We can start with the last page read because that has to be
   // entirely audio data: audio data must start on a fresh page.
   while(1)
   {
-	page.updateHash(md5);
-	if (page.mSawLastPage)
+	page->updateHash(md5);
+	if (page->mSawLastPage)
 	{
 	  break;
 	}
-	page.read(fp);
+	page->read();
   }
 
   md5.finalize();

@@ -37,6 +37,19 @@
 #include "llimagej2c.h"
 #include "llmd5.h"
 #include "aitexturedelta.h"
+#include "aialert.h"
+
+namespace AIAlert {
+
+std::string text(Error const& error, int suppress_mask = 0);
+
+} // namespace AIAlert
+
+namespace AIMultiGrid {
+
+LLPointer<TextureDelta> calculateHashTexture(unsigned char* buffer, size_t size, LLMD5& asset_md5, LLImageJ2C* j2c);
+
+} // namespace AIMultiGrid
 
 typedef LLImageJ2CImpl* (*CreateLLImageJ2CFunction)();
 typedef void (*DestroyLLImageJ2CFunction)(LLImageJ2CImpl*);
@@ -501,12 +514,18 @@ BOOL LLImageJ2C::loadAndValidate(const std::string &filename, LLMD5& md5, LLPoin
 		}
 		else
 		{
-			res = validate(data, file_size);
 			//<singu>
-			if (res)
-			{
-				res = calculateHash(md5, delta);
-			}
+			//res = validate(data, file_size);  // old code, now done by calculateHashTexture.
+            try
+            {
+                delta = AIMultiGrid::calculateHashTexture(data, file_size, md5, this);     // Validates and returns asset hash and delta.
+                res = TRUE;
+            }
+            catch (AIAlert::Error const& error)
+            {
+                setLastError(AIAlert::text(error), filename);
+                res = FALSE;
+            }
 			//</singu>
 		}
 	}

@@ -37,12 +37,17 @@ class LLMD5;
 
 class AIOggVorbisVerifier {
   public:
-	AIOggVorbisVerifier(std::string const& filename);
+	AIOggVorbisVerifier(std::string const& filename) : mFilename(filename), mBuffer(NULL), mSize(0) { }
+	AIOggVorbisVerifier(unsigned char* buffer, size_t size) : mBuffer(buffer), mSize(size) { }
 
 	void calculateHash(LLMD5& md5);
 
   private:
-	std::string mFilename;
+	std::string mFilename;          // Set when constructed using the first constructor,
+
+    unsigned char* mBuffer;         // or using mBuffer and mSize when constructed with
+    unsigned char* mHead;
+    size_t mSize;                   // the second constructor.
 };
 
 #endif // AIOGGVORBISVERIFIER_H

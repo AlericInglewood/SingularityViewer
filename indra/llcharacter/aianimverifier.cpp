@@ -39,12 +39,19 @@
 #include "lldatapacker.h"
 #include "llcharacter.h"
 
+namespace AIMultiGrid {
+
+// Defined in newview.
+LLPointer<BVHAnimDelta> calculateHashAnimation(unsigned char* buffer, size_t size, LLMD5& source_md5, LLMD5& asset_md5);
+
+} // namespace AIMultiGrid
+
 AIAnimVerifier::AIAnimVerifier(std::string const& filename) :
   mFilename(filename)
 {
 }
 
-void AIAnimVerifier::calculateHash(LLMD5& source_md5, LLMD5& asset_md5, LLPointer<AIMultiGrid::BVHAnimDelta>& delta, LLCharacter* character)
+void AIAnimVerifier::calculateHash(LLMD5& source_md5, LLMD5& asset_md5, LLPointer<AIMultiGrid::BVHAnimDelta>& delta)
 {
   // Open the file.
   AIFile fp(mFilename, "rb");
@@ -64,36 +71,13 @@ void AIAnimVerifier::calculateHash(LLMD5& source_md5, LLMD5& asset_md5, LLPointe
   rewind(fp);
 
   // Read it into memory.
-  unsigned char* buffer = new unsigned char[filesize];
-  bool success = fread(buffer, 1, filesize, fp) == filesize;
-
-  // If the read was successful, calculate asset_md5 and source_md5 hash values of it.
-  if (success)
-  {
-	// Calculate the source hash.
-	LLDataPackerBinaryBuffer dp(buffer, filesize);
-	LLKeyframeMotion keyframe(character);
-	error = keyframe.deserialize_motionlist(dp, true, source_md5);
-	if (!error)
-	{
-	  // Extract the Delta from the anim file too, and pass a copy back.
-	  delta = new AIMultiGrid::BVHAnimDelta(keyframe.getDelta());
-
-	  // Calculate asset hash from source hash and the delta.
-	  unsigned char source_digest[16];
-	  source_md5.raw_digest(source_digest);
-	  asset_md5.update(source_digest, 16);			// Absorb the source.
-	  delta->update_hash(asset_md5);				// Absorb the delta; this ignores round off errors in the floating point settings.
-	  asset_md5.finalize();
-	}
-  }
-
-  // Clean up.
-  delete [] buffer;
-
-  if (error)
+  std::vector<unsigned char> buffer((std::vector<unsigned char>::size_type)filesize);
+  if (!fread(&buffer[0], 1, filesize, fp) == filesize)
   {
 	THROW_ALERT(LLKeyframeMotion::errorString(error));
   }
+
+  // If the read was successful, calculate asset_md5 and source_md5 hash values of it.
+  delta = AIMultiGrid::calculateHashAnimation(&buffer[0], filesize, source_md5, asset_md5);
 }
 

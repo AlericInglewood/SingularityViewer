@@ -84,6 +84,7 @@ set(viewer_SOURCE_FILES
     aicommonuuid.cpp
     aimultigridbackend.cpp
     aimultigridbackendaccess.cpp
+    aimultigridcalculatehash.cpp
     aimultigridfrontend.cpp
     aiuploadedasset.cpp
     aimultigridfileupload.cpp
@@ -608,6 +609,7 @@ set(viewer_HEADER_FILES
     aicommonuuid.h
     aimultigridbackend.h
     aimultigridbackendaccess.h
+    aimultigridcalculatehash.h
     aimultigridfrontend.h
     aiuploadedasset.h
     aimultigridfileupload.h

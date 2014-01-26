@@ -35,7 +35,6 @@
 #include "llpointer.h"
 
 class LLMD5;
-class LLCharacter;
 
 namespace AIMultiGrid {
   class BVHAnimDelta;
@@ -45,7 +44,7 @@ class AIAnimVerifier {
   public:
 	AIAnimVerifier(std::string const& filename);
 
-	void calculateHash(LLMD5& source_md5, LLMD5& asset_md5, LLPointer<AIMultiGrid::BVHAnimDelta>& delta, LLCharacter* character);
+	void calculateHash(LLMD5& source_md5, LLMD5& asset_md5, LLPointer<AIMultiGrid::BVHAnimDelta>& delta);
 
   private:
 	std::string mFilename;

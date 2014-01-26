@@ -210,7 +210,10 @@ void LLFloaterImagePreview::onCommitLossless(void)
 	// Lossless was toggled. Recalculate everything.
 	LLMD5 asset_md5;
 	LLPointer<AIMultiGrid::TextureDelta> delta;
-	mFrontEnd->createJ2CUploadFile(mRawImagep, asset_md5, delta);		// Overwrite the temporary file with a new one.
+	if (!mFrontEnd->createJ2CUploadFile(mRawImagep, asset_md5, delta))		// Overwrite the temporary file with a new one.
+    {
+      return;
+    }
 	mFrontEnd->setAssetHash(asset_md5, delta);							// Set the new hash value and delta.
 	// Find a previous upload with the new asset/delta and adjust name/description and UUID accordingly.
 	check_previous_uploads_and_set_name_description_and_uuid();

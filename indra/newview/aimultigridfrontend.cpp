@@ -601,25 +601,18 @@ bool FrontEnd::prepare_upload(std::string const& src_filename, bool bulk_upload,
   }
   else if (mAssetType == LLAssetType::AT_ANIMATION && mNativeFormat)
   {
-	// Create a dummy avatar needed to calculate the hash of animations.
-	LLPointer<LLVOAvatar> dummy_avatar = (LLVOAvatar*)gObjectList.createObjectViewer(LL_PCODE_LEGACY_AVATAR, NULL);
-	dummy_avatar->mIsDummy = TRUE;
-
 	LLMD5 source_md5, asset_md5;
 	LLPointer<BVHAnimDelta> delta;
 	AIAnimVerifier verifier(src_filename);
 	try
 	{
-	  verifier.calculateHash(source_md5, asset_md5, delta, dummy_avatar.get());
+	  verifier.calculateHash(source_md5, asset_md5, delta);
 	}
 	catch (AIAlert::Error const& error)
 	{
 	  upload_error("AIProblemWithFile", AIArgs("[FILE]", src_filename), error);
 	  return false;
 	}
-
-	// Kill the dummy, we're done with it.
-	dummy_avatar->markDead();
 
 	setSourceHash(source_md5);
 	setAssetHash(asset_md5, delta);
@@ -710,6 +703,8 @@ bool FrontEnd::createJ2CUploadFile(LLPointer<LLImageRaw> const& raw_image, LLMD5
   }
   if (!verifyUploadFile(mTmpFilename, mNativeFormat, asset_md5, delta))
   {
+    // verifyUploadFile should throw errors... but for now, just pass on the English error text.
+    AIAlert::add("AIError", AIArgs("[ERROR]", std::string("Verification of texture failed: ") + LLImage::getLastError()));
 	return false;
   }
   // Verify that we could decode whether or not the image was lossy or lossless.

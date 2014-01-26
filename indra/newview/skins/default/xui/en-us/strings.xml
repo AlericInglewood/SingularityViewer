@@ -4523,5 +4523,8 @@ Make sure that
 	<string name="LLKeyframeMotion_invalid_anim_file">This file is malformed, has too many or no joints or is otherwise invalid.</string>
 	<string name="LLKeyframeMotion_longer_than_60s">The animation exceeds the maximum allowed duration of 60 seconds.</string>
 
+    <!-- LLImageJ2C related exceptions alerts -->
+	<string name="AIFailedToDecodeJ2C">Failed to decode image file. Is this a jpeg 2000 stream (.j2c)?</string>
+
 </strings>
 

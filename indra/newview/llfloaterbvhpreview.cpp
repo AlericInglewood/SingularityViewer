@@ -71,11 +71,12 @@
 
 #include "hippogridmanager.h"
 
-//<edit>
+//<singu>
 #include "lltrans.h"				// LLTrans
 #include "llinventorymodel.h" 		// gInventoryModel
 #include "aimultigridfrontend.h"
-//</edit>
+#include "aimultigridcalculatehash.h"
+//</singu>
 
 const S32 PREVIEW_BORDER_WIDTH = 2;
 const S32 PREVIEW_RESIZE_HANDLE_SIZE = S32(RESIZE_HANDLE_WIDTH * OO_SQRT2) + PREVIEW_BORDER_WIDTH;
@@ -1305,9 +1306,9 @@ void LLFloaterBvhPreview::onBtnOK(void* userdata)
 			S32 size = dp.getCurrentSize();
 
 			//<singu>
+            LLMD5 source_md5;   // Dummy
 			LLMD5 asset_md5;
-			asset_md5.update(buffer, size);
-			asset_md5.finalize();
+            LLPointer<AIMultiGrid::BVHAnimDelta> delta = AIMultiGrid::calculateHashAnimation(buffer, size, source_md5, asset_md5);
 			//</singu>
 
 			file.setMaxSize(size);
@@ -1339,7 +1340,8 @@ void LLFloaterBvhPreview::onBtnOK(void* userdata)
 				// </edit>
 #endif
 				{
-					floaterp->mFrontEnd->setAssetHash(asset_md5, new AIMultiGrid::BVHAnimDelta(motionp->getDelta()));
+                    llassert(delta->equals(&motionp->getDelta()));
+					floaterp->mFrontEnd->setAssetHash(asset_md5, delta);
 					floaterp->mFrontEnd->upload_new_resource(floaterp->mTransactionID, // tid
 						    LLAssetType::AT_ANIMATION,
 						    name,
