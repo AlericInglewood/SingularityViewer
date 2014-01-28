@@ -118,7 +118,11 @@ void calculateHash(LLAssetType::EType type, unsigned char* buffer, size_t size, 
       break;
     }
     default:
-      llassert(false);
+    {
+      // AIFIXME? For now just calculate the hash of the whole thing.
+      asset_md5.update(buffer, size);
+      asset_md5.finalize();
+    }
   }
 }
 

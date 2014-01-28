@@ -43,6 +43,7 @@
 #include "llnotificationsutil.h"
 #include "llcontrol.h"
 #include "lltrans.h"
+#include "aimultigridcalculatehash.h"
 
 extern LLControlGroup gSavedSettings;
 
@@ -701,7 +702,7 @@ void LockedBackEnd::registerUpload(
 	LLMD5 const& assetMd5,
 	LLAssetType::EType type,
 	GridUUID const& asset_id,
-	std::string const&  name,
+	std::string const& name,
 	std::string const& description,
 	bool automated_upload,
 	std::string const& sourceFilename,
@@ -1072,6 +1073,65 @@ uais_type LockedBackEnd::getUploadedAssets(LLMD5 const& source_hash)
 	gSources_w->insert(source2asset_map_type::value_type(source_hash, uais));
   }
   return uais;
+}
+
+AIUploadedAsset* LockedBackEnd::storeAsset(
+	unsigned char* buffer,
+    size_t buffer_length,
+	LLAssetType::EType asset_type,
+	GridUUID const& asset_id,
+	std::string const& name,
+	std::string const& description,
+	std::string const& sourceFilename,
+	LLMD5 const& sourceMd5)
+{
+  // We can't store this and we can't return anything (returning NULL would cause a crash).
+  // Do not call this function for known UUIDs.
+  llassert_always(!is_common_uuid(asset_id.getUUID()));
+
+  // Calculate the asset hash (and delta if any).
+  LLMD5 asset_md5;
+  LLMD5 source_md5 = sourceMd5;
+  LLPointer<Delta> delta;
+  switch (asset_type)
+  {
+    case LLAssetType::AT_TEXTURE:
+    {
+      delta = AIMultiGrid::calculateHashTexture(buffer, buffer_length, asset_md5);
+      break;
+    }
+    case LLAssetType::AT_ANIMATION:
+    {
+      delta = AIMultiGrid::calculateHashAnimation(buffer, buffer_length, source_md5, asset_md5);
+      break;
+    }
+    default:
+    {
+      AIMultiGrid::calculateHash(asset_type, buffer, buffer_length, asset_md5);
+      break;
+    }
+  }
+
+  AIUploadedAsset* ua = getUploadedAsset(asset_md5);
+
+  if (!ua)
+  {
+    // Save asset to database.
+    std::string filename = mBackEnd.getAssetFilename(asset_md5);
+    std::ofstream outfile(filename.c_str(), std::ios::binary);
+    outfile.write((char const*)buffer, buffer_length);
+    outfile.close();
+  }
+
+  bool is_one_on_one = !(asset_type == LLAssetType::AT_TEXTURE || asset_type == LLAssetType::AT_ANIMATION);
+  registerUpload(asset_md5, asset_type, asset_id, name, description, true, sourceFilename, LLDate::now(), sourceMd5, is_one_on_one, delta);
+
+  if (!ua)
+  {
+    ua = getUploadedAsset(asset_md5);
+  }
+
+  return ua;
 }
 
 asset_map_type::iterator LockedBackEnd::readAndCacheUploadedAsset(gAssets_wat const& gAssets_w, LLMD5 const& asset_hash)

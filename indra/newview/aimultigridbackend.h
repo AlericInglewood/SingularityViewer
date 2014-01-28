@@ -120,6 +120,17 @@ class LockedBackEnd {
 		bool is_one_on_one,						// True if the source <--> asset relationship is one on one.
 		LLPointer<Delta> const& delta);			// Pointer to extra data that was used to generate the asset, if any.
 
+    // Update or create an asset in the database.
+    AIUploadedAsset* storeAsset(
+        unsigned char* buffer,                  // Pointer to the asset in memory.
+        size_t buffer_length,                   // The size of the asset in bytes.
+        LLAssetType::EType asset_type,          // The type of the asset.
+        GridUUID const& asset_id,               // The UUID and Grid of the asset.
+        std::string const& name,                // A human readable name of the asset.
+        std::string const& description,         // A human readable description.
+        std::string const& sourceFilename = std::string(),  // Path to the original source file, if any.
+        LLMD5 const& sourceMd5 = LLMD5());                  // The md5 of the original source file (if any).
+
 	// Run a consistency on the database and attempt to fix it.
 	bool repair_database(void);
 
