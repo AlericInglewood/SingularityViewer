@@ -1,3 +1,6 @@
+#ifndef AICOMMONUUID_H
+#define AICOMMONUUID_H
+
 // See scripts/gen-is_common_uuid.sh, this must be the same as defined there.
 struct AICommonUUID { char const* digest; int asset_type; };
 
@@ -7,3 +10,5 @@ namespace AIMultiGrid {
 AICommonUUID const* is_common_uuid(LLUUID const& id);
 
 } // namespace AIMultiGrid
+
+#endif // AICOMMONUUID_H

@@ -68,6 +68,7 @@ class BackEndAccess {
 
 	bool lock(void);							// Lock the database - returns true if it was unlocked before. Throws if it is locked by someone else.
 	void unlock(void);
+    bool is_locked(void) const { return mLockObtained; }
 
 	// Should only be called by BackEnd::switch_path.
 	void switch_path(std::string& base_folder_out, std::string const& base_folder_in);
