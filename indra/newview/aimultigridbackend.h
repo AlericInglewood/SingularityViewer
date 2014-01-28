@@ -213,7 +213,14 @@ class BackEnd : public LLSingleton<BackEnd>
     // Checks for the existence of id in the database. The result is cached so its fine to call it often for the same UUID.
     AIUploadedAsset* getUploadedAsset(LLUUID const& id);
 
+    // Returns true if the uuid does not need to be stored in the database because it is either a common uuid or it is already stored.
+    // Call this if the database is NOT locked.
     bool is_known(LLUUID const& id) { return is_common_uuid(id) || getUploadedAsset(id); }
+
+    // Idem, but can be used when the database is locked. Note that back_end does not need to be locked;
+    // if it isn't then the database will be locked especially for this occassion, but normally should
+    // already be locked at the beginning of the transaction.
+    bool is_known(LLUUID const& id, BackEndAccess& back_end);
 
   private:
 	bool checkSubdirs(bool create);

@@ -578,6 +578,20 @@ void BackEnd::switch_path(std::string base_folder)
   gSavedSettings.setString("AIMultiGridBaseFolder", mBaseFolder);
 }
 
+bool BackEnd::is_known(LLUUID const& id, BackEndAccess& back_end)
+{
+  if (is_common_uuid(id))
+  {
+    return true;
+  }
+  if (back_end.is_locked())
+  {
+    return back_end->getUploadedAsset(id);
+  }
+  // First look in memory cache, and if not found - lock database and call the above version.
+  return getUploadedAsset(id);
+}
+
 // Some obscure voodoo to guess the likeliness of sensibility of a filename.
 double entropy(std::string const& filepath)
 {
