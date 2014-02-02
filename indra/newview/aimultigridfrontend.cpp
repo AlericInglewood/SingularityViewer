@@ -122,7 +122,7 @@
 //           expected_upload_cost,
 //           userdata);
 //
-// After the user clicked 'Upload' in a preview floater, you now would do, where the floater is being built:
+// after the user clicked 'Upload' in a preview floater, you now would do, where the floater is being built:
 //
 //   LLPointer<AIMultiGrid::FrontEnd> mg_front_end = new AIMultiGrid::FrontEnd;
 //   if (mg_front_end->prepare_upload(src_filename, false))	// Passing false because this is not a bulk upload.

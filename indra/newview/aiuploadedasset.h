@@ -175,8 +175,6 @@ class UploadedAsset
 	// Copy over all variable members from ua; this doesn't change mAssetMd5 - but checks if mAssetMd5 is already equal to ua.mAssetMd5.
 	UploadedAsset& operator=(UploadedAsset const& ua);
 
-	// Add or change Grid/UUID for this asset.
-	void add(GridUUID const& asset_id) { mAssetUUIDs.insert(asset_id); }
 	// Return the UUID on the current grid, if any.
 	LLUUID const* find_uuid(void) const;
 	grid2uuid_map_type::const_iterator find_uuid(Grid const& grid) const { return mAssetUUIDs.find(GridUUID(grid)); }
@@ -200,6 +198,9 @@ class UploadedAsset
 	friend class LockedBackEnd;
 	void setSource(std::string const& name, LLDate const& date, LLMD5 const& sourceMd5);
 	void setNameDescription(std::string const& name, std::string const& description, LLDate const& date);
+	// Add or change Grid/UUID for this asset.
+	void add(GridUUID const& asset_id) { mAssetUUIDs.insert(asset_id); }
+	// Obtain access to the whole Grid/UUID map.
 	grid2uuid_map_type& getGrid2UUIDmap(void) { return mAssetUUIDs; }
 };
 
