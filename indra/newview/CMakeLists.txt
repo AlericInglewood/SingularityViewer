@@ -344,6 +344,7 @@ set(viewer_SOURCE_FILES
     llmimetypes.cpp
     llmorphview.cpp
     llmoveview.cpp
+    llmultigesture.cpp
     llmutelist.cpp
     llnamebox.cpp
     llnameeditor.cpp
@@ -870,6 +871,7 @@ set(viewer_HEADER_FILES
     llmimetypes.h
     llmorphview.h
     llmoveview.h
+    llmultigesture.h
     llmutelist.h
     llnamebox.h
     llnameeditor.h
