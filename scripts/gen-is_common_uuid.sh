@@ -1,7 +1,5 @@
 #! /bin/bash
 
-# This script takes as input two files that must be passed through the command line.
-
 ROOT="$(cd `dirname $0`/.. && pwd)"
 
 # Generate the gperf input file.
@@ -31,6 +29,8 @@ EOF
 
 sed -e 's/-//g;s/../\\x&/g;s/^/"/;s/$/",LLAssetType::AT_TEXTURE/' "$ROOT/etc/common.texture.uuids" >> common.textures.gperf
 sed -e 's/-//g;s/../\\x&/g;s/^/"/;s/$/",LLAssetType::AT_SOUND/' "$ROOT/etc/common.sound.uuids" >> common.textures.gperf
+sed -e 's/-//g;s/../\\x&/g;s/^/"/;s/$/",LLAssetType::AT_ANIMATION/' "$ROOT/etc/common.anim.uuids" >> common.textures.gperf
+echo "\"\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\",LLAssetType::AT_NONE" >> common.textures.gperf
 
 cat >> common.textures.gperf << EOF
 %%

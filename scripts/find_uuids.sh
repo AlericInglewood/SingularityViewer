@@ -143,8 +143,12 @@ fi
 
 rm common.anim.uuids
 
-echo "Found $nr_common_textures common texture UUIDs (see common.texture.uuids) and $nr_common_sounds common sound UUIDs (see common.sound.uuids)"
-ls -l $ROOT/etc/common.texture.uuids $ROOT/etc/common.sound.uuids
+# However, all animations refered in the source code are common (they are hardcoded in the viewer after all).
+cp anim.uuids $ROOT/etc/common.anim.uuids
+nr_common_anims=$(cat $ROOT/etc/common.anim.uuids | wc --lines)
+
+echo "Found $nr_common_textures common texture UUIDs (see common.texture.uuids), $nr_common_sounds common sound UUIDs (see common.sound.uuids) and $nr_common_anims common animation UUIDs (see common.anim.uuids)."
+ls -l $ROOT/etc/common.texture.uuids $ROOT/etc/common.sound.uuids $ROOT/etc/common.anim.uuids
 
 echo "Run scripts/gen-is_common_uuid.sh to generate indra/newview/aicommonuuid.cpp from this."
 
