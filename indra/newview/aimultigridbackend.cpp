@@ -44,6 +44,10 @@
 #include "llcontrol.h"
 #include "lltrans.h"
 #include "aimultigridcalculatehash.h"
+#include "aioggvorbisverifier.h"
+#include "aimultigridwearable.h"
+#include "aimultigridnotecard.h"
+#include "aimultigridgesture.h"
 
 extern LLControlGroup gSavedSettings;
 
@@ -1089,6 +1093,135 @@ uais_type LockedBackEnd::getUploadedAssets(LLMD5 const& source_hash)
   return uais;
 }
 
+void LockedBackEnd::calculateHash(LLAssetType::EType type, unsigned char* buffer, size_t size, LLMD5& asset_md5)
+{
+  switch (type)
+  {
+    case LLAssetType::AT_TEXTURE:
+    {
+      (void)calculateHashTexture(buffer, size, asset_md5);
+      break;
+    }
+    case LLAssetType::AT_SOUND:
+    {
+      AIOggVorbisVerifier verifier(buffer, size);
+      verifier.calculateHash(asset_md5);
+      break;
+    }
+    case LLAssetType::AT_ANIMATION:
+    {
+      LLMD5 source_md5;
+      (void)calculateHashAnimation(buffer, size, source_md5, asset_md5);
+      break;
+    }
+    case LLAssetType::AT_CALLINGCARD:
+    case LLAssetType::AT_LANDMARK:
+    case LLAssetType::AT_MESH:
+    {
+      llwarns << "Trying to calculate the hash of a " << LLAssetType::lookup(type) << " asset. Such assets are not portable accross grids." << llendl;
+      // It's ok to just calculate the hash of the whole thing, as it is impossible to convert these assets anyway.
+      // These hashes will just only exist for a single grid. We should never try to upload them to another grid however!
+      /*FALL-THROUGH*/
+    }
+    case LLAssetType::AT_LSL_TEXT:
+    {
+      // This is just a blob.
+      asset_md5.update(buffer, size);
+      asset_md5.finalize();
+      break;
+    }
+    case LLAssetType::AT_CLOTHING:
+    case LLAssetType::AT_BODYPART:
+    {
+      Wearable verifier(this);
+      verifier.import(buffer, size);
+      verifier.calculateHash(asset_md5);
+      break;
+    }
+    case LLAssetType::AT_NOTECARD:
+    {
+      Notecard verifier(this);
+      verifier.import(buffer, size);
+      verifier.calculateHash(asset_md5);
+      break;
+    }
+    case LLAssetType::AT_GESTURE:
+    {
+      Gesture verifier(this);
+      verifier.import(buffer, size);
+      verifier.calculateHash(asset_md5);
+      break;
+    }
+    default:
+    {
+      llerrs << "Trying to calculate the hash of a " << LLAssetType::lookup(type) << " asset?!" << llendl;
+      // I'd like to know if this ever happens.
+      llassert_always(false);
+    }
+  }
+}
+
+void LockedBackEnd::updateHash(LLUUID const& uuid, LLMD5& asset_md5)
+{
+  if (is_common_uuid(uuid))
+  {
+    // If the uuid is common, use it as-is.
+    asset_md5.update(uuid.mData, UUID_BYTES);
+  }
+  else
+  {
+    AIUploadedAsset* uploaded_asset = getUploadedAsset(uuid);
+    if (!uploaded_asset)
+    {
+      // If the UUID isn't known then really we can't calculate a hash,... lets just skip it for now.
+      llwarns << "Wearable with unknown UUID " << uuid << "! Calculated hash will not be correct." << llendl;
+      return;
+    }
+    // The hash is calculated using the hashes of the assets it refers too, not the UUID itself.
+    unsigned char digest[MD5RAW_BYTES];
+    AIUploadedAsset_wat(*uploaded_asset)->getAssetMd5().raw_digest(digest);
+    asset_md5.update(digest, MD5RAW_BYTES);
+  }
+}
+
+bool LockedBackEnd::translate(LLUUID& uuid)
+{
+  if (is_common_uuid(uuid))
+  {
+    return false;
+  }
+  AIUploadedAsset* uploaded_asset = getUploadedAsset(uuid);
+  if (!uploaded_asset)
+  {
+    llwarns << "unknown UUID " << uuid << "! Cannot translate UUID, leaving it as-is." << llendl;
+    return false;
+  }
+  LLUUID const* translated_uuid;
+  LLAssetType::EType asset_type;
+  {
+    AIUploadedAsset_wat uploaded_asset_w(*uploaded_asset);
+    translated_uuid = uploaded_asset_w->find_uuid();
+    asset_type = uploaded_asset_w->getAssetType();
+  }
+  if (!translated_uuid)
+  {
+    if (asset_type == LLAssetType::AT_TEXTURE)
+    {
+      llwarns << "asset " << AIUploadedAsset_wat(*uploaded_asset)->getAssetMd5() <<
+          " was not uploaded to this grid; setting corresponding texture to LL_DEFAULT_WOOD_UUID" << llendl;
+      translated_uuid = &LL_DEFAULT_WOOD_UUID;
+    }
+    else
+    {
+      llwarns << "asset " << AIUploadedAsset_wat(*uploaded_asset)->getAssetMd5() <<
+        " was not uploaded to this grid; setting it to 00000000-0000-0000-0000-000000000000" << llendl;
+      translated_uuid = &LLUUID::null;
+    }
+  }
+  uuid = *translated_uuid;
+  return true;
+}
+
 AIUploadedAsset* LockedBackEnd::storeAsset(
 	unsigned char* buffer,
     size_t buffer_length,
@@ -1121,7 +1254,7 @@ AIUploadedAsset* LockedBackEnd::storeAsset(
     }
     default:
     {
-      AIMultiGrid::calculateHash(asset_type, buffer, buffer_length, asset_md5);
+      calculateHash(asset_type, buffer, buffer_length, asset_md5);
       break;
     }
   }

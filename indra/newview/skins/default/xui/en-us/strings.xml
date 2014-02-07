@@ -229,7 +229,8 @@ Make sure you entered the correct Login URI. An example of a Login URI is: \"htt
 	<string name="current outfit">current outfit</string>
 	<string name="outfit">outfit</string>
 	<string name="my outfits">my outfits</string>
-  <string name="mesh">mesh</string>
+	<string name="mesh">mesh</string>
+	<string name="wearable">wearable</string>
 
 	<!-- llvoavatar. Displayed in the avatar's chat bubble -->
 	<string name="AvatarEditingAppearance">(Editing Appearance)</string>
@@ -4507,6 +4508,7 @@ Make sure that
 3) the viewer has write access to the new path,
 4) the whole database is on the same harddisk partition.</string>
   <string name="AIUploadsMergeDBsuccess">The uploads database was successfully merged.</string>
+  <string name="AIMultiGrid_Error_decoding_NAME_asset">Error decoding [NAME] asset.</string>
 
 	<!-- AIOggPage::read exception alerts -->
 	<string name="AIOggPage_read_Wrong_magic">The file has the wrong magic: it is not an Ogg/Vorbis file.</string>

@@ -86,6 +86,9 @@ set(viewer_SOURCE_FILES
     aimultigridbackendaccess.cpp
     aimultigridcalculatehash.cpp
     aimultigridfrontend.cpp
+    aimultigridwearable.cpp
+    aimultigridnotecard.cpp
+    aimultigridgesture.cpp
     aiuploadedasset.cpp
     aimultigridfileupload.cpp
     aihttpview.cpp
@@ -613,6 +616,9 @@ set(viewer_HEADER_FILES
     aimultigridbackendaccess.h
     aimultigridcalculatehash.h
     aimultigridfrontend.h
+    aimultigridwearable.h
+    aimultigridnotecard.h
+    aimultigridgesture.h
     aiuploadedasset.h
     aimultigridfileupload.h
     aihttpview.h

@@ -144,6 +144,17 @@ class LockedBackEnd {
 																		// is true, or NULL if none was found. May only be called for one_on_one sources!
 	uais_type getUploadedAssets(LLMD5 const& source_hash);				// Returns a vector with all previously UploadedAssets for this source.
 
+    // Calculate the asset md5 hash of an asset in memory of type 'type'.
+    void calculateHash(LLAssetType::EType type, unsigned char* buffer, size_t size, LLMD5& asset_md5);
+
+    // Update asset_md5 with the grid-independent hash value of uuid.
+    void updateHash(LLUUID const& uuid, LLMD5& asset_md5);
+
+    // Find the matching UUID for the current grid. If the passed UUID could be found and needs to be changed,
+    // changes it (possibly to the same value) and returns true. Otherwise the id is left unchanged and false
+    // is returned.
+    bool translate(LLUUID& uuid);
+
   private:
 	asset_map_type::iterator readAndCacheUploadedAsset(gAssets_wat const& gAssets_w, LLMD5 const& hash);	// Reads and decodes uploaded asset file into
                                                                                                             // a new AIUploadedAsset which is inserted in

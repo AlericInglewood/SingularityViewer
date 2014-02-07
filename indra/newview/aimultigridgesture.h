@@ -1,5 +1,5 @@
 /**
- * @file aimultigridcalculatehash.h
+ * @file aimultigridgesture.h
  * @brief Multi grid support API.
  *
  * Copyright (c) 2014, Aleric Inglewood.
@@ -24,32 +24,37 @@
  * CHANGELOG
  *   and additional copyright holders.
  *
- *   22/01/2014
+ *   02/02/2014
  *   Initial version, written by Aleric Inglewood @ SL
  */
 
-#ifndef AIMULTIGRIDCALCULATEHASH_H
-#define AIMULTIGRIDCALCULATEHASH_H
+#ifndef AIMULTIGRIDGESTURE_H
+#define AIMULTIGRIDGESTURE_H
 
-#include "llassettype.h"
+#include <iosfwd>
+#include "llmultigesture.h"
 
 class LLMD5;
-class LLJ2CImage;
 
 namespace AIMultiGrid {
 
-class BVHAnimDelta;
-class TextureDelta;
-class BackEndAccess;
+class LockedBackEnd;
 
-// Calculates the source and asset hash of the ANIM passed in the buffer, and returns an allocated BVHAnimDelta with the decoded delta.
-LLPointer<BVHAnimDelta> calculateHashAnimation(unsigned char* buffer, size_t size, LLMD5& source_md5, LLMD5& asset_md5);
+class Gesture : public LLMultiGesture
+{
+  private:
+    LockedBackEnd* mBackEnd;                    // Pointer to the underlaying database.
 
-// Calculates the asset hash of the J2C passed in the buffer, and returns an allocated TextureDelta with the decoded delta.
-LLPointer<TextureDelta> calculateHashTexture(unsigned char* buffer, size_t size, LLMD5& asset_md5, LLJ2CImage* j2c);
-LLPointer<TextureDelta> calculateHashTexture(unsigned char* buffer, size_t size, LLMD5& asset_md5);
+  public:
+    Gesture(LockedBackEnd* back_end) : mBackEnd(back_end) { }
+
+    void import(std::istream& stream);
+    void import(unsigned char* buffer, size_t size);
+    void calculateHash(LLMD5& asset_md5);
+    void translate(void);
+};
 
 } // namespace AIMultiGrid
 
-#endif // AIMULTIGRIDCALCULATEHASH_H
+#endif // AIMULTIGRIDGESTURE_H
 

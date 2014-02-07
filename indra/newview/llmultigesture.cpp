@@ -36,6 +36,9 @@
 #include "lldatapacker.h"
 #include "llstl.h"
 
+#include "llmd5.h"
+#include "aimultigridbackend.h"
+
 const S32 GESTURE_VERSION = 2;
 
 //---------------------------------------------------------------------------
@@ -317,6 +320,18 @@ void LLGestureStepAnimation::dump()
 		<< llendl;
 }
 
+void LLGestureStepAnimation::update_hash(LLMD5& asset_md5, AIMultiGrid::LockedBackEnd* back_end)
+{
+  S32 const buffer_size = sizeof(U8) + sizeof(U32);
+  U8 v[buffer_size];
+  LLDataPackerBinaryBuffer buffer(v, buffer_size);
+  buffer.packU8(STEP_ANIMATION, "");
+  buffer.packU32(mFlags, "");
+  asset_md5.update(v, buffer_size);
+  asset_md5.update(mAnimName);
+  back_end->updateHash(mAnimAssetID, asset_md5);
+}
+
 //---------------------------------------------------------------------------
 // LLGestureStepSound
 //---------------------------------------------------------------------------
@@ -379,6 +394,17 @@ void LLGestureStepSound::dump()
 		<< llendl;
 }
 
+void LLGestureStepSound::update_hash(LLMD5& asset_md5, AIMultiGrid::LockedBackEnd* back_end)
+{
+  S32 const buffer_size = sizeof(U8) + sizeof(U32);
+  U8 v[buffer_size];
+  LLDataPackerBinaryBuffer buffer(v, buffer_size);
+  buffer.packU8(STEP_SOUND, "");
+  buffer.packU32(mFlags, "");
+  asset_md5.update(v, buffer_size);
+  asset_md5.update(mSoundName);
+  back_end->updateHash(mSoundAssetID, asset_md5);
+}
 
 //---------------------------------------------------------------------------
 // LLGestureStepChat
@@ -434,6 +460,16 @@ void LLGestureStepChat::dump()
 		<< llendl;
 }
 
+void LLGestureStepChat::update_hash(LLMD5& asset_md5, AIMultiGrid::LockedBackEnd* back_end)
+{
+  S32 const buffer_size = sizeof(U8) + sizeof(U32);
+  U8 v[buffer_size];
+  LLDataPackerBinaryBuffer buffer(v, buffer_size);
+  buffer.packU8(STEP_CHAT, "");
+  buffer.packU32(mFlags, "mFlags");
+  asset_md5.update(v, buffer_size);
+  asset_md5.update(mChatText);
+}
 
 //---------------------------------------------------------------------------
 // LLGestureStepWait
@@ -505,4 +541,16 @@ void LLGestureStepWait::dump()
 	llinfos << "step wait " << mWaitSeconds
 		<< " flags " << mFlags
 		<< llendl;
+}
+
+void LLGestureStepWait::update_hash(LLMD5& asset_md5, AIMultiGrid::LockedBackEnd* back_end)
+{
+  S32 const buffer_size = sizeof(U8) + sizeof(U32) + sizeof(U32);
+  U8 v[buffer_size];
+  LLDataPackerBinaryBuffer buffer(v, buffer_size);
+  buffer.packU8(STEP_WAIT, "");
+  // To avoid floating round off errors having influence on the calculate hash, use a precision of 0.01.
+  buffer.packU32((U32)floor(100.0 * mWaitSeconds + 0.5), "");
+  buffer.packU32(mFlags, "");
+  asset_md5.update(v, buffer_size);
 }

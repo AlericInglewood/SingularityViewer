@@ -62,7 +62,7 @@ public:
 	S32 getVersion() { return mVersion; }
 	S32 getEmbeddedVersion() { return mEmbeddedVersion; }
 	
-private:
+protected:
 	bool importEmbeddedItemsStream(std::istream& str);
 	bool exportEmbeddedItemsStream(std::ostream& str);
 	std::vector<LLPointer<LLInventoryItem> > mItems;

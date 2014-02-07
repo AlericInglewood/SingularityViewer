@@ -36,6 +36,8 @@
 
 class LLDataPacker;
 class LLGestureStep;
+class LLMD5;
+namespace AIMultiGrid { class LockedBackEnd; }
 
 class LLMultiGesture
 {
@@ -134,6 +136,10 @@ public:
 	virtual BOOL deserialize(LLDataPacker& dp) = 0;
 
 	virtual void dump() = 0;
+
+    //<singu>
+    virtual void update_hash(LLMD5& asset_hash, AIMultiGrid::LockedBackEnd* back_end) = 0;
+    //</singu>
 };
 
 
@@ -156,6 +162,10 @@ public:
 	virtual BOOL deserialize(LLDataPacker& dp);
 
 	virtual void dump();
+
+    //<singu>
+    virtual void update_hash(LLMD5& asset_hash, AIMultiGrid::LockedBackEnd* back_end);
+    //</singu>
 
 public:
 	std::string mAnimName;
@@ -180,6 +190,10 @@ public:
 
 	virtual void dump();
 
+    //<singu>
+    virtual void update_hash(LLMD5& asset_hash, AIMultiGrid::LockedBackEnd* back_end);
+    //</singu>
+
 public:
 	std::string mSoundName;
 	LLUUID mSoundAssetID;
@@ -202,6 +216,10 @@ public:
 	virtual BOOL deserialize(LLDataPacker& dp);
 
 	virtual void dump();
+
+    //<singu>
+    virtual void update_hash(LLMD5& asset_hash, AIMultiGrid::LockedBackEnd* back_end);
+    //</singu>
 
 public:
 	std::string mChatText;
@@ -227,6 +245,10 @@ public:
 	virtual BOOL deserialize(LLDataPacker& dp);
 
 	virtual void dump();
+
+    //<singu>
+    virtual void update_hash(LLMD5& asset_hash, AIMultiGrid::LockedBackEnd* back_end);
+    //</singu>
 
 public:
 	F32 mWaitSeconds;

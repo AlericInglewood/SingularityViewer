@@ -39,7 +39,6 @@
 #include "aialert.h"
 #include "llimagej2c.h"
 #include "aitexturedelta.h"
-#include "aioggvorbisverifier.h"
 
 namespace AIMultiGrid {
 
@@ -104,26 +103,6 @@ LLPointer<TextureDelta> calculateHashTexture(unsigned char* buffer, size_t size,
 {
   LLPointer<LLImageJ2C> j2c = new LLImageJ2C;
   return calculateHashTexture(buffer, size, asset_md5, j2c);
-}
-
-// Calculates the asset hash of other asset types.
-void calculateHash(LLAssetType::EType type, unsigned char* buffer, size_t size, LLMD5& asset_md5)
-{
-  switch (type)
-  {
-    case LLAssetType::AT_SOUND:
-    {
-      AIOggVorbisVerifier verifier(buffer, size);
-      verifier.calculateHash(asset_md5);
-      break;
-    }
-    default:
-    {
-      // AIFIXME? For now just calculate the hash of the whole thing.
-      asset_md5.update(buffer, size);
-      asset_md5.finalize();
-    }
-  }
 }
 
 } // namespace AIMultiGrid
