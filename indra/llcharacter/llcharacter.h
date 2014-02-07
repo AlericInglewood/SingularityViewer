@@ -255,7 +255,9 @@ public:
 	}*/
 	S32				getVisualParamCount() const { return (S32)mVisualParamIndexMap.size(); }
 	LLVisualParam*	getVisualParam(const char *name);
-
+    //<singu>
+	void			clearVisualParams() { mVisualParamIndexMap.clear(); mVisualParamNameMap.clear(); }
+    //</singu>
 
 	ESex getSex() const			{ return mSex; }
 	void setSex( ESex sex )		{ mSex = sex; }

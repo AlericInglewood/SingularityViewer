@@ -37,7 +37,6 @@
 #include "llstl.h"
 
 #include "llmd5.h"
-#include "aimultigridbackend.h"
 
 const S32 GESTURE_VERSION = 2;
 
@@ -320,7 +319,8 @@ void LLGestureStepAnimation::dump()
 		<< llendl;
 }
 
-void LLGestureStepAnimation::update_hash(LLMD5& asset_md5, AIMultiGrid::LockedBackEnd* back_end)
+void LLGestureStepAnimation::update_hash(LLMD5& asset_md5, AIMultiGrid::LockedBackEnd* back_end,
+    void (*update_hash)(AIMultiGrid::LockedBackEnd*, LLUUID const& uuid, LLMD5& asset_md5))
 {
   S32 const buffer_size = sizeof(U8) + sizeof(U32);
   U8 v[buffer_size];
@@ -329,7 +329,9 @@ void LLGestureStepAnimation::update_hash(LLMD5& asset_md5, AIMultiGrid::LockedBa
   buffer.packU32(mFlags, "");
   asset_md5.update(v, buffer_size);
   asset_md5.update(mAnimName);
-  back_end->updateHash(mAnimAssetID, asset_md5);
+  //back_end->updateHash(mAnimAssetID, asset_md5);
+  // Hack to call something in newview...
+  (*update_hash)(back_end, mAnimAssetID, asset_md5);
 }
 
 //---------------------------------------------------------------------------
@@ -394,7 +396,8 @@ void LLGestureStepSound::dump()
 		<< llendl;
 }
 
-void LLGestureStepSound::update_hash(LLMD5& asset_md5, AIMultiGrid::LockedBackEnd* back_end)
+void LLGestureStepSound::update_hash(LLMD5& asset_md5, AIMultiGrid::LockedBackEnd* back_end,
+    void (*update_hash)(AIMultiGrid::LockedBackEnd*, LLUUID const& uuid, LLMD5& asset_md5))
 {
   S32 const buffer_size = sizeof(U8) + sizeof(U32);
   U8 v[buffer_size];
@@ -403,7 +406,9 @@ void LLGestureStepSound::update_hash(LLMD5& asset_md5, AIMultiGrid::LockedBackEn
   buffer.packU32(mFlags, "");
   asset_md5.update(v, buffer_size);
   asset_md5.update(mSoundName);
-  back_end->updateHash(mSoundAssetID, asset_md5);
+  //back_end->updateHash(mSoundAssetID, asset_md5);
+  // Hack to call something in newview...
+  (*update_hash)(back_end, mSoundAssetID, asset_md5);
 }
 
 //---------------------------------------------------------------------------
@@ -460,7 +465,8 @@ void LLGestureStepChat::dump()
 		<< llendl;
 }
 
-void LLGestureStepChat::update_hash(LLMD5& asset_md5, AIMultiGrid::LockedBackEnd* back_end)
+void LLGestureStepChat::update_hash(LLMD5& asset_md5, AIMultiGrid::LockedBackEnd* back_end,
+    void (*update_hash)(AIMultiGrid::LockedBackEnd*, LLUUID const& uuid, LLMD5& asset_md5))
 {
   S32 const buffer_size = sizeof(U8) + sizeof(U32);
   U8 v[buffer_size];
@@ -543,7 +549,8 @@ void LLGestureStepWait::dump()
 		<< llendl;
 }
 
-void LLGestureStepWait::update_hash(LLMD5& asset_md5, AIMultiGrid::LockedBackEnd* back_end)
+void LLGestureStepWait::update_hash(LLMD5& asset_md5, AIMultiGrid::LockedBackEnd* back_end,
+    void (*update_hash)(AIMultiGrid::LockedBackEnd*, LLUUID const& uuid, LLMD5& asset_md5))
 {
   S32 const buffer_size = sizeof(U8) + sizeof(U32) + sizeof(U32);
   U8 v[buffer_size];

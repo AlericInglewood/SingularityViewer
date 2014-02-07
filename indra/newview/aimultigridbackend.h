@@ -149,6 +149,8 @@ class LockedBackEnd {
 
     // Update asset_md5 with the grid-independent hash value of uuid.
     void updateHash(LLUUID const& uuid, LLMD5& asset_md5);
+    // Static function so this can be called from llcharacter.
+    static void update_hash(AIMultiGrid::LockedBackEnd* self, LLUUID const& uuid, LLMD5& asset_md5) { self->updateHash(uuid, asset_md5); }
 
     // Find the matching UUID for the current grid. If the passed UUID could be found and needs to be changed,
     // changes it (possibly to the same value) and returns true. Otherwise the id is left unchanged and false

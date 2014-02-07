@@ -138,7 +138,7 @@ public:
 	virtual void dump() = 0;
 
     //<singu>
-    virtual void update_hash(LLMD5& asset_hash, AIMultiGrid::LockedBackEnd* back_end) = 0;
+    virtual void update_hash(LLMD5& asset_hash, AIMultiGrid::LockedBackEnd* back_end, void (*update_hash)(AIMultiGrid::LockedBackEnd*, LLUUID const& uuid, LLMD5& asset_md5)) = 0;
     //</singu>
 };
 
@@ -164,7 +164,7 @@ public:
 	virtual void dump();
 
     //<singu>
-    virtual void update_hash(LLMD5& asset_hash, AIMultiGrid::LockedBackEnd* back_end);
+    virtual void update_hash(LLMD5& asset_hash, AIMultiGrid::LockedBackEnd* back_end, void (*update_hash)(AIMultiGrid::LockedBackEnd*, LLUUID const& uuid, LLMD5& asset_md5));
     //</singu>
 
 public:
@@ -191,7 +191,7 @@ public:
 	virtual void dump();
 
     //<singu>
-    virtual void update_hash(LLMD5& asset_hash, AIMultiGrid::LockedBackEnd* back_end);
+    virtual void update_hash(LLMD5& asset_hash, AIMultiGrid::LockedBackEnd* back_end, void (*update_hash)(AIMultiGrid::LockedBackEnd*, LLUUID const& uuid, LLMD5& asset_md5));
     //</singu>
 
 public:
@@ -218,7 +218,7 @@ public:
 	virtual void dump();
 
     //<singu>
-    virtual void update_hash(LLMD5& asset_hash, AIMultiGrid::LockedBackEnd* back_end);
+    virtual void update_hash(LLMD5& asset_hash, AIMultiGrid::LockedBackEnd* back_end, void (*update_hash)(AIMultiGrid::LockedBackEnd*, LLUUID const& uuid, LLMD5& asset_md5));
     //</singu>
 
 public:
@@ -247,7 +247,7 @@ public:
 	virtual void dump();
 
     //<singu>
-    virtual void update_hash(LLMD5& asset_hash, AIMultiGrid::LockedBackEnd* back_end);
+    virtual void update_hash(LLMD5& asset_hash, AIMultiGrid::LockedBackEnd* back_end, void (*update_hash)(AIMultiGrid::LockedBackEnd*, LLUUID const& uuid, LLMD5& asset_md5));
     //</singu>
 
 public:

@@ -35,6 +35,7 @@ set(llcharacter_SOURCE_FILES
     llkeyframewalkmotion.cpp
     llmotion.cpp
     llmotioncontroller.cpp
+    llmultigesture.cpp
     llpose.cpp
     llstatemachine.cpp
     lltargetingmotion.cpp
@@ -63,6 +64,7 @@ set(llcharacter_HEADER_FILES
     llkeyframewalkmotion.h
     llmotion.h
     llmotioncontroller.h
+    llmultigesture.h
     llpose.h
     llstatemachine.h
     lltargetingmotion.h

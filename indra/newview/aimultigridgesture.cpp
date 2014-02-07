@@ -58,7 +58,7 @@ void Gesture::calculateHash(LLMD5& asset_md5)
   asset_md5.update(mReplaceText);
   for (std::vector<LLGestureStep*>::iterator step = mSteps.begin(); step != mSteps.end(); ++step)
   {
-    (*step)->update_hash(asset_md5, mBackEnd);
+    (*step)->update_hash(asset_md5, mBackEnd, &LockedBackEnd::update_hash);
   }
   asset_md5.finalize();
 }
