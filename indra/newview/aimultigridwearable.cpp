@@ -43,14 +43,10 @@ namespace AIMultiGrid {
 
 void Wearable::import(std::istream& stream)
 {
-  LLVOAvatar* avatar = new LLVOAvatar(LLUUID(), LL_PCODE_LEGACY_AVATAR, gAgent.getRegion());
-  avatar->initInstance();
-  avatar->clearVisualParams();
-  if (!importStream(stream, avatar))
+  if (!importStream(stream, NULL))
   {
     THROW_ALERT("AIMultiGrid_Error_decoding_NAME_asset", AIArgs("[NAME]", LLTrans::getString("wearable")));
   }
-  avatar->markDead();
 }
 
 void Wearable::import(unsigned char* buffer, size_t size)

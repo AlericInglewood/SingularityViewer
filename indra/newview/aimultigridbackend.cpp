@@ -487,7 +487,7 @@ bool BackEnd::repair_database(void)
   llinfos << "Locking database for repair..." << llendl;
   BackEndAccess back_end;
   back_end.lock();
-  bool fixed = back_end->repair_database();
+  bool fixed = back_end->repair_database(back_end);
   llinfos << "Repair finished. Unlocking database." << llendl;
   return fixed;
 }
@@ -557,7 +557,7 @@ void BackEnd::switch_path(std::string base_folder)
 	new_back_end.lock();
 	try
 	{
-	  if (new_back_end->repair_database())
+	  if (new_back_end->repair_database(new_back_end))
 	  {
 		AIAlert::add("BackEnd_New_database_repaired");
 	  }
@@ -1367,7 +1367,7 @@ void LockedBackEnd::readAndCacheAllUploadedAssets(void)
   }
 }
 
-bool LockedBackEnd::repair_database(void)
+bool LockedBackEnd::repair_database(BackEndAccess& back_end_access)
 {
   llinfos << "Checking database in \"" << mBackEnd.mBaseFolder << "\"." << llendl;
 
@@ -1397,7 +1397,7 @@ bool LockedBackEnd::repair_database(void)
 
 	// Next we read all asset files.
 	std::map<LLMD5, LLMD5> hash_translation;
-	LLPointer<FrontEnd> front_end = new FrontEnd;
+	LLPointer<FrontEnd> front_end = new FrontEnd(back_end_access);
 	std::string path = gDirUtilp->add(mBackEnd.mBaseFolder, database_structure[fi_assets]);
 	for (int sdi = 0; sdi < 16; ++sdi)
 	{
@@ -1417,7 +1417,7 @@ bool LockedBackEnd::repair_database(void)
 
 		// Pretend we are about to upload this in order to determine the type, real hash value and delta.
 		bool success = front_end->prepare_upload(filepath, false, true);
-		if (!success || !front_end->getAssetHash().isFinalized())
+		if (!success || !front_end->isAssetHashSet())
 		{
 		  if (success)
 		  {

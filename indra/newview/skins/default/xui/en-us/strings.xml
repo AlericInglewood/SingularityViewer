@@ -4451,7 +4451,7 @@ Try enclosing path to the editor with double quotes.
   <!-- AIMultiGrid -->
   <string name="AIProblemWithFile">Problem with file "[FILE]":</string>
   <string name="AIProblemWithFile_ERROR">Problem with file "[FILE]": [ERROR]</string>
-  <string name="AINotNativeMagic">Encountered a file whose file magic could not be recognized as a native format.</string>
+  <string name="AINotNativeMagic">Encountered a file whose file magic could not be recognized as a native format: [FILE]</string>
   <string name="AINoFileExtension">No file extension for file "[FILE]". Please make sure the file has a correct file extension.</string>
   <string name="AICannotOpenTemporarySoundFile">Couldn't open temporary compressed sound file for writing: [FILE]</string>
   <string name="AIUnknownVorbisEncodeFailure">Unknown Vorbis encode failure on: [FILE]</string>

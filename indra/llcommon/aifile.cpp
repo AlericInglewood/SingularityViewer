@@ -49,6 +49,15 @@ AIFile::~AIFile()
   AIFile::close(mFp);
 }
 
+long AIFile::file_size(void) const
+{
+  long pos = ftell(mFp);
+  fseek(mFp, 0, SEEK_END);
+  long size = ftell(mFp);
+  fseek(mFp, pos, SEEK_SET);
+  return size;
+}
+
 // Like THROW_MALERTE but appends "LLFile::strerr(errn) << " (" << errn << ')'" as argument to replace [ERROR].
 #define THROW_ERROR(...) \
   do { \

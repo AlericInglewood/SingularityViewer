@@ -132,7 +132,7 @@ class LockedBackEnd {
         LLMD5 const& sourceMd5 = LLMD5());                  // The md5 of the original source file (if any).
 
 	// Run a consistency on the database and attempt to fix it.
-	bool repair_database(void);
+	bool repair_database(BackEndAccess& back_end_access);
 
 	// Replace the nick in <grid nick="from_gridnick"> with "to_gridnick".
 	bool rename_gridnick(std::string const& from_gridnick, std::string const& to_gridnick);

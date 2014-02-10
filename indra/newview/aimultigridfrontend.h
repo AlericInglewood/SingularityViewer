@@ -140,7 +140,8 @@ class FrontEnd : public AIStateMachine
 
 	// Variable(s) used in the statemachine between states.
 	LLUUID mFoundUUID;				// The UUID of a previously to the current grid uploaded asset.
-	BackEndAccess mBackEndAccess;	// Using this to access the back end will lock the database for any other BackEndAccess, until this object is destructed.
+	BackEndAccess mBackEndAccessObj;// Using this to access the back end will lock the database for any other BackEndAccess, until this object is destructed.
+	BackEndAccess& mBackEndAccess;	// Reference to the actually used BackEndAccess object (which may also be passed to the constructor).
 	bool mLocked;					// Set if this state machine obtained the lock.
 	bool mAbort;					// Set if we need to abort because something went wrong while the database is locked.
 
@@ -181,6 +182,7 @@ class FrontEnd : public AIStateMachine
 
   public:
 	FrontEnd(CWD_ONLY(bool debug = true));
+	FrontEnd(BackEndAccess& back_end CWD_ONLY(, bool debug = true));
 
 	void setSourceFilename(std::string const& source_filename);
 	void setSourceHash(LLMD5 const& source_md5);
@@ -195,13 +197,16 @@ class FrontEnd : public AIStateMachine
 	bool prepare_upload(std::string const& src_filename, bool bulk_upload, bool repair_database = false);
 
 	// Return the filename passed to prepare_upload.
-	std::string const& getSourceFilename(void) const { return mSourceFilename; }
+	std::string const& getSourceFilename(void) const { llassert((mCollectedDataMask & source_filename_bit)); return mSourceFilename; }
 
 	// Return asset type of upload as decoded by prepare_upload.
 	LLAssetType::EType getAssetType(void) const { return mAssetType; }
 
+    // Returns true if the asset hash was successfully calculated (so it is safe to call getAssetHash()).
+    bool isAssetHashSet(void) const { return (mCollectedDataMask & asset_hash_bit) != 0; }
+
 	// Return asset hash of the upload as calculated by prepare_upload.
-	LLMD5 const& getAssetHash(void) const { return mAssetHash; }
+	LLMD5 const& getAssetHash(void) const { llassert((mCollectedDataMask & asset_hash_bit)); return mAssetHash; }
 
 	// Return pointer to delta object, if any, as decoded by prepare_upload.
 	LLPointer<Delta> const& getDelta(void) const { return mDelta; }

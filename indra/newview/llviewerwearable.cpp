@@ -99,6 +99,11 @@ LLWearable::EImportResult LLViewerWearable::importStream( std::istream& input_st
 	// when the wearables are "worn", not loaded. Note state will be restored when this object is destroyed.
 	LLOverrideBakedTextureUpdate stop_bakes(false);
 
+    //<singu>
+    // Note sure this is needed, but since importStream was changed to accept avatarp == NULL,
+    // this would be needed to get the old behaviour.
+    if (!avatarp) return LLWearable::FAILURE;
+    //</singu>
 	LLWearable::EImportResult result = LLWearable::importStream(input_stream, avatarp);
 	if (LLWearable::FAILURE == result) return result;
 	if (LLWearable::BAD_HEADER == result)

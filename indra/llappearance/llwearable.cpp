@@ -187,6 +187,10 @@ void LLWearable::createLayers(S32 te, LLAvatarAppearance *avatarp)
 LLWearable::EImportResult LLWearable::importFile(LLFILE* fp, LLAvatarAppearance* avatarp )
 {
 	llifstream ifs(fp);
+    //<singu>
+    // ImportStream was changed to not return an error when avatarp == NULL.
+    if (!avatarp) return LLWearable::FAILURE;
+    //</singu>
 	return importStream(ifs, avatarp);
 }
 
@@ -206,10 +210,13 @@ LLWearable::EImportResult LLWearable::importStream( std::istream& input_stream, 
 	const S32 MAX_WEARABLE_ASSET_TEXTURES = 100;
 	const S32 MAX_WEARABLE_ASSET_PARAMETERS = 1000;
 
+#if 0
+    // Singu note: avatarp can be NULL now.
 	if(!avatarp)
 	{
 		return LLWearable::FAILURE;
 	}
+#endif
 
 	// read header and version 
 	if (!getNextPopulatedLine(input_stream, buffer, PARSE_BUFFER_SIZE))
@@ -352,7 +359,7 @@ LLWearable::EImportResult LLWearable::importStream( std::istream& input_stream, 
 				<< num_parameters << llendl;
 		return LLWearable::FAILURE;
 	}
-	if( num_parameters != mVisualParamIndexMap.size() )
+	if( num_parameters != mVisualParamIndexMap.size() && avatarp ) // Singu note: if avatarp is NULL then mVisualParamIndexMap wasn't initialized.
 	{
 		llwarns << "Wearable parameter mismatch. Reading in " 
 				<< num_parameters << " from file, but created " 
@@ -440,7 +447,10 @@ LLWearable::EImportResult LLWearable::importStream( std::istream& input_stream, 
 		LLUUID textureid(uuid_buffer);
 		mTEMap[te] = new LLLocalTextureObject(image, textureid);
 		mSavedTEMap[te] = new LLLocalTextureObject(image, textureid);
-		createLayers(te, avatarp);
+        if (avatarp)    // Singu: only call createLayers when avatarp != NULL.
+        {
+		    createLayers(te, avatarp);
+        }
 	}
 
 	// copy all saved param values to working params
@@ -469,7 +479,10 @@ BOOL LLWearable::getNextPopulatedLine(std::istream& input_stream, char* buffer, 
 void LLWearable::setType(LLWearableType::EType type, LLAvatarAppearance *avatarp) 
 { 
 	mType = type; 
-	createVisualParams(avatarp);
+    if (avatarp)    // Singu: Only call createVisualParams when avatarp != NULL.
+    {
+	    createVisualParams(avatarp);
+    }
 }
 
 

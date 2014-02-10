@@ -54,7 +54,7 @@ class Wearable : public LLWearable
     void import(std::istream& stream);
     void import(unsigned char* buffer, size_t size);
 
-    void calculateHash(LLMD5& asset_md5);      // Calculate asset hash.
+    void calculateHash(LLMD5& asset_md5);       // Calculate asset hash.
     void translate(void);                       // Translate the embedded UUIDs to UUIDs of the current grid.
 
   protected:

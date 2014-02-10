@@ -46,6 +46,9 @@ class LL_COMMON_API AIFile
 
 	operator LLFILE* () const { return mFp; }
 
+    // Return the file size.
+    long file_size(void) const;
+
 	// All these functions take UTF8 path/filenames.
 	static LLFILE* fopen(std::string const& filename, char const* accessmode);
 	static void close(LLFILE* file);

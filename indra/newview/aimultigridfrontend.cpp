@@ -67,6 +67,7 @@
 #include "llviewerobjectlist.h"
 #include "llfloaterbvhpreview.h"
 #include "llimagej2c.h"
+#include "aimultigridwearable.h"
 
 // This statemachine replaces Linden Labs 'upload_new_resource'.
 //
@@ -194,7 +195,19 @@ FrontEnd::FrontEnd(CWD_ONLY(bool debug)) :
 #ifdef CWDEBUG
 	AIStateMachine(debug),
 #endif
-	mAssetType(LLAssetType::AT_NONE), mBulkUpload(false), mCollectedDataMask(0), mUploadedAsset(NULL)
+	mAssetType(LLAssetType::AT_NONE), mBulkUpload(false), mCollectedDataMask(0), mUploadedAsset(NULL), mBackEndAccess(mBackEndAccessObj)
+{
+}
+
+FrontEnd::FrontEnd(BackEndAccess& back_end
+#if defined(CWDEBUG) || defined(DEBUG_CURLIO)
+    , bool debug
+#endif
+    ) :
+#if defined(CWDEBUG) || defined(DEBUG_CURLIO)
+	AIStateMachine(debug),
+#endif
+	mAssetType(LLAssetType::AT_NONE), mBulkUpload(false), mCollectedDataMask(0), mUploadedAsset(NULL), mBackEndAccess(back_end)
 {
 }
 
@@ -379,10 +392,16 @@ void FrontEnd::upload_error(char const* label, AIArgs const& args)
 // FrontEnd::setSourceHash once, and FrontEnd::setAssetHash when the upload is committed.
 bool FrontEnd::prepare_upload(std::string const& src_filename, bool bulk_upload, bool repair_database)
 {
-  setSourceFilename(src_filename);
-  mCreatedTempFile = false;
+  // Reset things in case this front end is being reused.
+  mCollectedDataMask = 0;
+  mUploadedAsset = NULL;
+
+  // Initialize.
   mAssetType = LLAssetType::AT_NONE;
+  mCreatedTempFile = false;
   mBulkUpload = bulk_upload;
+  mNativeFormat = false;
+  setSourceFilename(src_filename);
 
   LLSD args;
   std::string error_message;
@@ -394,27 +413,169 @@ bool FrontEnd::prepare_upload(std::string const& src_filename, bool bulk_upload,
   // Try to open the file and read it's magic to determine the type, instead of relying on file extension.
   // Set mAssetType accordingly.
   mAssetType = LLAssetType::AT_NONE;
-  char magic[4];
+  char magic[256];
   int len;
   try
   {
 	AIFile infile(src_filename, "rb");
-	len = fread(magic, 1, 4, infile);
+	len = fread(magic, 1, sizeof(magic), infile);
   }
   catch (AIAlert::Error const& error)
   {
 	AIAlert::add_modal("AIProblemWithFile", AIArgs("[FILE]", src_filename), error);
 	return false;
   }
+  // If the file is shorter than 4 bytes, then it is nothing (AT_NONE).
   // Note: tga files cannot be recognized by their first 4 bytes.
-  if (len == 4  && exten != "tga")
+  if (len >= 4  && exten != "tga")
   {
+    bool maybe_lsl_text = false;          // This is set when we detect LSL text but we're not sure about it.
+    int const number_of_keywords = 10;
+    char const* keywords[number_of_keywords] = { "default", "state", "float", "integer", "key", "list", "quaternion", "rotation", "string", "vector" };
+    int remaining_len = len;
+    int kw, pos;
+    char* data;
+    // A lot of asset and source files could also be LSL text, because that can start with a function name.
+    // In order to tell the difference we have to start with detecting LSL text and be very demanding,
+    // so that we won't think it is LSL text when in fact it is something else.
+    int wsskip = 0; // The position of the first non-whitespace character.
+    // Start with skipping leading white-space.
+    while (wsskip < len && (magic[wsskip] == '\n' || magic[wsskip] == '\t' || magic[wsskip] == ' '))
+    {
+      ++wsskip;
+    }
+    // If there is less than 4 bytes left after that (meaning we saw leading white space), then assume it is LSL text.
+    if (len - wsskip < 4)
+    {
+      goto detected_lsl_text;
+    }
+    // Let data point to the first non-whitespace character.
+    data = &magic[wsskip];
+    // If the file starts with a C-style comment, then it has to be LSL text.
+    if (data[0] == '/' && (data[1] == '/' || data[1] == '*'))
+    {
+      goto detected_lsl_text;
+    }
+    // Test for LSL keywords.
+    remaining_len -= wsskip;
+    kw = 0;
+    while (kw < 10)
+    {
+      if (strncmp(data, keywords[kw], remaining_len) == 0)
+      {
+        // Every other asset file starts with well-defined magic, not equal to (the first 4 characters of) any of these keywords.
+        goto detected_lsl_text;
+      }
+      ++kw;
+    }
+    // Test for user defined functions without return type.
+    // If the file doesn't start with white space in this case, then we can never be sure this is LSL text.
+    maybe_lsl_text = !wsskip;
+    // Function name.
+    pos = 0;
+    while (pos < remaining_len && (std::isalnum(data[pos]) || data[pos] == '_'))
+    {
+      ++pos;
+    }
+    if (pos == 0)
+    {
+      // A function name exists of at least one character.
+      goto not_lsl_text;
+    }
+    // If the opening paren (or following white space) happens within the first four bytes,
+    // then it can't be anything but LSL text (I never saw a bitmap that started with "BM(").
+    maybe_lsl_text = !wsskip && pos >= 4;
+    // Gobble up white space.
+    while (pos < remaining_len && (data[pos] == '\n' || data[pos] == '\t' || data[pos] == ' '))
+    {
+      ++pos;
+    }
+    // Nothing more to test?
+    if (pos == remaining_len)
+    {
+      // If this started with white space then it has to be LSL text really (otherwise it's just damn likely).
+      goto detected_lsl_text;
+    }
+    // If next we see a C-style comment, then assume it is LSL text (ugh)...
+    if (pos + 1 < remaining_len && data[pos] == '/' && (data[pos + 1] == '/' || data[pos + 1] == '*'))
+    {
+      goto detected_lsl_text;
+    }
+    // Otherwise, the next character must be the opening parenthesis of a function declaration.
+    if (data[pos] != '(')
+    {
+      goto not_lsl_text;
+    }
+    // Skip the paren and following white space.
+    do
+    {
+      ++pos;
+    }
+    while (pos < remaining_len && (data[pos] == '\n' || data[pos] == '\t' || data[pos] == ' '));
+    remaining_len -= pos;
+    // If now there is less nothing remaining then we still can't be 100% sure,
+    // but it starts to be extremely likely that this is not any of the other asset types...
+    // Otherwise we demand that there is a closing paren, or a type.
+    if (remaining_len == 0 || data[pos] == ')')
+    {
+      goto detected_lsl_text;
+    }
+    kw = 2;     // Skip 'default' and 'state'.
+    while (kw < 10)
+    {
+      if (strncmp(data, keywords[kw], remaining_len) == 0)
+      {
+        goto detected_lsl_text;
+      }
+      ++kw;
+    }
+not_lsl_text:
+    maybe_lsl_text = false;
+    goto lsl_text_done;
+detected_lsl_text:
+    if (!maybe_lsl_text)
+    {
+      mAssetType = LLAssetType::AT_LSL_TEXT;
+    }
+lsl_text_done:
+    if (mAssetType == LLAssetType::AT_LSL_TEXT)
+    {
+      // Apparently this is 100% sure LSL text!
+      mNativeFormat = true;
+    }
+    // Otherwise, see if it maybe it looks like another type.
+    // First try to detect the text based assets.
+    else if (strncmp(magic, "Linden text version", 19) == 0)        // Note cards start with 'Linden text version 2'.
+    {
+      // Most likely a note card.
+      mAssetType = LLAssetType::AT_NOTECARD;
+	  mNativeFormat = true;
+    }
+    else if (strncmp(magic, "Landmark version", 16) == 0)           // Landmarks start with 'Landmark version 2'.
+    {
+      // Most likely a landmark.
+      mAssetType = LLAssetType::AT_LANDMARK;
+	  mNativeFormat = true;
+    }
+    else if (std::isdigit(magic[0]) && magic[1] == '\n' && std::isdigit(magic[2]) &&
+             (std::isdigit(magic[3]) || magic[3] == '\n'))  // Gestures start with "2\n<key>\n" where <key> is an U8 number.
+    {
+      // Most likely a gesture.
+      mAssetType = LLAssetType::AT_GESTURE;
+	  mNativeFormat = true;
+    }
+    else if (strncmp(magic, "LLWearable version", 18) == 0)         // Body parts and clothing start with 'LLWearable version 22'.
+    {
+      // The only way to find out what this is is to open the file again and read more.
+      // Just set the type to body part because both are treated in the same way anyway.
+      mAssetType = LLAssetType::AT_BODYPART;        // or AT_CLOTHING.
+	  mNativeFormat = true;
+    }
 	// Do a best guess (being optimistic) based on the magic (using http://www.garykessler.net/library/file_sigs.html).
-	if (strncmp(magic, "RIFF", 4) == 0)
+    else if (strncmp(magic, "RIFF", 4) == 0)
 	{
 	  // Possibly a RIFF/WAVE file.
 	  mAssetType = LLAssetType::AT_SOUND;
-	  mNativeFormat = false;
 	}
 	else if (strncmp(magic, "OggS", 4) == 0)
 	{
@@ -426,21 +587,18 @@ bool FrontEnd::prepare_upload(std::string const& src_filename, bool bulk_upload,
 	{
 	  // Possibly a Portable Network Graphics file file.
 	  mAssetType = LLAssetType::AT_TEXTURE;
-	  mNativeFormat = false;
 	  mCodec = IMG_CODEC_PNG;
 	}
 	else if (strncmp(magic, "BM", 2) == 0)
 	{
 	  // Possibly a Windows (.bmp), or Device-Independent (.dib), Bitmap image.
 	  mAssetType = LLAssetType::AT_TEXTURE;
-	  mNativeFormat = false;
 	  mCodec = IMG_CODEC_BMP;
 	}
 	else if (strncmp(magic, "\377\330\377\340", 4) == 0)
 	{
 	  // Possibly a JPEG/JFIF file.
 	  mAssetType = LLAssetType::AT_TEXTURE;
-	  mNativeFormat = false;
 	  mCodec = IMG_CODEC_JPEG;
 	}
 	else if (strncmp(magic, "\377O\377Q", 4) == 0)
@@ -450,11 +608,10 @@ bool FrontEnd::prepare_upload(std::string const& src_filename, bool bulk_upload,
 	  mNativeFormat = true;
 	  mCodec = IMG_CODEC_J2C;
 	}
-	else if (strncmp(magic, "HIER", 4) == 0)
+	else if (strncmp(magic, "HIERARCHY", 9) == 0)
 	{
 	  // Might be a BioVision Hierarchy (bvh) file, which starts with the word HIERARCHY.
 	  mAssetType = LLAssetType::AT_ANIMATION;
-	  mNativeFormat = false;
 	}
 	else if (strncmp(magic, "\001\000\000\000", 4) == 0 ||		// KEYFRAME_MOTION_VERSION = 1, KEYFRAME_MOTION_SUBVERSION = 0
 			 strncmp(magic, "\000\000\001\000", 4) == 0)		// Version 0, subversion 1 (old version)
@@ -463,18 +620,49 @@ bool FrontEnd::prepare_upload(std::string const& src_filename, bool bulk_upload,
 	  mAssetType = LLAssetType::AT_ANIMATION;
 	  mNativeFormat = true;
 	}
-  }
-  if (repair_database && !mNativeFormat)
-  {
-	AIAlert::add_modal("AINotNativeMagic");
-	return false;
+    if (maybe_lsl_text)
+    {
+      if (mAssetType == LLAssetType::AT_NONE ||
+          (repair_database && !mNativeFormat))      // There are no non-native formats in the asset database.
+      {
+        // We couldn't detect any other type, so it's safe to assume it's indeed LSL text.
+        mAssetType = LLAssetType::AT_LSL_TEXT;
+        mNativeFormat = true;
+      }
+      else
+      {
+        // Ok, we have a problem -- this looked like LSL text, but it also looks like another type!
+        // I don't believe this is possible except for RIFF files that might start like 'RIFF(',
+        // although even that is already pretty unlikely to be followed by '//', an lsl type or ')'.
+        // In other words, this is VERY likely an LSL text file. Therefore we'll just look at
+        // the first 256 bytes and "only" demand that 90% looks like ASCII and is printable.
+        int printable_ascii = 0;
+        for (int i = 0; i < len; ++i)
+        {
+          if ((magic[i] & 0x80) == 0 && std::isprint(magic[i]))
+          {
+            ++printable_ascii;
+          }
+        }
+        if (printable_ascii * 1.1 >= len)
+        {
+          mAssetType = LLAssetType::AT_LSL_TEXT;
+        }
+      }
+    }
   }
   if (mAssetType == LLAssetType::AT_NONE)
   {
+    if (repair_database)
+    {
+      // Failed to determine the type; move the asset to lost+found. This very abnormal, so print a warning.
+      llwarns << "Failed to determine the asset type of \"" << src_filename << "\". This is not normal." << llendl;
+      return false;
+    }
 	// The magic failed; use the file extension.
 	if (exten.empty())
 	{
-	  AIAlert::add_modal("AINoFileExtension", AIArgs("[FILE]", gDirUtilp->getBaseFileName(src_filename)));
+      AIAlert::add_modal("AINoFileExtension", AIArgs("[FILE]", gDirUtilp->getBaseFileName(src_filename)));
 	  return false;
 	}
 	else if (mCodec != IMG_CODEC_INVALID)
@@ -486,7 +674,6 @@ bool FrontEnd::prepare_upload(std::string const& src_filename, bool bulk_upload,
 	else if (exten == "wav")
 	{
 	  mAssetType = LLAssetType::AT_SOUND;
-	  mNativeFormat = false;
 	}
 	else if (exten == "ogg")
 	{
@@ -496,7 +683,6 @@ bool FrontEnd::prepare_upload(std::string const& src_filename, bool bulk_upload,
 	else if (exten == "bvh")
 	{
 	  mAssetType = LLAssetType::AT_ANIMATION;
-	  mNativeFormat = false;
 	}
 	else if (exten == "anim" || exten == "animatn")
 	{
@@ -513,6 +699,11 @@ bool FrontEnd::prepare_upload(std::string const& src_filename, bool bulk_upload,
 
   if (!mNativeFormat)
   {
+    if (repair_database)
+    {
+      AIAlert::add_modal("AINotNativeMagic", AIArgs("[FILE]", src_filename));
+      return false;
+    }
 	mTmpFilename = gDirUtilp->getTempFilename();
   }
 
@@ -525,7 +716,10 @@ bool FrontEnd::prepare_upload(std::string const& src_filename, bool bulk_upload,
 	  upload_error("AIProblemWithFile_ERROR", AIArgs("[FILE]", src_filename)("[ERROR]", LLImage::getLastError()));
 	  return false;
 	}
-	setSourceHash(md5);
+    if (!repair_database)
+    {
+      setSourceHash(md5);
+    }
 	setAssetHash(md5, delta);
   }
   else if (mAssetType == LLAssetType::AT_TEXTURE)
@@ -569,7 +763,10 @@ bool FrontEnd::prepare_upload(std::string const& src_filename, bool bulk_upload,
 	  upload_error("AIProblemWithFile", AIArgs("[FILE]", src_filename), error);
 	  return false;
 	}
-	setSourceHash(md5);
+    if (!repair_database)
+    {
+      setSourceHash(md5);
+    }
 	setAssetHash(md5);
   }
   else if (mAssetType == LLAssetType::AT_SOUND)
@@ -626,6 +823,64 @@ bool FrontEnd::prepare_upload(std::string const& src_filename, bool bulk_upload,
 	}
 	//else
 	// Non-native non-bulk sets the hash values and delta from LLFloaterBvhPreview.
+  }
+  else
+  {
+    llassert(mNativeFormat);
+    bool obtained_lock = mBackEndAccess.lock();
+    LLMD5 asset_md5;
+    try
+    {
+      AIFile infile(src_filename, "rb");
+      long size = infile.file_size();
+      // Note this file is not binary (those assets were handled above); so the file size is likely pretty small.
+      if (size > 1000000)
+      {
+        llwarns << "Not allocating " << size << " bytes for file \"" << src_filename << "\" of type " << LLAssetType::lookup(mAssetType) << '.' << llendl;
+        if (obtained_lock)
+        {
+          mBackEndAccess.unlock();
+        }
+        return false;
+      }
+      std::vector<unsigned char> buffer(size);
+      size_t len = fread((char*)&buffer[0], 1, size, infile);
+      if (len != size)
+      {
+        llwarns << "Short read of file \"" << src_filename << "\" with size " << size << ": could only read " << len << " bytes!" << llendl;
+        if (obtained_lock)
+        {
+          mBackEndAccess.unlock();
+        }
+        return false;
+      }
+      // Now that we read the file into memory, fix the asset type for clothing.
+      if (mAssetType == LLAssetType::AT_BODYPART)
+      {
+        Wearable wearable(mBackEndAccess.operator->());
+        wearable.import(&buffer[0], size);
+        mAssetType = wearable.getAssetType();
+        wearable.calculateHash(asset_md5);
+      }
+      else
+      {
+        mBackEndAccess->calculateHash(mAssetType, &buffer[0], size, asset_md5);
+      }
+    }
+    catch (AIAlert::Error const& error)
+    {
+      AIAlert::add_modal("AIProblemWithFile", AIArgs("[FILE]", src_filename), error);
+      return false;
+    }
+    if (obtained_lock)
+    {
+      mBackEndAccess.unlock();
+    }
+    if (!repair_database)
+    {
+      setSourceHash(asset_md5);
+    }
+	setAssetHash(asset_md5);
   }
 
   return true;
@@ -794,7 +1049,7 @@ bool FrontEnd::checkPreviousUpload(std::string& name, std::string& description, 
   // Should only be called for one-on-one asset types.
   llassert(mAssetType != LLAssetType::AT_ANIMATION && mAssetType != LLAssetType::AT_TEXTURE);
 
-  bool was_locked = mBackEndAccess.lock();
+  bool obtained_lock = mBackEndAccess.lock();
   find_previous_uploads();
   bool found = false;
   if (mUploadedAsset && !mBulkUpload)
@@ -815,7 +1070,7 @@ bool FrontEnd::checkPreviousUpload(std::string& name, std::string& description, 
 	  }
 	}
   }
-  if (!was_locked)
+  if (obtained_lock)
   {
 	mBackEndAccess.unlock();
   }
@@ -845,11 +1100,11 @@ struct checkPreviousUploads_sortPred
 std::vector<AIUploadedAsset*> FrontEnd::checkPreviousUploads(void)
 {
   std::vector<AIUploadedAsset*> result;
-  bool was_locked = mBackEndAccess.lock();
+  bool obtained_lock = mBackEndAccess.lock();
   find_previous_uploads();
   result = mUploadedAssets;
   std::stable_sort(result.begin(), result.end(), checkPreviousUploads_sortPred(gHippoGridManager->getConnectedGrid()->getGridNick()));
-  if (!was_locked)
+  if (obtained_lock)
   {
 	mBackEndAccess.unlock();
   }
