@@ -545,13 +545,13 @@ lsl_text_done:
     }
     // Otherwise, see if it maybe it looks like another type.
     // First try to detect the text based assets.
-    else if (strncmp(magic, "Linden text version", 19) == 0)        // Note cards start with 'Linden text version 2'.
+    else if (len >= 19 && strncmp(magic, "Linden text version", 19) == 0)        // Note cards start with 'Linden text version 2'.
     {
       // Most likely a note card.
       mAssetType = LLAssetType::AT_NOTECARD;
 	  mNativeFormat = true;
     }
-    else if (strncmp(magic, "Landmark version", 16) == 0)           // Landmarks start with 'Landmark version 2'.
+    else if (len >= 16 && strncmp(magic, "Landmark version", 16) == 0)           // Landmarks start with 'Landmark version 2'.
     {
       // Most likely a landmark.
       mAssetType = LLAssetType::AT_LANDMARK;
@@ -564,7 +564,7 @@ lsl_text_done:
       mAssetType = LLAssetType::AT_GESTURE;
 	  mNativeFormat = true;
     }
-    else if (strncmp(magic, "LLWearable version", 18) == 0)         // Body parts and clothing start with 'LLWearable version 22'.
+    else if (len >= 18 && strncmp(magic, "LLWearable version", 18) == 0)         // Body parts and clothing start with 'LLWearable version 22'.
     {
       // The only way to find out what this is is to open the file again and read more.
       // Just set the type to body part because both are treated in the same way anyway.
@@ -608,7 +608,7 @@ lsl_text_done:
 	  mNativeFormat = true;
 	  mCodec = IMG_CODEC_J2C;
 	}
-	else if (strncmp(magic, "HIERARCHY", 9) == 0)
+	else if (len >= 9 && strncmp(magic, "HIERARCHY", 9) == 0)
 	{
 	  // Might be a BioVision Hierarchy (bvh) file, which starts with the word HIERARCHY.
 	  mAssetType = LLAssetType::AT_ANIMATION;
