@@ -279,7 +279,9 @@ bool LLAppViewerLinux::initSLURLHandler()
 		return false; // failed
 	}
 
+#if !GLIB_CHECK_VERSION(2, 35, 0)   // Singu note: This is no longer needed (and has been deprecated) for versions >= 2.35.
 	g_type_init();
+#endif
 
 	//ViewerAppAPI *api_server = (ViewerAppAPI*)
 	g_object_new(viewerappapi_get_type(), NULL);
@@ -299,8 +301,10 @@ bool LLAppViewerLinux::sendURLToOtherInstance(const std::string& url)
 	DBusGConnection *bus;
 	GError *error = NULL;
 
+#if !GLIB_CHECK_VERSION(2, 35, 0)   // Singu note: This is no longer needed (and has been deprecated) for versions >= 2.35.
 	g_type_init();
-	
+#endif
+
 	bus = lldbus_g_bus_get (DBUS_BUS_SESSION, &error);
 	if (bus)
 	{
