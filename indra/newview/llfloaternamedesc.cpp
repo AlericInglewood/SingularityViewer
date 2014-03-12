@@ -99,61 +99,74 @@ void LLFloaterNameDesc::check_previous_uploads_and_set_name_description_and_uuid
 
 	for(U32 sleeptime = 100;; sleeptime <<= 2)
 	{
-	  try
-	  {
-		// Get previous name and description iff this asset was uploaded before to any grid,
-		// but sets mExistingUUID and returns true only if it was uploaded to the current grid!
-		if (is_one_on_one)
-		{
-		  mUploadedBefore = mFrontEnd->checkPreviousUpload(asset_name, asset_description, mExistingUUID);
-		}
-		else
-		{
-		  mPreviousUploads = mFrontEnd->checkPreviousUploads();
-		  bool first = true, last = false;
-		  for (std::vector<AIUploadedAsset*>::iterator preset = mPreviousUploads.begin(); preset != mPreviousUploads.end() && !last; ++preset)
-		  {
-			AIUploadedAsset_rat ua_r(**preset);
-			LLUUID const* uuid = ua_r->find_uuid();
-			if (uuid)
-			{
-			  mUploadedBefore = true;
-			  if (ua_r->getDelta()->equals(mFrontEnd->getDelta()))
-			  {
-				mExistingUUID = *uuid;
-				last = true;				// Mark that we found an exact match.
-			  }
-			}
-			// Use name and description of the first entry (which will be of the last upload
-			// to this grid, or the last upload to any grid if this source wasn't uploaded
-			// to this grid before). However, if the current settings (delta) are exactly the
-			// same as some previous upload to this grid then use the name and description that
-			// was used for that upload.
-			if (first || last)
-			{
-			  first = false;
-			  asset_name = ua_r->getName();
-			  asset_description = ua_r->getDescription();
-			}
-		  }
-		}
-	  }
-	  catch (AIMultiGrid::DatabaseLocked&)
-	  {
-		if (sleeptime < 2000)
-		{
-		  llwarns << "checkPreviousUpload() failed because the database is locked!" << llendl;
-		  // Ugh! Lets try again a few times even though that freezes the viewer for 3 seconds.
-		  ms_sleep(sleeptime);
-		  continue;
-		}
-		AIAlert::add_modal("AIMultiGridDatabaseLocked");
-	  }
-	  catch (AIAlert::Error const& error)
-	  {
-		AIAlert::add_modal(error, "AIMultiGridAbortUploadRepairDatabase");
-	  }
-	  break;
+      try
+      {
+        AIMultiGrid::DatabaseFileLock file_lock;     // This might throw AIMultiGridDatabaseLocked.
+        AIMultiGrid::DatabaseThreadLock thread_lock(file_lock);
+        // Lock the database at thread level with a trylock(), so that we can bail out instead of hang if we can't get ownership.
+        // This should normally never fail, there won't be another thread that has this lock.
+        if (!thread_lock.trylock())
+        {
+          if (sleeptime < 2000)
+          {
+            llwarns << "Sleeping " << sleeptime << " ms because the database is locked by another thread?!" << llendl;
+            // Ugh! Lets try again a few times even though that freezes the viewer for up to 3 seconds.
+            ms_sleep(sleeptime);
+            continue;
+          }
+          THROW_MALERT("AIMultiGridDatabaseLocked");
+        }
+
+        try
+        {
+          // Get previous name and description iff this asset was uploaded before to any grid,
+          // but sets mExistingUUID and returns true only if it was uploaded to the current grid!
+          if (is_one_on_one)
+          {
+            mUploadedBefore = mFrontEnd->checkPreviousUpload(asset_name, asset_description, mExistingUUID);
+          }
+          else
+          {
+            mPreviousUploads = mFrontEnd->checkPreviousUploads();
+            bool first = true, last = false;
+            for (std::vector<AIUploadedAsset*>::iterator preset = mPreviousUploads.begin(); preset != mPreviousUploads.end() && !last; ++preset)
+            {
+              AIUploadedAsset_rat ua_r(**preset);
+              LLUUID const* uuid = ua_r->find_uuid();
+              if (uuid)
+              {
+                mUploadedBefore = true;
+                if (ua_r->getDelta()->equals(mFrontEnd->getDelta()))
+                {
+                  mExistingUUID = *uuid;
+                  last = true;				// Mark that we found an exact match.
+                }
+              }
+              // Use name and description of the first entry (which will be of the last upload
+              // to this grid, or the last upload to any grid if this source wasn't uploaded
+              // to this grid before). However, if the current settings (delta) are exactly the
+              // same as some previous upload to this grid then use the name and description that
+              // was used for that upload.
+              if (first || last)
+              {
+                first = false;
+                asset_name = ua_r->getName();
+                asset_description = ua_r->getDescription();
+              }
+            }
+          }
+        }
+        catch (AIAlert::Error const& error)
+        {
+          AIAlert::add_modal(error, "AIMultiGridAbortUploadRepairDatabase");
+        }
+        break;
+      }
+      catch (AIAlert::Error const& error)
+      {
+        // Locking of the database failed. Show error to the user, but continue with the upload.
+        AIAlert::add(error);
+      }
 	}
 
 	if (asset_name.empty())

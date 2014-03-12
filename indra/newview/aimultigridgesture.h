@@ -33,20 +33,19 @@
 
 #include <iosfwd>
 #include "llmultigesture.h"
+#include "aimultigridbackendaccess.h"
 
 class LLMD5;
 
 namespace AIMultiGrid {
 
-class LockedBackEnd;
-
 class Gesture : public LLMultiGesture
 {
   private:
-    LockedBackEnd* mBackEnd;                    // Pointer to the underlaying database.
+    BackEndAccess mBackEndAccess;           // Pointer to the underlaying database.
 
   public:
-    Gesture(LockedBackEnd* back_end) : mBackEnd(back_end) { }
+    Gesture(BackEndAccess const& back_end_access) : mBackEndAccess(back_end_access) { }
 
     void import(std::istream& stream);
     void import(unsigned char* buffer, size_t size);

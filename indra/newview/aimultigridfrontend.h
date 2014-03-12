@@ -140,8 +140,8 @@ class FrontEnd : public AIStateMachine
 
 	// Variable(s) used in the statemachine between states.
 	LLUUID mFoundUUID;				// The UUID of a previously to the current grid uploaded asset.
-	BackEndAccess mBackEndAccessObj;// Using this to access the back end will lock the database for any other BackEndAccess, until this object is destructed.
-	BackEndAccess& mBackEndAccess;	// Reference to the actually used BackEndAccess object (which may also be passed to the constructor).
+	DatabaseFileLock mFileLock;     // Creation of a FrontEnd causes the database to be locked on the file level.
+	LLPointer<DatabaseThreadLock> mThreadLock; // The thread lock is dynamically locked/unlocked.
 	bool mLocked;					// Set if this state machine obtained the lock.
 	bool mAbort;					// Set if we need to abort because something went wrong while the database is locked.
 
@@ -154,11 +154,11 @@ class FrontEnd : public AIStateMachine
 	// Same, but also calculate the source hash.
 	static LLPointer<LLImageRaw> createRawImage(std::string const& filename, U8 const codec, LLMD5& source_md5);
 	// Convert 'raw_image' to a J2C asset and write it to 'out_filename'. Calculates the asset hash and sets 'delta'.
-	bool createJ2CUploadFile(LLPointer<LLImageRaw> const& raw_image, LLMD5& asset_md5, LLPointer<AIMultiGrid::TextureDelta>& delta);
+	bool createJ2CUploadFile(LLPointer<LLImageRaw> const& raw_image, LLMD5& asset_md5, LLPointer<TextureDelta>& delta);
 	// This used to be LLViewerTextureList::convertToUploadFile. Converts 'raw_image' to a J2C image.
 	static LLPointer<LLImageJ2C> convertToUploadFile(LLPointer<LLImageRaw> raw_image);
 	// This used to be LLViewerTextureList::verifyUploadFile.
-	static bool verifyUploadFile(std::string const& out_filename, bool native, LLMD5& md5, LLPointer<AIMultiGrid::TextureDelta>& delta);
+	static bool verifyUploadFile(std::string const& out_filename, bool native, LLMD5& md5, LLPointer<TextureDelta>& delta);
 
 	//-------------------------------------------------------------------------
 
@@ -167,6 +167,7 @@ class FrontEnd : public AIStateMachine
 
 	enum front_end_state_type {
 	  FrontEnd_lockDatabase = direct_base_type::max_state,
+      FrontEnd_lockedDatabase,
 	  FrontEnd_findUploadedAsset,
 	  FrontEnd_uploadedAssetFound,
 	  FrontEnd_fetchInventory,
@@ -182,7 +183,6 @@ class FrontEnd : public AIStateMachine
 
   public:
 	FrontEnd(CWD_ONLY(bool debug = true));
-	FrontEnd(BackEndAccess& back_end CWD_ONLY(, bool debug = true));
 
 	void setSourceFilename(std::string const& source_filename);
 	void setSourceHash(LLMD5 const& source_md5);

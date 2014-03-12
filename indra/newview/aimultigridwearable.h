@@ -33,6 +33,7 @@
 
 #include <iosfwd>
 #include "llwearable.h"
+#include "aimultigridbackendaccess.h"
 
 class LLMD5;
 
@@ -44,11 +45,11 @@ class LockedBackEnd;
 class Wearable : public LLWearable
 {
   private:
-    LockedBackEnd* mBackEnd;                    // Pointer to the underlaying database.
+    BackEndAccess mBackEnd;                     // Pointer to the underlaying database.
 
   public:
-    // Create a Wearable using a specific (already locked) BackEndAccess object.
-    Wearable(LockedBackEnd* back_end) : mBackEnd(back_end) { }
+    // Create a Wearable.
+    Wearable(BackEndAccess const& back_end) : mBackEnd(back_end) { }
 
     // Initialize the object by reading an asset file.
     void import(std::istream& stream);

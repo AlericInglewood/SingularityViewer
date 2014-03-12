@@ -37,7 +37,6 @@
 #include <map>
 #include <vector>
 #include <deque>
-#include <boost/interprocess/sync/file_lock.hpp>
 #include "aiuploadedasset.h"	// AIUploadedAsset, AIUploadedAsset_wat, GridUUID, LLAssetType::EType, LLMD5, LLUUID, LLDate, std::set, std::string
 #include "aimultigriddelta.h"	// Delta
 #include "aicondition.h"		// AICondition
@@ -132,7 +131,7 @@ class LockedBackEnd {
         LLMD5 const& sourceMd5 = LLMD5());                  // The md5 of the original source file (if any).
 
 	// Run a consistency on the database and attempt to fix it.
-	bool repair_database(BackEndAccess& back_end_access);
+	bool repair_database(void);
 
 	// Replace the nick in <grid nick="from_gridnick"> with "to_gridnick".
 	bool rename_gridnick(std::string const& from_gridnick, std::string const& to_gridnick);
@@ -189,8 +188,6 @@ class BackEnd : public LLSingleton<BackEnd>
   private:
 	bool mInitialized;					// Set to true when init() is called and this class was initialized.
 	std::string mBaseFolder;
-	lock_condition_t mLockCondition;	// Accessed directly by FrontEnd.
-	boost::interprocess::file_lock mFLock;
 
 	static gAssets_t gAssets;
 	static gSources_t gSources;
@@ -200,12 +197,6 @@ class BackEnd : public LLSingleton<BackEnd>
   private:
 	friend class BackEndAccess;
 	LockedBackEnd mLocked;				// May only be accessed through BackEndAccess.
-
-	// Initialize mFlock.
-	void createFileLock(void);
-
-	void lock(void) { mFLock.lock(); }
-	void unlock(void) { mFLock.unlock(); }
 
   public:
 	BackEnd(void) : mInitialized(false), mLocked(*this) { }
@@ -243,6 +234,7 @@ class BackEnd : public LLSingleton<BackEnd>
 	std::string getUploadedAssetFilename(LLMD5 const& assetMd5) const;
 	std::string getUUIDFilename(LLUUID const& id) const;
 	std::string getSourceFilename(LLMD5 const& sourceMd5) const;
+  public:
 	std::string getJournalFilename(char const* filename) const;
 };
 

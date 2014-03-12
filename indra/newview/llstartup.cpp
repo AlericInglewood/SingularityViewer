@@ -61,7 +61,6 @@
 #include "floaterao.h"
 #include "aifilepicker.h"
 #include "aimultigridbackend.h"
-#include "aimultigridbackendaccess.h"
 
 #include "llares.h"
 #include "llavatarnamecache.h"
@@ -768,7 +767,6 @@ bool idle_startup()
 
 		gDirUtilp->setUploadsDir(gSavedSettings.getString("AIMultiGridBaseFolder"));
 		AIMultiGrid::BackEnd::instance().init();
-		AIMultiGrid::BackEndAccess::init();
 
 		if (LLTimer::knownBadTimer())
 		{

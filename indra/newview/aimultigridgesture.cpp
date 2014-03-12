@@ -58,7 +58,7 @@ void Gesture::calculateHash(LLMD5& asset_md5)
   asset_md5.update(mReplaceText);
   for (std::vector<LLGestureStep*>::iterator step = mSteps.begin(); step != mSteps.end(); ++step)
   {
-    (*step)->update_hash(asset_md5, mBackEnd, &LockedBackEnd::update_hash);
+    (*step)->update_hash(asset_md5, mBackEndAccess.operator->(), &LockedBackEnd::update_hash);
   }
   asset_md5.finalize();
 }
@@ -72,13 +72,13 @@ void Gesture::translate(void)
       case STEP_ANIMATION:
       {
         LLGestureStepAnimation* animation_step = static_cast<LLGestureStepAnimation*>(*step);
-        mBackEnd->translate(animation_step->mAnimAssetID);
+        mBackEndAccess->translate(animation_step->mAnimAssetID);
         break;
       }
       case STEP_SOUND:
       {
         LLGestureStepSound* sound_step = static_cast<LLGestureStepSound*>(*step);
-        mBackEnd->translate(sound_step->mSoundAssetID);
+        mBackEndAccess->translate(sound_step->mSoundAssetID);
         break;
       }
       default:

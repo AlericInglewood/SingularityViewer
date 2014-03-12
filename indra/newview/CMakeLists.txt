@@ -90,7 +90,6 @@ set(viewer_SOURCE_FILES
     aimultigridnotecard.cpp
     aimultigridgesture.cpp
     aiuploadedasset.cpp
-    aimultigridfileupload.cpp
     aihttpview.cpp
     aixmllindengenepool.cpp
     NACLantispam.cpp
@@ -619,7 +618,6 @@ set(viewer_HEADER_FILES
     aimultigridnotecard.h
     aimultigridgesture.h
     aiuploadedasset.h
-    aimultigridfileupload.h
     aihttpview.h
     aixmllindengenepool.h
     NACLantispam.h

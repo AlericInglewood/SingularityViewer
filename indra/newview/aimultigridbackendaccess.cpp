@@ -1,8 +1,8 @@
 /**
  * @file aimultigridbackendaccess.cpp
- * @brief Multi grid support.
+ * @brief Implementation of Database*Lock* and BackEndAccess.
  *
- * Copyright (c) 2013, Aleric Inglewood.
+ * Copyright (c) 2014, Aleric Inglewood.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,176 +24,262 @@
  * CHANGELOG
  *   and additional copyright holders.
  *
- *   11/10/2013
+ *   14/02/2014
  *   Initial version, written by Aleric Inglewood @ SL
  */
 
-#include "llviewerprecompiledheaders.h"
-#include <cstdio>
-#include "llapr.h"
-#include "llapp.h"
-#include "aifile.h"
+#include "linden_common.h"
 #include "aimultigridbackendaccess.h"
-#include "aimultigridbackend.h"
 #include "aialert.h"
+#include "aimultigridbackend.h"
+#include "aifile.h"
 
 namespace AIMultiGrid {
 
-//-----------------------------------------------------------------------------
-// BackEndAccess
-
-apr_thread_mutex_t* BackEndAccess::gMutex;
-bool BackEndAccess::gLockObtained;
-
-//static
-void BackEndAccess::init(void)
+DatabaseFileLockSingleton::DatabaseFileLockSingleton(void)
 {
-  apr_thread_mutex_create(&gMutex, APR_THREAD_MUTEX_UNNESTED, LLAPRRootPool::get()());
+  data_wat data_w(mData);
+  data_w->mRefCount = 0;
 }
 
-BackEndAccess::BackEndAccess(void) : mMutex(NULL), mLockObtained(false)
+DatabaseFileLockSingleton::~DatabaseFileLockSingleton()
 {
-  mPool.create();
-  apr_thread_mutex_create(&mMutex, APR_THREAD_MUTEX_UNNESTED, mPool());
-}
-
-BackEndAccess::~BackEndAccess()
-{
-  unlock();
-  apr_thread_mutex_destroy(mMutex);
-}
-
-bool BackEndAccess::lock(void)
-{
-  // Start of critical area of mLockObtained.
-  LLScopedLock lock1(mMutex);
-  if (mLockObtained)
+  data_wat data_w(mData);
+  if (data_w->mRefCount > 0)
   {
-	// We already have the lock!
-	llassert(gLockObtained);
-	return false;
+    data_w->mFLock.unlock();
   }
+  // Make sure that additional calls to intrusive_ptr_release will not call unlock again.
+  data_w->mRefCount = 0;
+}
 
-  // Start of critical area of gLockObtained.
+void intrusive_ptr_add_ref(DatabaseFileLockSingleton* p)
+{
+  bool need_clear_memory_cache = false;
   {
-	LLScopedLock lock2(gMutex);
-	if (gLockObtained)
-	{
-	  // Some other BackEndAccess object has the lock, because we don't (that was checked with mLockObtained).
-	  throw DatabaseLocked();
-	}
-
-	// Obtain exclusive lock on the database.
-	try
-	{
-	  BackEnd::getInstance()->lock();
-	}
-	catch (...)
-	{
-	  // Lock is already taken by another viewer process.
-	  throw DatabaseLocked();
-	}
-
-    gLockObtained = true;
-  }
-  mLockObtained = true;
-
-  std::string lockfilename = BackEnd::getInstance()->getJournalFilename("lock");
-  try
-  {
-	AIFile lockfile(lockfilename, "r+");		// throws if the can't be opened.
-	U32 pid = LLApp::getPid();
-	U32 lastpid;
-	// Read the PID of the last process that locked the database.
-	if (!(fread(&lastpid, sizeof(lastpid), 1, lockfile) == 1 && lastpid == pid))
+    DatabaseFileLockSingleton::data_wat data_w(p->mData);
+    if (data_w->mRefCount++ == 0)
     {
-		// Write our PID to the file if it wasn't already in there.
-        rewind(lockfile);
-        if (fwrite(&pid, sizeof(pid), 1, lockfile) != 1)
+      if (!data_w->mFLock.try_lock())
+      {
+        data_w->mRefCount = 0;
+        // If another process has the file lock, then we don't block but
+        // instead throw an error. Users shouldn't try to upload and/or
+        // import/export with two viewers at the same time.
+        // Note that throwing aborts the constructor (of DatabaseFileLock)
+        // causing its destructor not to be called, and therefore automatically
+        // guarantees that the corresponding intrusive_ptr_release won't
+        // be called.
+        THROW_MALERT("AIMultiGridDatabaseLocked");
+      }
+
+      std::string lockfilename = BackEnd::instance().getJournalFilename("lock");
+      try
+      {
+        AIFile lockfile(lockfilename, "r+");        // Throws if the file can't be opened.
+        U32 pid = LLApp::getPid();
+        U32 lastpid;
+        // Read the PID of the last process that locked the database.
+        if (!(fread(&lastpid, sizeof(lastpid), 1, lockfile) == 1 && lastpid == pid))
         {
-            llwarns << "Could not write PID to the 'uploads' database lock file \"" << lockfilename << "\"!" << llendl;
+            // Write our PID to the file if it wasn't already in there.
+            rewind(lockfile);
+            if (fwrite(&pid, sizeof(pid), 1, lockfile) != 1)
+            {
+                llwarns << "Could not write PID to the 'uploads' database lock file \"" << lockfilename << "\"!" << llendl;
+            }
+            fflush(lockfile);
         }
-        fflush(lockfile);
+        // Flush the in-memory caches of the database, because they cannot be trusted anymore.
+        need_clear_memory_cache = true;
+      }
+      catch (AIAlert::Error const&)
+      {
+        llwarns << "Failed to open the 'uploads' database lock file \"" << lockfilename << "\"!" << llendl;
+        // Just leave it at a warning... the lock is there and it's extremely unlikely this is needed to begin with.
+      }
     }
-	// Flush the in-memory caches of the database, because they cannot be trusted anymore.
-	BackEnd::getInstance()->mLocked.clear_memory_cache();
   }
-  catch (AIAlert::Error const&)
+  if (need_clear_memory_cache)
   {
-	llwarns << "Failed to open the 'uploads' database lock file \"" << lockfilename << "\"!" << llendl;
-	// Just leave it at a warning... the lock is there and it's extremely unlikely this is needed to begin with.
+    DatabaseFileLock file_lock;
+    DatabaseThreadLock thread_lock(file_lock);
+    ScopedBlockingBackEndAccess back_end_access(thread_lock);
+    back_end_access->clear_memory_cache();
   }
-  return true;
 }
 
-void BackEndAccess::unlock(void)
+void intrusive_ptr_release(DatabaseFileLockSingleton* p)
 {
-  // Start of critical area of mLockObtained.
-  LLScopedLock lock1(mMutex);
-  if (!mLockObtained)
+  DatabaseFileLockSingleton::data_wat data_w(p->mData);
+  if (--data_w->mRefCount == 0)
   {
-	// This object never obtained the lock or already explicitly released it (this is probably called from the destructor).
-	return;
+    data_w->mFLock.unlock();
   }
-
-  // Start of critical area of gLockObtained.
-  {
-	LLScopedLock lock2(gMutex);
-	llassert(gLockObtained);
-
-	BackEnd::getInstance()->unlock();
-
-	gLockObtained = false;
-  }
-  mLockObtained = false;
 }
 
-// The same as unlock(), but changes the database before unlocking.
-void BackEndAccess::switch_path(std::string& base_folder_out, std::string const& base_folder_in)
+void DatabaseFileLockSingleton::createFileLock(void)
 {
-  // Start of critical area of mLockObtained.
-  LLScopedLock lock1(mMutex);
-  // We must have the lock.
-  llassert(mLockObtained);
-
-  // Start of critical area of gLockObtained.
+  bool success = false;
+  do
   {
-	LLScopedLock lock2(gMutex);
-	llassert(gLockObtained);
-
-	// Unlock the file lock.
-	BackEnd::getInstance()->unlock();
-	// Set a new path.
-	// Note: this is NOT thread-safe. Theoretically the access to whatever base_folder_out is pointing to (namely BackEnd::mBaseFolder)
-	// should be wrapped in an AIThreadSafeDC (replacing gMutex) together with gLockObtained, and kept read locked for the duration
-	// of operations that generate a database path and use it, while being write locked here. However, I chose not to do that because
-	// in practise it is just not necessary. Basically, the user should not be uploading stuff while changing the database path :p
-	base_folder_out = base_folder_in;
-	// Create a file lock with the new path.
-	BackEnd::getInstance()->createFileLock();
-
-	gLockObtained = false;
+    std::string lockfilename = BackEnd::instance().getJournalFilename("lock");
+    try
+    {
+      data_wat data_w(mData);
+      // Open the file lock (this does not lock it).
+      boost::interprocess::file_lock flock(lockfilename.c_str());
+      // Transfer ownership to us.
+      data_w->mFLock.swap(flock);
+      success = true;
+    }
+    catch (boost::interprocess::interprocess_exception& error)
+    {
+      if (error.get_error_code() != boost::interprocess::not_found_error)
+      {
+        llerrs << "Failed to open 'uploads' database lock file \"" << lockfilename << "\"." << llendl;
+        throw std::runtime_error("Failed to open 'uploads' database lock file.");
+      }
+      // File doesn't exist, create it and try again (this throws if it fails).
+      AIFile lockfile(lockfilename, "wb");
+    }
   }
-  mLockObtained = false;
+  while (!success);
 }
 
-// The caller of these functions is responsible for first calling lock().
-// It is also responsible for making sure that two threads never access the same BackEndAccess object at the same time,
-// which is not enforced with an AIThreadSafe wrapper around BackEndAccess. Instead BackEndAccess should be
-// member of an AIStateMachine that makes sure that only one thread at a time access the object.
-
-LockedBackEnd* BackEndAccess::operator->()
+void intrusive_ptr_add_ref(DatabaseThreadLockSingleton* p)
 {
-  // If this fails then you forgot to call BackEndAccess::lock().
-  llassert(mLockObtained);
+  p->mMutex.lock();
+  DatabaseThreadLockSingleton::Condition_wat(p->mCondition)->mLocked = true;
+}
+
+void intrusive_ptr_release(DatabaseThreadLockSingleton* p)
+{
+  // First lock mCondition, otherwise another thread might grab the mutex
+  // and set mLocked to true - only to be overwritten below and set to
+  // false again - which would be wrong.
+  DatabaseThreadLockSingleton::Condition_wat condition_w(p->mCondition);
+  p->mMutex.unlock();
+  if (!p->mMutex.isSelfLocked())
+  {
+    // The mutex was just released.
+    // It might have been grabbed by another thread in the meantime, in the
+    // first line of intrusive_ptr_add_ref above, but that thread is then
+    // hanging on the second line and didn't set mLocked to true yet, because
+    // we have the lock on mCondition.
+    //
+    // Set mLocked to false and signal the condition.
+    condition_w->mLocked = false;
+    // This might unblock a state machine (see DatabaseThreadLock::multiplex_impl below),
+    // which theoretically could immediately start running if it isn't running in this
+    // thread, and then call trylock on the mutex. If that succeeded it would call
+    // intrusive_ptr_add_ref and hang there until we leave this scope. Otherwise, if
+    // the trylock fails because a third thread obtained the mutex (and is hanging in
+    // intrusive_ptr_add_ref above) the state machine would also hang, on trying to get
+    // the Condition_wat - until we leave scope.
+    // Then, once we leave scope there are two possibilities:
+    // 1) the state machine grabs the condition, tests if the condition is met, which
+    // it is (ignoring a possible fourth thread), causing it to call trylock again,
+    // which would fail again and so on until
+    // 2) the third thread grabs the condition lock and sets mLocked to true.
+    // Now the state machine sees that the condition is not met anymore, and adds
+    // itself back to the queue.
+    p->mCondition.broadcast();
+  }
+}
+
+boost::intrusive_ptr<DatabaseThreadLockSingleton> DatabaseThreadLockSingleton::trylock(void)
+{
+  boost::intrusive_ptr<DatabaseThreadLockSingleton> res;
+  if (mMutex.tryLock())
+  {
+    res = DatabaseThreadLockSingleton::getInstance();
+    mMutex.unlock();    // This never releases the mutex, since the previous line caused lock() to be called, incrementing LLMutexBase::mCount.
+  }
+  return res;
+}
+
+boost::intrusive_ptr<DatabaseThreadLockSingleton> DatabaseThreadLockSingleton::lock(void)
+{
+  return DatabaseThreadLockSingleton::getInstance();
+}
+
+LockedBackEnd* BackEndAccess::operator->() const
+{
   return &BackEnd::getInstance()->mLocked;
 }
 
-LockedBackEnd const* BackEndAccess::operator->() const
+char const* DatabaseThreadLock::state_str_impl(state_type run_state) const
 {
-  // If this fails then you forgot to call BackEndAccess::lock().
-  llassert(mLockObtained);
-  return &BackEnd::getInstance()->mLocked;
+  switch (run_state)
+  {
+    AI_CASE_RETURN(DatabaseThreadLock_trylock);
+  }
+  llassert(false);
+  return "UNKNOWN STATE";
+}
+
+void DatabaseThreadLock::initialize_impl(void)
+{
+  set_state(DatabaseThreadLock_trylock);
+}
+
+void DatabaseThreadLock::multiplex_impl(state_type run_state)
+{
+  switch (run_state)
+  {
+    case DatabaseThreadLock_trylock:
+    {
+      DatabaseThreadLockSingleton::Condition_t& condition(DatabaseThreadLockSingleton::instance().mCondition);
+      int count = 0;
+      // This causes DatabaseThreadLockSingleton::trylock to be called which, if mMutex.tryLock() succeeds,
+      // causes intrusive_ptr_add_ref(DatabaseThreadLockSingleton*) to be called which causes mMutex to be
+      // locked recursively a second time (which never blocks because we already hold the lock).
+      // Subsequently mMutex is unlocked once (still leaving it locked).
+      bool lock_obtained;
+      while (!(lock_obtained = mBackEndAccess.trylock()))
+      {
+        // We failed to obtain the mutex, which means that if the condition is not met then another thread
+        // (still) holds the mutex and we can safely add ourselves to the queue of the condition.
+        // If the condition is met however, then it is possible that the mutex was unlocked right after our
+        // call to trylock, and we have to call trylock again because it is not safe to add ourselves to
+        // the queue.
+        DatabaseThreadLockSingleton::Condition_wat condition_w(condition);
+        if (!condition_w->met())
+        {
+          // Register this state machine to be woken up when the mutex becomes available.
+          wait(condition);
+          break;
+        }
+        // The condition was met: no thread is holding the mutex, or another thread is
+        // hanging in intrusive_ptr_add_ref while trying to set mLocked to true.
+        //
+        // Try to lock the mutex again. However, if the second attempt fails too then the
+        // most likely scenario is that another thread obtained the lock and is hanging in
+        // intrusive_ptr_add_ref (see the comment in intrusive_ptr_release) and it makes
+        // no sense to try again. Just yield to give the other thread the chance to run.
+        if (++count == 2)
+        {
+          yield();
+          break;
+        }
+      }
+      if (lock_obtained)
+      {
+        // Locking succeeded.
+        finish();
+      }
+      break;
+    }
+  }
+}
+
+void DatabaseThreadLock::abort_impl(void)
+{
+}
+
+void DatabaseThreadLock::finish_impl(void)
+{
 }
 
 } // namespace AIMultiGrid

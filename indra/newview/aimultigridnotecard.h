@@ -33,6 +33,7 @@
 
 #include <iosfwd>
 #include "llnotecard.h"
+#include "aimultigridbackendaccess.h"
 
 class LLMD5;
 
@@ -43,10 +44,10 @@ class LockedBackEnd;
 class Notecard : public LLNotecard
 {
   private:
-    LockedBackEnd* mBackEnd;                    // Pointer to the underlaying database.
+    BackEndAccess mBackEnd;                     // Pointer to the underlaying database.
 
   public:
-    Notecard(LockedBackEnd* back_end) : mBackEnd(back_end) { }
+    Notecard(BackEndAccess const& back_end) : mBackEnd(back_end) { }
 
     void import(std::istream& stream);
     void import(unsigned char* buffer, size_t size);

@@ -33,7 +33,6 @@
 
 #include "llviewerprecompiledheaders.h"
 #include "aimultigridbackend.h"
-#include "aimultigridbackendaccess.h"
 #include "aimultigridfrontend.h"
 #include "aixml.h"
 #include "aifile.h"
@@ -249,34 +248,6 @@ std::string BackEnd::getJournalFilename(char const* filename) const
   return gDirUtilp->add(mBaseFolder, database_structure[fi_journal] + delim + filename);
 }
 
-void BackEnd::createFileLock(void)
-{
-  bool success = false;
-  do
-  {
-	std::string lockfilename = getJournalFilename("lock");
-	try
-	{
-	  // Open the file lock (this does not lock it).
-	  boost::interprocess::file_lock flock(lockfilename.c_str());
-	  // Transfer ownership to us.
-	  mFLock.swap(flock);
-	  success = true;
-	}
-	catch (boost::interprocess::interprocess_exception& error)
-	{
-	  if (error.get_error_code() != boost::interprocess::not_found_error)
-	  {
-		llerrs << "Failed to open 'uploads' database lock file \"" << lockfilename << "\"." << llendl;
-		throw std::runtime_error("Failed to open 'uploads' database lock file.");
-	  }
-	  // File doesn't exist, create it and try again (this throws if it fails).
-	  AIFile lockfile(lockfilename, "wb");
-	}
-  }
-  while (!success);
-}
-
 // Return true if the subdirectories exists, false otherwise.
 // If 'create' is true, attempt to create missing subdirectories.
 // Throws std::runtime_error if the creation of a missing subdirectory fails.
@@ -348,7 +319,7 @@ void BackEnd::init(void)
 	  llinfos << "Created 'uploads' database directory structure in \"" << mBaseFolder << "\"." << llendl;
 	}
 
-	createFileLock();
+    DatabaseFileLockSingleton::instance().createFileLock();
   }
   catch (AIAlert::Error const& error)
   {
@@ -485,9 +456,10 @@ void BackEnd::init(void)
 bool BackEnd::repair_database(void)
 {
   llinfos << "Locking database for repair..." << llendl;
-  BackEndAccess back_end;
-  back_end.lock();
-  bool fixed = back_end->repair_database(back_end);
+  DatabaseFileLock file_lock;
+  DatabaseThreadLock thread_lock(file_lock);
+  ScopedBlockingBackEndAccess back_end_access(thread_lock);
+  bool fixed = back_end_access->repair_database();
   llinfos << "Repair finished. Unlocking database." << llendl;
   return fixed;
 }
@@ -532,49 +504,51 @@ void BackEnd::switch_path(std::string base_folder)
 	}
   }
 
-  // Lock the old database, change the database path, lock the new database, run a sanity check on the new database.
-  BackEndAccess new_back_end;
-  BackEndAccess old_back_end;
+  // Lock the old database, change the database path and lock the new database, run a sanity check on the new database.
   try
   {
-	old_back_end.lock();
+    DatabaseFileLock file_lock;                   // Throws "AIMultiGridDatabaseLocked" if already locked.
+    std::string old_base_folder = mBaseFolder;    // Remember the old path in case it fails.
+
+    // Obtains thread lock and access to the database.
+    DatabaseThreadLock thread_lock(file_lock);
+    ScopedBlockingBackEndAccess back_end_access(thread_lock);
+
+    // Switch to the new path (under protection of the thread_lock!)
+    mBaseFolder = base_folder;
+    try
+    {
+      // Move the file lock to the new path (as this also unlocks old_base_folder since DatabaseFileLockSingleton::mFLock is overwritten).
+      DatabaseFileLockSingleton::instance().createFileLock();
+    }
+    catch (std::runtime_error const&)
+    {
+      // The new database is already locked?!
+      mBaseFolder = old_base_folder;
+      THROW_ALERT("AIUploadsSwitchDBnewlocked");
+    }
+
+    // Run a consistency check on the new database.
+    try
+    {
+      if (back_end_access->repair_database())
+      {
+        AIAlert::add("BackEnd_New_database_repaired");
+      }
+    }
+    catch (AIAlert::Error const& error)
+    {
+      // Oops, switch back to the old database.
+      mBaseFolder = old_base_folder;
+      DatabaseFileLockSingleton::instance().createFileLock();
+      THROW_ALERTC(corrupt_database, error, "BackEnd_New_database_repair_failed");
+    }
   }
-  catch (DatabaseLocked const&)
+  catch (AIAlert::Error const& error)
   {
-	THROW_ALERT("AIUploadsSwitchDBlocked");
+    THROW_ALERT("AIUploadsSwitchDBlocked");
   }
 
-  // Change the path of the singleton to a new path.
-
-  // Remember the old path in case it fails.
-  std::string old_base_folder = mBaseFolder;
-  // This unlocks old_back_end.
-  old_back_end.switch_path(mBaseFolder, base_folder);
-
-  // Lock the new database and run a consistency check on it.
-  try
-  {
-	new_back_end.lock();
-	try
-	{
-	  if (new_back_end->repair_database(new_back_end))
-	  {
-		AIAlert::add("BackEnd_New_database_repaired");
-	  }
-	}
-	catch (AIAlert::Error const& error)
-	{
-	  // Oops, switch back the old database.
-	  new_back_end.switch_path(mBaseFolder, old_base_folder);
-	  THROW_ALERTC(corrupt_database, error, "BackEnd_New_database_repair_failed");
-	}
-  }
-  catch (DatabaseLocked const&)
-  {
-	// The new database is already locked?!
-	mBaseFolder = old_base_folder;
-	THROW_ALERT("AIUploadsSwitchDBnewlocked");
-  }
 
   // Let the UI know too.
   gDirUtilp->setUploadsDir(mBaseFolder);
@@ -996,9 +970,10 @@ AIUploadedAsset* BackEnd::getUploadedAsset(LLUUID const& id)
   // Release the lock on gUUIDs before grabbing the database lock.
 
   // Lock database and try again (including looking on the harddisk).
-  BackEndAccess back_end;
-  back_end.lock();
-  return back_end->getUploadedAsset(id);
+  DatabaseFileLock file_lock;
+  DatabaseThreadLock thread_lock(file_lock);
+  ScopedBlockingBackEndAccess back_end_access(thread_lock);
+  return back_end_access->getUploadedAsset(id);
 }
 
 AIUploadedAsset* LockedBackEnd::getUploadedAsset(LLUUID const& id)
@@ -1367,7 +1342,7 @@ void LockedBackEnd::readAndCacheAllUploadedAssets(void)
   }
 }
 
-bool LockedBackEnd::repair_database(BackEndAccess& back_end_access)
+bool LockedBackEnd::repair_database(void)
 {
   llinfos << "Checking database in \"" << mBackEnd.mBaseFolder << "\"." << llendl;
 
@@ -1397,7 +1372,7 @@ bool LockedBackEnd::repair_database(BackEndAccess& back_end_access)
 
 	// Next we read all asset files.
 	std::map<LLMD5, LLMD5> hash_translation;
-	LLPointer<FrontEnd> front_end = new FrontEnd(back_end_access);
+	LLPointer<FrontEnd> front_end = new FrontEnd;
 	std::string path = gDirUtilp->add(mBackEnd.mBaseFolder, database_structure[fi_assets]);
 	for (int sdi = 0; sdi < 16; ++sdi)
 	{

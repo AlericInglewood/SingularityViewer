@@ -177,6 +177,7 @@ char const* FrontEnd::state_str_impl(state_type run_state) const
   switch(run_state)
   {
 	AI_CASE_RETURN(FrontEnd_lockDatabase);
+	AI_CASE_RETURN(FrontEnd_lockedDatabase);
 	AI_CASE_RETURN(FrontEnd_findUploadedAsset);
 	AI_CASE_RETURN(FrontEnd_uploadedAssetFound);
 	AI_CASE_RETURN(FrontEnd_fetchInventory);
@@ -195,19 +196,7 @@ FrontEnd::FrontEnd(CWD_ONLY(bool debug)) :
 #ifdef CWDEBUG
 	AIStateMachine(debug),
 #endif
-	mAssetType(LLAssetType::AT_NONE), mBulkUpload(false), mCollectedDataMask(0), mUploadedAsset(NULL), mBackEndAccess(mBackEndAccessObj)
-{
-}
-
-FrontEnd::FrontEnd(BackEndAccess& back_end
-#if defined(CWDEBUG) || defined(DEBUG_CURLIO)
-    , bool debug
-#endif
-    ) :
-#if defined(CWDEBUG) || defined(DEBUG_CURLIO)
-	AIStateMachine(debug),
-#endif
-	mAssetType(LLAssetType::AT_NONE), mBulkUpload(false), mCollectedDataMask(0), mUploadedAsset(NULL), mBackEndAccess(back_end)
+	mAssetType(LLAssetType::AT_NONE), mBulkUpload(false), mCollectedDataMask(0), mUploadedAsset(NULL), mThreadLock(new DatabaseThreadLock(mFileLock))
 {
 }
 
@@ -827,7 +816,8 @@ lsl_text_done:
   else
   {
     llassert(mNativeFormat);
-    bool obtained_lock = mBackEndAccess.lock();
+    // Make sure mThreadLock is locked.
+    ScopedBlockingBackEndAccess back_end_access(*mThreadLock);
     LLMD5 asset_md5;
     try
     {
@@ -837,10 +827,6 @@ lsl_text_done:
       if (size > 1000000)
       {
         llwarns << "Not allocating " << size << " bytes for file \"" << src_filename << "\" of type " << LLAssetType::lookup(mAssetType) << '.' << llendl;
-        if (obtained_lock)
-        {
-          mBackEndAccess.unlock();
-        }
         return false;
       }
       std::vector<unsigned char> buffer(size);
@@ -848,33 +834,25 @@ lsl_text_done:
       if (len != size)
       {
         llwarns << "Short read of file \"" << src_filename << "\" with size " << size << ": could only read " << len << " bytes!" << llendl;
-        if (obtained_lock)
-        {
-          mBackEndAccess.unlock();
-        }
         return false;
       }
       // Now that we read the file into memory, fix the asset type for clothing.
       if (mAssetType == LLAssetType::AT_BODYPART)
       {
-        Wearable wearable(mBackEndAccess.operator->());
+        Wearable wearable(back_end_access);
         wearable.import(&buffer[0], size);
         mAssetType = wearable.getAssetType();
         wearable.calculateHash(asset_md5);
       }
       else
       {
-        mBackEndAccess->calculateHash(mAssetType, &buffer[0], size, asset_md5);
+        back_end_access->calculateHash(mAssetType, &buffer[0], size, asset_md5);
       }
     }
     catch (AIAlert::Error const& error)
     {
       AIAlert::add_modal("AIProblemWithFile", AIArgs("[FILE]", src_filename), error);
       return false;
-    }
-    if (obtained_lock)
-    {
-      mBackEndAccess.unlock();
     }
     if (!repair_database)
     {
@@ -1049,7 +1027,8 @@ bool FrontEnd::checkPreviousUpload(std::string& name, std::string& description, 
   // Should only be called for one-on-one asset types.
   llassert(mAssetType != LLAssetType::AT_ANIMATION && mAssetType != LLAssetType::AT_TEXTURE);
 
-  bool obtained_lock = mBackEndAccess.lock();
+  ScopedBlockingBackEndAccess back_end_access(*mThreadLock);
+
   find_previous_uploads();
   bool found = false;
   if (mUploadedAsset && !mBulkUpload)
@@ -1070,10 +1049,7 @@ bool FrontEnd::checkPreviousUpload(std::string& name, std::string& description, 
 	  }
 	}
   }
-  if (obtained_lock)
-  {
-	mBackEndAccess.unlock();
-  }
+
   return found;
 }
 
@@ -1100,14 +1076,10 @@ struct checkPreviousUploads_sortPred
 std::vector<AIUploadedAsset*> FrontEnd::checkPreviousUploads(void)
 {
   std::vector<AIUploadedAsset*> result;
-  bool obtained_lock = mBackEndAccess.lock();
+  ScopedBlockingBackEndAccess back_end_access(*mThreadLock);
   find_previous_uploads();
   result = mUploadedAssets;
   std::stable_sort(result.begin(), result.end(), checkPreviousUploads_sortPred(gHippoGridManager->getConnectedGrid()->getGridNick()));
-  if (obtained_lock)
-  {
-	mBackEndAccess.unlock();
-  }
   return result;
 }
 
@@ -1505,7 +1477,7 @@ bool FrontEnd::upload_new_resource(
 
 void FrontEnd::initialize_impl(void)
 {
-  mLocked = false;
+  mLocked = mThreadLock->is_locked();
   mAbort = false;
 
   // Temporaries are always uploaded regardless (and not registered).
@@ -1517,15 +1489,17 @@ void FrontEnd::find_previous_uploads(void)
   // Only call this function when prepare_upload() returned true.
   llassert_always(mAssetType != LLAssetType::AT_NONE);
 
+  ScopedBlockingBackEndAccess back_end_access(*mThreadLock);
+
   // Set mUploadedAsset to the data related to the asset hash, if any.
   if (!mUploadedAsset && (mCollectedDataMask & asset_hash_bit))
   {
-	mUploadedAsset = mBackEndAccess->getUploadedAsset(mAssetHash);
+	mUploadedAsset = back_end_access->getUploadedAsset(mAssetHash);
   }
   // Set mUploadedAssets to the data related to the source hash, if any.
   if (mUploadedAssets.empty() && (mCollectedDataMask & source_hash_bit))
   {
-	uais_type uais = mBackEndAccess->getUploadedAssets(mSourceHash);
+	uais_type uais = back_end_access->getUploadedAssets(mSourceHash);
 	for (uais_type::iterator uai = uais.begin(); uai != uais.end(); ++uai)
 	{
 	  mUploadedAssets.push_back(**uai);
@@ -1604,33 +1578,23 @@ void FrontEnd::multiplex_impl(state_type run_state)
 		{
 		  break;
 		}
-		// Wait for other state machines that might already have the database, instead of dumb trying every 2 seconds...
-		lock_condition_t& lock_condition(BackEnd::getInstance()->mLockCondition);
-		{
-		  lock_condition_wat lock_condition_w(lock_condition);
-		  if (!lock_condition_w->met())
-		  {
-			wait(lock_condition);
-			break;
-		  }
-		  lock_condition_w->attempt_start();
-		}
-		try
-		{
-		  mBackEndAccess.lock();
-		}
-		catch(DatabaseLocked& error)
-		{
-		  // Failed to get the lock. Abort attempt without signalling other statemachine.
-		  lock_condition_wat(lock_condition)->attempt_end();
-		  // Wait 2 seconds before trying again.
-		  llwarns << "Could not get a lock on the 'uploads' database. Next attempt in 2 seconds..." << llendl;
-		  yield_ms(2000);
-		  break;
-		}
+        // We should only get here when the database wasn't locked before.
+		llassert(!mLocked);
+        // Sanity check.
+        if (mLocked)
+        {
+          set_state(FrontEnd_findUploadedAsset);
+          break;
+        }
+        // Lock database a-synchronusly.
+        mThreadLock->run(this, FrontEnd_lockedDatabase);
+        idle();
+        break;
+      }
+      case FrontEnd_lockedDatabase:
+      {
 		mLocked = true;
 		set_state(FrontEnd_findUploadedAsset);
-		break;
 	  }
 	  case FrontEnd_findUploadedAsset:
 	  {
@@ -1888,7 +1852,7 @@ void FrontEnd::multiplex_impl(state_type run_state)
 		else
 		{
 		  // Register this upload in the database.
-		  mBackEndAccess->registerUpload(
+		  mThreadLock->back_end_access()->registerUpload(
 			  mAssetHash,
 			  mAssetType,
 			  GridUUID(mHippoGrid->getGridNick(), mNewUUID),
@@ -1913,16 +1877,7 @@ void FrontEnd::multiplex_impl(state_type run_state)
 		  break;
 		}
 		// Unlock the database.
-		mBackEndAccess.unlock();
-		// Signal other state machines that the database might be unlocked.
-		lock_condition_t& lock_condition(BackEnd::getInstance()->mLockCondition);
-		{
-		  lock_condition_wat lock_condition_w(lock_condition);
-		  if (lock_condition_w->attempt_end())
-		  {
-			lock_condition.signal();		// Note: lock_condition must still be locked when signal() is called.
-		  }
-		}
+		mThreadLock->unlock();
 		mLocked =false;
 		if (mAbort)
 		{
