@@ -42,6 +42,7 @@
 namespace AIMultiGrid {
 
 class LockedBackEnd;
+class ScopedBlockingBackEndAccess;
 
 // class DatabaseFileLockSingleton
 //
@@ -192,6 +193,10 @@ class BackEndAccess
     friend class LockedBackEnd;
     BackEndAccess(LockedBackEnd*) : mThreadLock(DatabaseThreadLockSingleton::getInstance()) { }
 
+    // It's also ok for ScopedBlockingBackEndAccess, which is derived from BackEndAccess, to be constructed
+    // from just a DatabaseFileLock - because the constructor of ScopedBlockingBackEndAccess calls lock().
+    friend class ScopedBlockingBackEndAccess;
+
   public:
     bool trylock(void) { mThreadLock = DatabaseThreadLockSingleton::instance().trylock(); return mThreadLock;}
     bool is_locked(void) const { return mThreadLock; }
@@ -303,6 +308,9 @@ class DatabaseThreadLock : public AIStateMachine
     // Blocking call.
     void lock(void) { mBackEndAccess.lock(); }
 
+    // Accessor.
+    DatabaseFileLock const& file_lock(void) const { return mBackEndAccess.file_lock(); }
+
   protected:
 	// Handle initializing the object.
 	/*virtual*/ void initialize_impl(void);
@@ -325,7 +333,7 @@ class DatabaseThreadLock : public AIStateMachine
 class ScopedBlockingBackEndAccess : public BackEndAccess
 {
   public:
-    ScopedBlockingBackEndAccess(DatabaseThreadLock const& thread_lock) : BackEndAccess(thread_lock.back_end_access()) { lock(); }
+    ScopedBlockingBackEndAccess(DatabaseThreadLock const& thread_lock) : BackEndAccess(thread_lock.file_lock()) { lock(); }
     ScopedBlockingBackEndAccess(BackEndAccess const& back_end_access) : BackEndAccess(back_end_access) { lock(); }
     ~ScopedBlockingBackEndAccess() { unlock(); }
 };

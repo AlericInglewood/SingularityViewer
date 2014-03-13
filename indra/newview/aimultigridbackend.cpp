@@ -619,6 +619,7 @@ asset_map_type::iterator const BackEnd::gAssetsEnd = gAssets_wat(BackEnd::gAsset
 
 void LockedBackEnd::clear_memory_cache(void)
 {
+  DoutEntering(dc::notice, "LockedBackEnd::clear_memory_cache()");
   gSources_wat gSources_w(BackEnd::gSources);
   gUUIDs_wat gUUIDs_w(BackEnd::gUUIDs);
   gAssets_wat gAssets_w(BackEnd::gAssets);
