@@ -1243,20 +1243,20 @@ void FrontEnd::temp_upload_callback(LLUUID const& uuid, S32 result, LLExtStat ex
 
 	LLUUID item_id;
 	item_id.generate();
-	LLPermissions* perms = new LLPermissions();
-	perms->set(LLPermissions::DEFAULT);
-	perms->setOwnerAndGroup(gAgentID, gAgentID, gAgentID, false);
+	LLPermissions perms;
+	perms.set(LLPermissions::DEFAULT);
+	perms.setOwnerAndGroup(gAgentID, gAgentID, gAgentID, false);
 
-	perms->setMaskBase(PERM_ALL);
-	perms->setMaskOwner(PERM_ALL);
-	perms->setMaskEveryone(PERM_ALL);
-	perms->setMaskGroup(PERM_ALL);
-	perms->setMaskNext(PERM_ALL);
+	perms.setMaskBase(PERM_ALL);
+	perms.setMaskOwner(PERM_ALL);
+	perms.setMaskEveryone(PERM_ALL);
+	perms.setMaskGroup(PERM_ALL);
+	perms.setMaskNext(PERM_ALL);
 
 	LLViewerInventoryItem* item = new LLViewerInventoryItem(
 		item_id,
 		gInventory.findCategoryUUIDForType(LLFolderType::FT_TEXTURE),
-		*perms,
+		perms,
 		uuid,
 		mAssetType,
 		mInventoryType,

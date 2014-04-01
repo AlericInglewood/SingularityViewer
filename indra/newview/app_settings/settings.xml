@@ -68,7 +68,7 @@
 	<key>SGAllowRiggedMeshSelection</key>
 	<map>
 	  <key>Comment</key>
-	  <string>Allow selection of your worn rigged meshes in build mode</string>
+	  <string>Allow selection of worn rigged meshes in build or inspect mode</string>
 	  <key>Persist</key>
 	  <integer>1</integer>
 	  <key>Type</key>
@@ -586,7 +586,7 @@
   <key>CheckForGridUpdates</key>
   <map>
   	<key>Comment</key>
-  	<string>Fetch list of grids from Hippo server</string>
+	<string>Fetch list of grids from location set in GridUpdateList</string>
   	<key>Persist</key>
   	<integer>1</integer>
   	<key>Type</key>
@@ -604,6 +604,17 @@
   	<string>String</string>
   	<key>Value</key>
   	<string>Second Life</string>
+  </map>
+  <key>GridUpdateList</key>
+  <map>
+    <key>Comment</key>
+    <string>URL to fetch Grid updates from</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>String</string>
+    <key>Value</key>
+    <string/>
   </map>
 
   <key>VivoxLicenseAccepted</key>
@@ -770,17 +781,6 @@
       <key>Value</key>
       <integer>1</integer>
     </map>
-    <key>LiruLegacySpeakerNames</key>
-    <map>
-      <key>Comment</key>
-      <string>Whether all lists of speakers use legacy names, or your desired way of displaying names.</string>
-      <key>Persist</key>
-      <integer>1</integer>
-      <key>Type</key>
-      <string>Boolean</string>
-      <key>Value</key>
-      <integer>0</integer>
-    </map>
     <key>LiruLocalTime</key>
     <map>
       <key>Comment</key>
@@ -802,6 +802,17 @@
       <string>Boolean</string>
       <key>Value</key>
       <integer>0</integer>
+    </map>
+    <key>LiruMiniBuildFloater</key>
+    <map>
+      <key>Comment</key>
+      <string>Whether or not the build tools floater is tinified (except in Land tool)</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <boolean>0</boolean>
     </map>
     <key>LiruMouselookHidesFloaters</key>
     <map>
@@ -1018,6 +1029,17 @@ Found in Advanced->Rendering->Info Displays</string>
       <string>Boolean</string>
       <key>Value</key>
       <boolean>1</boolean>
+    </map>
+    <key>LocalBitmapUpdate</key>
+    <map>
+      <key>Comment</key>
+      <string>Default setting for whether local textures should update or not upon change, changed by toggling on or off.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <boolean>0</boolean>
     </map>
     <key>InstantMessageLogPathAnyAccount</key>
     <map>
@@ -8479,7 +8501,7 @@ This should be as low as possible, but too low may break functionality</string>
       <key>Type</key>
       <string>Boolean</string>
       <key>Value</key>
-      <integer>0</integer>
+      <integer>1</integer>
     </map>
     <key>ForceMandatoryUpdate</key>
     <map>
@@ -16619,7 +16641,7 @@ This should be as low as possible, but too low may break functionality</string>
       <key>Type</key>
       <string>String</string>
       <key>Value</key>
-      <string>-1</string>
+      <string>0</string>
     </map>
     <key>VivoxDebugSIPURIHostName</key>
     <map>

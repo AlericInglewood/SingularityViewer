@@ -62,7 +62,6 @@
 #include "lltrans.h"
 #include "llfloaterbuycurrency.h"
 // <edit>
-#include "floaterlocalassetbrowse.h"
 #include "llassettype.h"
 #include "llinventorytype.h"
 #include "aimultigridfrontend.h"
@@ -389,15 +388,6 @@ class LLFileMinimizeAllWindows : public view_listener_t
 		return true;
 	}
 };
-
-class LLFileLocalAssetBrowser : public view_listener_t
-{
-	bool handleEvent(LLPointer<LLEvent>, const LLSD&)
-	{
-		FloaterLocalAssetBrowser::show(0);
-		return true;
-	}
-};
 // </edit>
 
 class LLFileSavePreview : public view_listener_t
@@ -409,15 +399,6 @@ class LLFileSavePreview : public view_listener_t
 		{
 			top->saveAs();
 		}
-		return true;
-	}
-};
-
-class LLFileTakeSnapshot : public view_listener_t
-{
-	bool handleEvent(LLPointer<LLEvent> event, const LLSD& userdata)
-	{
-		LLFloaterSnapshot::show(NULL);
 		return true;
 	}
 };
@@ -514,7 +495,7 @@ static void handle_compress_image_continued(AIFilePicker* filepicker)
 		llinfos << "Input:  " << infile << llendl;
 		llinfos << "Output: " << outfile << llendl;
 
-		BOOL success = false;
+		bool success = false;
 
 		//<singu>
 		if (LLPointer<LLImageRaw> raw_image = AIMultiGrid::FrontEnd::createRawImage(infile, IMG_CODEC_TGA))
@@ -525,6 +506,10 @@ static void handle_compress_image_continued(AIFilePicker* filepicker)
 				{
 					llinfos << "Couldn't create output file : \"" << outfile << "\"." << llendl;
 				}
+                else
+                {
+                    success = true;
+                }
 			}
 			else
 			{
@@ -558,10 +543,8 @@ void init_menu_file()
 	(new LLFileEnableCloseAllWindows())->registerListener(gMenuHolder, "File.EnableCloseAllWindows");
 	// <edit>
 	(new LLFileMinimizeAllWindows())->registerListener(gMenuHolder, "File.MinimizeAllWindows");
-	(new LLFileLocalAssetBrowser())->registerListener(gMenuHolder, "File.LocalAssetBrowser");
 	// </edit>
 	(new LLFileSavePreview())->registerListener(gMenuHolder, "File.SavePreview");
-	(new LLFileTakeSnapshot())->registerListener(gMenuHolder, "File.TakeSnapshot");
 	(new LLFileTakeSnapshotToDisk())->registerListener(gMenuHolder, "File.TakeSnapshotToDisk");
 	(new LLFileQuit())->registerListener(gMenuHolder, "File.Quit");
 	(new LLFileEnableUpload())->registerListener(gMenuHolder, "File.EnableUpload");
