@@ -678,6 +678,21 @@ lsl_text_done:
 	  mAssetType = LLAssetType::AT_ANIMATION;
 	  mNativeFormat = true;
 	}
+	else if (exten == "lsl")
+	{
+	  mAssetType = LLAssetType::AT_LSL_TEXT;
+	  mNativeFormat = true;
+	}
+	else if (exten == "gesture")
+	{
+	  mAssetType = LLAssetType::AT_GESTURE;
+	  mNativeFormat = true;
+	}
+	else if (exten == "notecard")
+	{
+	  mAssetType = LLAssetType::AT_NOTECARD;
+	  mNativeFormat = true;
+	}
 	else
 	{
 	  // Unknown extension.
