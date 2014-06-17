@@ -499,6 +499,13 @@ static void handle_compress_image_continued(AIFilePicker* filepicker)
 
 		//<singu>
 		if (LLPointer<LLImageRaw> raw_image = AIMultiGrid::FrontEnd::createRawImage(infile, IMG_CODEC_TGA))
+	else if(exten == "lsl" || exten == "gesture" || exten == "notecard")
+	{
+		if (exten == "lsl") asset_type = LLAssetType::AT_LSL_TEXT;
+		else if (exten == "gesture") asset_type = LLAssetType::AT_GESTURE;
+		else if (exten == "notecard") asset_type = LLAssetType::AT_NOTECARD;
+		filename = src_filename;
+	}
 		{
 			if (LLPointer<LLImageJ2C> compressedImage = AIMultiGrid::FrontEnd::convertToUploadFile(raw_image))
 			{
