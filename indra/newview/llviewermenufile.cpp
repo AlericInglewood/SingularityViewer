@@ -324,7 +324,7 @@ class LLFileUploadBulk : public view_listener_t
 				if (mg_front_end->prepare_upload(filename, true))
 				{
 					mg_front_end->upload_new_resource_continued(asset_name, asset_name, 0, LLFolderType::FT_NONE, LLInventoryType::IT_NONE,
-						LLFloaterPerms::getNextOwnerPerms(), LLFloaterPerms::getGroupPerms(), LLFloaterPerms::getEveryonePerms(),
+						LLFloaterPerms::getNextOwnerPerms("Uploads"), LLFloaterPerms::getGroupPerms("Uploads"), LLFloaterPerms::getEveryonePerms("Uploads"),
 						display_name, expected_upload_cost);
 				}
 			}

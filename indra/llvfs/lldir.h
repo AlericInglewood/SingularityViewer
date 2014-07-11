@@ -136,6 +136,7 @@ class LLDir
     void setDumpDir( const std::string& path );
 	void setUploadsDir(const std::string &path);	// Singu extension.
 
+	void makePortable();
 	virtual void setChatLogsDir(const std::string &path);		// Set the chat logs dir to this user's dir
 	virtual void setPerAccountChatLogsDir(const std::string &grid, const std::string &first, const std::string &last);				// Set the per user chat log directory.
 	virtual void setLindenUserDir(const std::string& grid, const std::string& first, const std::string& last);		// Set the linden user dir to this user's dir

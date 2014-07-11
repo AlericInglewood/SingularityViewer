@@ -74,6 +74,7 @@ LLPrefsAscentSys::LLPrefsAscentSys()
 	getChild<LLUICtrl>("AscentCmdLineMapTo")->setCommitCallback(lineEditorControl);
 	getChild<LLUICtrl>("AscentCmdLineTP2")->setCommitCallback(lineEditorControl);
 	getChild<LLUICtrl>("SinguCmdLineAway")->setCommitCallback(lineEditorControl);
+	getChild<LLUICtrl>("SinguCmdLineRegionSay")->setCommitCallback(lineEditorControl);
 	getChild<LLUICtrl>("SinguCmdLineURL")->setCommitCallback(lineEditorControl);
 
 	//Security ----------------------------------------------------------------------------
@@ -81,7 +82,7 @@ LLPrefsAscentSys::LLPrefsAscentSys()
 
 	//Build -------------------------------------------------------------------------------
 	getChild<LLUICtrl>("next_owner_copy")->setCommitCallback(boost::bind(&LLPrefsAscentSys::onCommitCheckBox, this, _1, _2));
-	childSetEnabled("next_owner_transfer", gSavedSettings.getBOOL("NextOwnerCopy"));
+	getChild<LLUICtrl>("script_next_owner_copy")->setCommitCallback(boost::bind(&LLPrefsAscentSys::onCommitCheckBox, this, _1, _2));
 	getChild<LLUICtrl>("material")->setCommitCallback(boost::bind(&LLPrefsAscentSys::onCommitComboBox, this, _1, _2));
 	getChild<LLUICtrl>("combobox shininess")->setCommitCallback(boost::bind(&LLPrefsAscentSys::onCommitComboBox, this, _1, _2));
 	getChild<LLTextureCtrl>("texture control")->setDefaultImageAssetID(LLUUID(gSavedSettings.getString("EmeraldBuildPrefs_Texture")));
@@ -130,8 +131,11 @@ void LLPrefsAscentSys::onCommitCheckBox(LLUICtrl* ctrl, const LLSD& value)
 	}
 	else if (name == "next_owner_copy")
 	{
-		if (!enabled) gSavedSettings.setBOOL("NextOwnerTransfer", true);
-		childSetEnabled("next_owner_transfer", enabled);
+		if (!enabled) gSavedSettings.setBOOL("ObjectsNextOwnerTransfer", true);
+	}
+	else if (name == "script_next_owner_copy")
+	{
+		if (!enabled) gSavedSettings.setBOOL("ScriptsNextOwnerTransfer", true);
 	}
 }
 
@@ -291,6 +295,7 @@ void LLPrefsAscentSys::refreshValues()
     mCmdMapToKeepPos            = gSavedSettings.getBOOL("AscentMapToKeepPos");
     mCmdLineTP2                 = gSavedSettings.getString("AscentCmdLineTP2");
     mCmdLineAway                = gSavedSettings.getString("SinguCmdLineAway");
+	mCmdLineRegionSay           = gSavedSettings.getString("SinguCmdLineRegionSay");
 	mCmdLineURL                 = gSavedSettings.getString("SinguCmdLineURL");
 
     //Security ----------------------------------------------------------------------------
@@ -298,6 +303,8 @@ void LLPrefsAscentSys::refreshValues()
     mDisablePointAtAndBeam		= gSavedSettings.getBOOL("DisablePointAtAndBeam");
     mPrivateLookAt				= gSavedSettings.getBOOL("PrivateLookAt");
     mShowLookAt					= gSavedSettings.getBOOL("AscentShowLookAt");
+	mLookAtNames				= gSavedSettings.getS32("LookAtNameSystem");
+	mLookAtLines				= gSavedSettings.getBOOL("AlchemyLookAtLines");
 	mQuietSnapshotsToDisk		= gSavedSettings.getBOOL("QuietSnapshotsToDisk");
 	mAnnounceBumps				= gSavedSettings.getBOOL("AnnounceBumps");
 	mDetachBridge				= gSavedSettings.getBOOL("SGDetachBridge");
@@ -309,6 +316,7 @@ void LLPrefsAscentSys::refreshValues()
 	mRestartMinimized		= gSavedSettings.getBOOL("LiruRegionRestartMinimized");
 	mRestartSound			= gSavedSettings.getString("UISndRestart");
 	mLandmark			= gSavedPerAccountSettings.getString("EmergencyTeleportLandmark");
+	mLandmarkBackup			= gSavedPerAccountSettings.getString("EmergencyTeleportLandmarkBackup");
 
 	//Build -------------------------------------------------------------------------------
 	mAlpha						= gSavedSettings.getF32("EmeraldBuildPrefs_Alpha");
@@ -317,9 +325,12 @@ void LLPrefsAscentSys::refreshValues()
 	mGlow						= gSavedSettings.getF32("EmeraldBuildPrefs_Glow");
 	mItem						= gSavedPerAccountSettings.getString("EmeraldBuildPrefs_Item");
 	mMaterial					= gSavedSettings.getString("BuildPrefs_Material");
-	mNextCopy					= gSavedSettings.getBOOL("NextOwnerCopy");
-	mNextMod					= gSavedSettings.getBOOL("NextOwnerModify");
-	mNextTrans					= gSavedSettings.getBOOL("NextOwnerTransfer");
+	mNextCopy					= gSavedSettings.getBOOL("ObjectsNextOwnerCopy");
+	mNextMod					= gSavedSettings.getBOOL("ObjectsNextOwnerModify");
+	mNextTrans					= gSavedSettings.getBOOL("ObjectsNextOwnerTransfer");
+	mScriptNextCopy				= gSavedSettings.getBOOL("ScriptsNextOwnerCopy");
+	mScriptNextMod				= gSavedSettings.getBOOL("ScriptsNextOwnerModify");
+	mScriptNextTrans			= gSavedSettings.getBOOL("ScriptsNextOwnerTransfer");
 	mShiny						= gSavedSettings.getString("EmeraldBuildPrefs_Shiny");
 	mTemporary					= gSavedSettings.getBOOL("EmeraldBuildPrefs_Temporary");
 	mTexture					= gSavedSettings.getString("EmeraldBuildPrefs_Texture");
@@ -340,7 +351,7 @@ void LLPrefsAscentSys::refresh()
 		ctrl->setValue(mPowerUser);
 	}
 
-    //Security ----------------------------------------------------------------------------
+	//Command Line ----------------------------------------------------------------------------
     childSetValue("AscentCmdLinePos",           mCmdLinePos);
     childSetValue("AscentCmdLineGround",        mCmdLineGround);
     childSetValue("AscentCmdLineHeight",        mCmdLineHeight);
@@ -355,10 +366,14 @@ void LLPrefsAscentSys::refresh()
     childSetValue("AscentCmdLineMapTo",         mCmdLineMapTo);
     childSetValue("AscentCmdLineTP2",           mCmdLineTP2);
     childSetValue("SinguCmdLineAway",           mCmdLineAway);
+	childSetValue("SinguCmdLineRegionSay",      mCmdLineRegionSay);
 	childSetValue("SinguCmdLineURL",            mCmdLineURL);
 
 	//Security ----------------------------------------------------------------------------
 	getChildView("UISndRestart")->setValue(mRestartSound);
+
+	if (LLComboBox* combo = getChild<LLComboBox>("lookat_namesystem_combobox"))
+		combo->setValue(mLookAtNames);
 
 	//Build -------------------------------------------------------------------------------
 	childSetValue("alpha",               mAlpha);
@@ -422,6 +437,7 @@ void LLPrefsAscentSys::cancel()
     gSavedSettings.setBOOL("AscentMapToKeepPos",            mCmdMapToKeepPos);
     gSavedSettings.setString("AscentCmdLineTP2",			mCmdLineTP2);
     gSavedSettings.setString("SinguCmdLineAway",			mCmdLineAway);
+	gSavedSettings.setString("SinguCmdLineRegionSay",		mCmdLineRegionSay);
 	gSavedSettings.setString("SinguCmdLineURL",				mCmdLineURL);
 
     //Security ----------------------------------------------------------------------------
@@ -429,6 +445,8 @@ void LLPrefsAscentSys::cancel()
     gSavedSettings.setBOOL("DisablePointAtAndBeam",         mDisablePointAtAndBeam);
     gSavedSettings.setBOOL("PrivateLookAt",                 mPrivateLookAt);
     gSavedSettings.setBOOL("AscentShowLookAt",              mShowLookAt);
+	gSavedSettings.setS32("LookAtNameSystem",               mLookAtNames);
+	gSavedSettings.setBOOL("AlchemyLookAtLines",            mLookAtLines);
     gSavedSettings.setBOOL("QuietSnapshotsToDisk",			mQuietSnapshotsToDisk);
     gSavedSettings.setBOOL("AnnounceBumps",    			mAnnounceBumps);
     gSavedSettings.setBOOL("SGDetachBridge",    			mDetachBridge);
@@ -440,6 +458,7 @@ void LLPrefsAscentSys::cancel()
 	gSavedSettings.setBOOL("LiruRegionRestartMinimized", mRestartMinimized);
 	gSavedSettings.setString("UISndRestart", mRestartSound);
 	gSavedPerAccountSettings.setString("EmergencyTeleportLandmark",      mLandmark);
+	gSavedPerAccountSettings.setString("EmergencyTeleportLandmarkBackup",      mLandmarkBackup);
 
 	//Build -------------------------------------------------------------------------------
 	gSavedSettings.setF32("EmeraldBuildPrefs_Alpha",        mAlpha);
@@ -448,9 +467,12 @@ void LLPrefsAscentSys::cancel()
 	gSavedSettings.setF32("EmeraldBuildPrefs_Glow",         mGlow);
 	gSavedPerAccountSettings.setString("EmeraldBuildPrefs_Item",      mItem);
 	gSavedSettings.setString("BuildPrefs_Material",         mMaterial);
-	gSavedSettings.setBOOL("NextOwnerCopy",                 mNextCopy);
-	gSavedSettings.setBOOL("NextOwnerModify",               mNextMod);
-	gSavedSettings.setBOOL("NextOwnerTransfer",             mNextTrans);
+	gSavedSettings.setBOOL("ObjectsNextOwnerCopy",          mNextCopy);
+	gSavedSettings.setBOOL("ObjectsNextOwnerModify",        mNextMod);
+	gSavedSettings.setBOOL("ObjectsNextOwnerTransfer",      mNextTrans);
+	gSavedSettings.setBOOL("ScriptsNextOwnerCopy",          mScriptNextCopy);
+	gSavedSettings.setBOOL("ScriptsNextOwnerModify",        mScriptNextMod);
+	gSavedSettings.setBOOL("ScriptsNextOwnerTransfer",      mScriptNextTrans);
 	gSavedSettings.setBOOL("EmeraldBuildPrefs_Phantom",     mPhantom);
 	gSavedSettings.setBOOL("EmeraldBuildPrefs_Physical",    mPhysical);
 	gSavedSettings.setString("EmeraldBuildPrefs_Shiny",     mShiny);

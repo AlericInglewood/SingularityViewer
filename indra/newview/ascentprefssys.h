@@ -101,6 +101,7 @@ private:
 	bool mCmdMapToKeepPos;
 	std::string mCmdLineTP2;
 	std::string mCmdLineAway;
+	std::string mCmdLineRegionSay;
 	std::string mCmdLineURL;
 
 	//Security ----------------------------------------------------------------------------
@@ -108,6 +109,8 @@ private:
 	bool mDisablePointAtAndBeam;
 	bool mPrivateLookAt;
 	bool mShowLookAt;
+	S32  mLookAtNames;
+	bool mLookAtLines;
 	bool mQuietSnapshotsToDisk;
 	bool mAnnounceBumps;
 	bool mDetachBridge;
@@ -119,6 +122,7 @@ private:
 	F32 mNumScriptDiff;
 	std::string mRestartSound;
 	std::string mLandmark;
+	std::string mLandmarkBackup;
 
 	//Build -------------------------------------------------------------------------------
 	F32 mAlpha;
@@ -130,6 +134,9 @@ private:
 	bool mNextCopy;
 	bool mNextMod;
 	bool mNextTrans;
+	bool mScriptNextCopy;
+	bool mScriptNextMod;
+	bool mScriptNextTrans;
 	std::string mShiny;
 	bool mTemporary;
 	std::string mTexture;

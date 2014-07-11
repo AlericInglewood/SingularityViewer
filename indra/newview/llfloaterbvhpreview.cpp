@@ -1349,7 +1349,7 @@ void LLFloaterBvhPreview::onBtnOK(void* userdata)
 						    0,
 						    LLFolderType::FT_NONE,
 						    LLInventoryType::IT_ANIMATION,
-						    LLFloaterPerms::getNextOwnerPerms(), LLFloaterPerms::getGroupPerms(), LLFloaterPerms::getEveryonePerms(),
+						    LLFloaterPerms::getNextOwnerPerms("Uploads"), LLFloaterPerms::getGroupPerms("Uploads"), LLFloaterPerms::getEveryonePerms("Uploads"),
 						    name,
 						    expected_upload_cost,
 							NULL, NULL,

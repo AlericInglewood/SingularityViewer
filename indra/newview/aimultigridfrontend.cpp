@@ -68,6 +68,7 @@
 #include "llfloaterbvhpreview.h"
 #include "llimagej2c.h"
 #include "aimultigridwearable.h"
+#include "llfloaterperms.h"
 
 // This statemachine replaces Linden Labs 'upload_new_resource'.
 //
@@ -1110,6 +1111,19 @@ void NewResourceItemCallback::fire(LLUUID const& new_item_id)
   LLUUID vfile_id = LLUUID(new_item->getDescription());
   if (vfile_id.isNull()) return;
   new_item->setDescription("(No Description)");
+  std::string type("Uploads");
+  switch(new_item->getInventoryType())
+  {
+	case LLInventoryType::IT_LSL:      type = "Scripts"; break;
+	case LLInventoryType::IT_GESTURE:  type = "Gestures"; break;
+	case LLInventoryType::IT_NOTECARD: type = "Notecard"; break;
+	default: break;
+  }
+  LLPermissions perms = new_item->getPermissions();
+  perms.setMaskNext(LLFloaterPerms::getNextOwnerPerms(type));
+  perms.setMaskGroup(LLFloaterPerms::getGroupPerms(type));
+  perms.setMaskEveryone(LLFloaterPerms::getEveryonePerms(type));
+  new_item->setPermissions(perms);
   new_item->updateServer(FALSE);
   gInventory.updateItem(new_item);
   gInventory.notifyObservers();
