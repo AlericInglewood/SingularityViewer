@@ -267,13 +267,13 @@ class DatabaseThreadLock : public AIStateMachine
     // one should create and keep a DatabaseFileLock during the whole operation (ie, uploading
     // of files, repairing the database, importing/exporting of objects, etc).
     DatabaseThreadLock(DatabaseFileLock const& file_lock) :
-#if defined(CWDEBUG) || defined(DEBUG_CURLIO)
+#ifdef CWDEBUG
         AIStateMachine(true),
 #endif
         mBackEndAccess(file_lock) { }
     // Alternatively, pass a BackEndAccess object (which also has a DatabaseFileLock).
     DatabaseThreadLock(BackEndAccess const& back_end_access) :
-#if defined(CWDEBUG) || defined(DEBUG_CURLIO)
+#ifdef CWDEBUG
         AIStateMachine(true),
 #endif
         mBackEndAccess(back_end_access) { }
