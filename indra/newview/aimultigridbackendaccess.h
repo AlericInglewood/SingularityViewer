@@ -312,6 +312,9 @@ class DatabaseThreadLock : public AIStateMachine
     DatabaseFileLock const& file_lock(void) const { return mBackEndAccess.file_lock(); }
 
   protected:
+	// Return class name. Used for AIStateMachine profiling.
+	/*virtual*/ char const* getName(void) const { return "DatabaseThreadLock"; }
+
 	// Handle initializing the object.
 	/*virtual*/ void initialize_impl(void);
 

@@ -294,6 +294,8 @@ class FrontEnd : public AIStateMachine
 	void uploadFinished(bool success, LLUUID const& uuid);
 
   protected:
+	/*virtual*/ char const* getName(void) const { return "FrontEnd"; }
+
 	/*virtual*/ void initialize_impl(void);
 	/*virtual*/ void multiplex_impl(state_type run_state);
 	/*virtual*/ void abort_impl(void);
