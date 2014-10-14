@@ -230,13 +230,25 @@
   <!-- Rendering Compatibility -->
   <check_box enabled="true" radio_style="false"
 		label="Rendering Compatibility" name="render_compat" visible="false"
-		height="18" left="115" bottom_delta="-35"
+		height="18" left="115" bottom_delta="-25"
 		h_pad="0" v_pad="0" halign="left"
 		font="SansSerifSmall"
 		follows="left|top" bg_visible="false" border_visible="false" mouse_opaque="true"
 		drop_shadow_visible="true" border_drop_shadow_visible="false" />
   <button label="?" label_selected="?" enabled="true" name="btn_help_render_compat"
-		height="18" width="18" left_delta="160" bottom_delta="1" visible="false"
+		height="18" width="18" left_delta="160" bottom_delta="-1" visible="false"
+		halign="center" follows="left|top"
+	    font="SansSerifSmall" mouse_opaque="true" />
+  <!-- HTTP Pipeline Support -->
+  <check_box enabled="true" radio_style="false"
+		label="Supports HTTP pipelining" name="pipeline_support" visible="false"
+		height="18" left="115" bottom_delta="-20"
+		h_pad="0" v_pad="0" halign="left"
+		font="SansSerifSmall"
+		follows="left|top" bg_visible="false" border_visible="false" mouse_opaque="true"
+		drop_shadow_visible="true" border_drop_shadow_visible="false" />
+  <button label="?" label_selected="?" enabled="true" name="btn_help_pipeline_support"
+		height="18" width="18" left_delta="160" bottom_delta="-1" visible="false"
 		halign="center" follows="left|top"
 	    font="SansSerifSmall" mouse_opaque="true" />
 </panel>

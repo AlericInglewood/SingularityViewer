@@ -54,6 +54,7 @@ public:
 	const std::string& getGridMessage()     const { return mGridMessage; }
 	const std::string& getVoiceConnector()  const { return mVoiceConnector; }
 	bool isRenderCompat()                   const { return mRenderCompat; }
+	bool isPipelineSupport()                const { return mPipelineSupport; }
 	std::string getGridNick() const;
 	int getMaxAgentGroups() const { return mMaxAgentGroups; }
 
@@ -79,6 +80,7 @@ public:
 	void setSearchUrl(const std::string& url);
 	void setGridMessage(const std::string& message);
 	void setRenderCompat(bool compat);
+	void setPipelineSupport(bool support);
 	void setMaxAgentGroups(int max)                   { mMaxAgentGroups = max;   }
 	void setVoiceConnector(const std::string& vc)     { mVoiceConnector = vc;    }
 	void setUPCSupported(bool on);
@@ -117,6 +119,7 @@ private:
 	bool mIsInProductionGrid;
 	bool mIsInAvination;
 	bool mRenderCompat;
+	bool mPipelineSupport;
 	bool mInvLinks;
 	bool mAutoUpdate;
 	bool mLocked;
