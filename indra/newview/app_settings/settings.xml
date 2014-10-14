@@ -5208,13 +5208,24 @@ This should be as low as possible, but too low may break functionality</string>
     <key>CurlConcurrentConnectionsPerService</key>
     <map>
       <key>Comment</key>
-      <string>Maximum number of simultaneous curl connections per host:port service</string>
+      <string>Maximum number of simultaneous curl connections per host:port service. This value is unused on grids that support HTTP pipelining; in that case see CurlMaxPipelinedRequestsPerService.</string>
       <key>Persist</key>
       <integer>0</integer>
       <key>Type</key>
       <string>U32</string>
       <key>Value</key>
       <integer>8</integer>
+    </map>
+    <key>CurlMaxPipelinedRequestsPerService</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum number of curl requests per host:port service that are in the HTTP pipeline. This value is unused on grids that do not support HTTP pipelining; in that case see CurlConcurrentConnectionsPerService.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>32</integer>
     </map>
     <key>CurlTimeoutDNSLookup</key>
     <map>

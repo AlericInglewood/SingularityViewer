@@ -699,9 +699,13 @@ const std::string& HippoGridManager::getCurrentGridName() const
 	return mCurrentGrid;
 }
 
+extern bool current_grid_supports_pipelining;
+
 void HippoGridManager::setCurrentGridAsConnected()
 {
 	mConnectedGrid = getCurrentGrid();
+	// Cache this in llmessage, because we can't access gHippoGridManager from there.
+	current_grid_supports_pipelining = mConnectedGrid->isPipelineSupport();
 }
 
 

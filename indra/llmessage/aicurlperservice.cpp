@@ -46,10 +46,15 @@ AIThreadSafeSimpleDC<AIPerService::TotalQueued> AIPerService::sTotalQueued;
 
 #undef AICurlPrivate
 
+// Cached value of gHippoGridManager->getConnectedGrid()->isPipelineSupport().
+bool current_grid_supports_pipelining;
+
 namespace AICurlPrivate {
 
 // Cached value of CurlConcurrentConnectionsPerService.
 U16 CurlConcurrentConnectionsPerService;
+// Cached value of CurlMaxPipelinedRequestsPerService.
+U16 CurlMaxPipelinedRequestsPerService;
 
 // Friend functions of RefCountedThreadSafePerService
 
@@ -71,8 +76,10 @@ void intrusive_ptr_release(RefCountedThreadSafePerService* per_service)
 using namespace AICurlPrivate;
 
 AIPerService::AIPerService(void) :
+		mPipelineSupport(current_grid_supports_pipelining),
+		mCapabilityType(number_of_capability_types, mPipelineSupport),
 		mHTTPBandwidth(25),	// 25 = 1000 ms / 40 ms.
-		mMaxTotalAddedEasyHandles(CurlConcurrentConnectionsPerService),
+		mMaxTotalAddedEasyHandles(mPipelineSupport ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService),
 		mApprovedRequests(0),
 		mTotalAddedEasyHandles(0),
 		mEventPolls(0),
@@ -82,14 +89,14 @@ AIPerService::AIPerService(void) :
 {
 }
 
-AIPerService::CapabilityType::CapabilityType(void) :
+AIPerService::CapabilityType::CapabilityType(bool pipeline_support) :
   		mApprovedRequests(0),
 		mQueuedCommands(0),
 		mAddedEasyHandles(0),
 		mFlags(0),
 		mDownloading(0),
-		mMaxPipelinedRequests(CurlConcurrentConnectionsPerService),
-		mMaxAddedEasyHandles(CurlConcurrentConnectionsPerService)
+		mMaxPipelinedRequests(pipeline_support ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService),
+		mMaxAddedEasyHandles(pipeline_support ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService)
 {
 }
 
@@ -618,14 +625,16 @@ void AIPerService::purge(void)
 }
 
 //static
-void AIPerService::adjust_concurrent_connections(int increment)
+void AIPerService::adjust_max_added_easy_handles(int increment, bool for_pipeline_support)
 {
   instance_map_wat instance_map_w(sInstanceMap);
   for (AIPerService::iterator iter = instance_map_w->begin(); iter != instance_map_w->end(); ++iter)
   {
 	PerService_wat per_service_w(*iter->second);
+	if (per_service_w->mPipelineSupport != for_pipeline_support)
+	  continue;
 	U16 old_max_added_easy_handles = per_service_w->mMaxTotalAddedEasyHandles;
-	int new_max_added_easy_handles = llclamp(old_max_added_easy_handles + increment, 1, (int)CurlConcurrentConnectionsPerService);
+	int new_max_added_easy_handles = llclamp(old_max_added_easy_handles + increment, 1, (int)(per_service_w->mPipelineSupport ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService));
 	per_service_w->mMaxTotalAddedEasyHandles = (U16)new_max_added_easy_handles;
 	increment = per_service_w->mMaxTotalAddedEasyHandles - old_max_added_easy_handles;
 	for (int i = 0; i < number_of_capability_types; ++i)

@@ -157,17 +157,22 @@ class AIPerService {
 	  U16 mMaxAddedEasyHandles;					// The maximum number of allowed concurrent active requests to the service of this capability type.
 
 	  // Declare, not define, constructor and destructor - in order to avoid instantiation of queued_request_type from header.
-	  CapabilityType(void);
+	  CapabilityType(bool pipeline_support);
 	  ~CapabilityType();
 
 	  S32 pipelined_requests(void) const { return mApprovedRequests + mQueuedCommands + mQueuedRequests.size() + mAddedEasyHandles; }
 	};
 
+	bool mPipelineSupport;						// Set to true if this service supports HTTP pipelining.
+
 	friend class AIServiceBar;
-	CapabilityType mCapabilityType[number_of_capability_types];
+	std::vector<CapabilityType> mCapabilityType;
 
 	AIAverage mHTTPBandwidth;					// Keeps track on number of bytes received for this service in the past second.
 	int mMaxTotalAddedEasyHandles;				// The maximum number of allowed concurrent active requests to this service.
+												// In the case of HTTP pipelining this is the maximum number of active requests in the http pipeline,
+												// otherwise it is the maximum number of concurrent connections.
+												// In both cases this is equal to the total number of added easy handles.
 	int mApprovedRequests;						// The number of approved requests for this service by approveHTTPRequestFor that were not added to the command queue yet.
 	int mTotalAddedEasyHandles;					// Number of active easy handles with this service.
 	int mEventPolls;							// Number of active event poll handles with this service.
@@ -294,8 +299,8 @@ class AIPerService {
 	static size_t getHTTPThrottleBandwidth125(void) { return sHTTPThrottleBandwidth125; }
 	static F32 throttleFraction(void) { return ThrottleFraction_wat(sThrottleFraction)->fraction / 1024.f; }
 
-	// Called when CurlConcurrentConnectionsPerService changes.
-	static void adjust_concurrent_connections(int increment);
+	// Called when CurlConcurrentConnectionsPerService or CurlMaxPipelinedRequestsPerService changes.
+	static void adjust_max_added_easy_handles(int increment, bool for_pipeline_support);
 
 	// A helper class to decrement mApprovedRequests after requests approved by approveHTTPRequestFor were handled.
 	class Approvement : public LLThreadSafeRefCount {
@@ -343,6 +348,7 @@ class RefCountedThreadSafePerService : public threadsafe_PerService {
 };
 
 extern U16 CurlConcurrentConnectionsPerService;
+extern U16 CurlMaxPipelinedRequestsPerService;
 
 } // namespace AICurlPrivate
 

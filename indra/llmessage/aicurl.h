@@ -157,6 +157,7 @@ struct Stats {
 // Called to handle changes in Debug Settings.
 bool handleCurlMaxTotalConcurrentConnections(LLSD const& newvalue);
 bool handleCurlConcurrentConnectionsPerService(LLSD const& newvalue);
+bool handleCurlMaxPipelinedRequestsPerService(LLSD const& newvalue);
 bool handleNoVerifySSLCert(LLSD const& newvalue);
 
 // Called once at start of application (from newview/llappviewer.cpp by main thread (before threads are created)),

@@ -2671,6 +2671,7 @@ void startCurlThread(LLControlGroup* control_group)
   sConfigGroup = control_group;
   curl_max_total_concurrent_connections = sConfigGroup->getU32("CurlMaxTotalConcurrentConnections");
   CurlConcurrentConnectionsPerService = (U16)sConfigGroup->getU32("CurlConcurrentConnectionsPerService");
+  CurlMaxPipelinedRequestsPerService = (U16)sConfigGroup->getU32("CurlMaxPipelinedRequestsPerService");
   gNoVerifySSLCert = sConfigGroup->getBOOL("NoVerifySSLCert");
   AIPerService::setMaxPipelinedRequests(curl_max_total_concurrent_connections);
   AIPerService::setHTTPThrottleBandwidth(sConfigGroup->getF32("HTTPThrottleBandwidth"));
@@ -2705,8 +2706,28 @@ bool handleCurlConcurrentConnectionsPerService(LLSD const& newvalue)
   {
 	int increment = new_concurrent_connections - CurlConcurrentConnectionsPerService;
 	CurlConcurrentConnectionsPerService = new_concurrent_connections;
-	AIPerService::adjust_concurrent_connections(increment);
+	AIPerService::adjust_max_added_easy_handles(increment, false);
 	llinfos << "CurlConcurrentConnectionsPerService set to " << CurlConcurrentConnectionsPerService << llendl;
+  }
+  return true;
+}
+
+bool handleCurlMaxPipelinedRequestsPerService(LLSD const& newvalue)
+{
+  using namespace AICurlPrivate;
+
+  U16 new_max_pipelined_requests = (U16)newvalue.asInteger();
+  U16 const maxPipelinedRequestsPerService = 256;
+  if (new_max_pipelined_requests < 1 || new_max_pipelined_requests > maxPipelinedRequestsPerService)
+  {
+	sConfigGroup->setU32("CurlMaxPipelinedRequestsPerService", static_cast<U32>((new_max_pipelined_requests < 1) ? 1 : maxPipelinedRequestsPerService));
+  }
+  else
+  {
+	int increment = new_max_pipelined_requests - CurlMaxPipelinedRequestsPerService;
+	CurlMaxPipelinedRequestsPerService = new_max_pipelined_requests;
+	AIPerService::adjust_max_added_easy_handles(increment, true);
+	llinfos << "CurlMaxPipelinedRequestsPerService set to " << CurlMaxPipelinedRequestsPerService << llendl;
   }
   return true;
 }

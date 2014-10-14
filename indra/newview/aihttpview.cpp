@@ -93,7 +93,7 @@ void AIServiceBar::draw()
 	established_connections = per_service_r->mEstablishedConnections;
 	max_added_easy_handles = per_service_r->mMaxTotalAddedEasyHandles;
 	bandwidth = per_service_r->bandwidth().truncateData(AIHTTPView::getTime_40ms());
-	cts = per_service_r->mCapabilityType;	// Not thread-safe, but we're only reading from it and only using the results to show in a debug console.
+	cts = &per_service_r->mCapabilityType[0];	// Not thread-safe, but we're only reading from it and only using the results to show in a debug console.
   }
   for (int col = 0; col < number_of_capability_types; ++col)
   {
