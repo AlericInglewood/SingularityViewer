@@ -2871,14 +2871,14 @@ AIPerService::Approvement* AIPerService::approveHTTPRequestFor(AIPerServicePtr c
 	ct.mFlags &= ~(ctf_empty|ctf_full|ctf_starvation);
 	if (decrement_threshold)
 	{
-	  if ((int)ct.mMaxPipelinedRequests > ct.mConcurrentConnections)
+	  if ((int)ct.mMaxPipelinedRequests > ct.mMaxAddedEasyHandles)
 	  {
 		ct.mMaxPipelinedRequests--;
 	  }
 	}
 	else if (increment_threshold && reject)
 	{
-	  if ((int)ct.mMaxPipelinedRequests < 2 * ct.mConcurrentConnections)
+	  if ((int)ct.mMaxPipelinedRequests < 2 * ct.mMaxAddedEasyHandles)
 	  {
 		ct.mMaxPipelinedRequests++;
 		// Immediately take the new threshold into account.

@@ -82,16 +82,16 @@ void AIServiceBar::draw()
   int total_added;
   int event_polls;
   int established_connections;
-  int concurrent_connections;
+  int max_added_easy_handles;
   size_t bandwidth;
   {
 	PerService_rat per_service_r(*mPerService);
 	is_used = per_service_r->is_used();
 	is_inuse = per_service_r->is_inuse();
-	total_added = per_service_r->mTotalAdded;
+	total_added = per_service_r->mTotalAddedEasyHandles;
 	event_polls = per_service_r->mEventPolls;
 	established_connections = per_service_r->mEstablishedConnections;
-	concurrent_connections = per_service_r->mConcurrentConnections;
+	max_added_easy_handles = per_service_r->mMaxTotalAddedEasyHandles;
 	bandwidth = per_service_r->bandwidth().truncateData(AIHTTPView::getTime_40ms());
 	cts = per_service_r->mCapabilityType;	// Not thread-safe, but we're only reading from it and only using the results to show in a debug console.
   }
@@ -111,14 +111,14 @@ void AIServiceBar::draw()
 	  {
 		text = llformat(" | %hu-%hd-%lu,{%hu/%hu,%u}/%u",
 			ct.mApprovedRequests, ct.mQueuedCommands, ct.mQueuedRequests.size(),
-			ct.mAdded, ct.mConcurrentConnections, ct.mDownloading,
+			ct.mAddedEasyHandles, ct.mMaxAddedEasyHandles, ct.mDownloading,
 			ct.mMaxPipelinedRequests);
 	  }
 	  else
 	  {
 		text = llformat(" | --%hd-%lu,{%hu/%hu,%u}",
 			ct.mQueuedCommands, ct.mQueuedRequests.size(),
-			ct.mAdded, ct.mConcurrentConnections, ct.mDownloading);
+			ct.mAddedEasyHandles, ct.mMaxAddedEasyHandles, ct.mDownloading);
 	  }
 	  if (capability_type == cap_texture || capability_type == cap_mesh)
 	  {
@@ -150,9 +150,9 @@ void AIServiceBar::draw()
   }
   start = mHTTPView->updateColumn(mc_col, start);
 #ifdef CWDEBUG
-  text = llformat(" | %d,%d,%d/%d", total_added, event_polls, established_connections, concurrent_connections);
+  text = llformat(" | %d,%d,%d/%d", total_added, event_polls, established_connections, max_added_easy_handles);
 #else
-  text = llformat(" | %d/%d", total_added, concurrent_connections);
+  text = llformat(" | %d/%d", total_added, max_added_easy_handles);
 #endif
   LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, text_color, LLFontGL::LEFT, LLFontGL::TOP);
   start += LLFontGL::getFontMonospace()->getWidth(text);

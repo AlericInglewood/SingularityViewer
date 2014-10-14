@@ -94,7 +94,7 @@ static U32 const approved_mask = 3;		// The mask of cap_texture OR-ed with the m
 
 // This class provides a static interface to create and maintain instances of AIPerService objects,
 // so that at any moment there is at most one instance per service (hostname:port).
-// Those instances then are used to queue curl requests when the maximum number of connections
+// Those instances then are used to queue curl requests when the maximum number of added easy handles
 // for that service already have been reached. And to keep track of the bandwidth usage, and the
 // number of queued requests in the pipeline, for this service.
 class AIPerService {
@@ -147,29 +147,29 @@ class AIPerService {
 	  U16 mApprovedRequests;					// The number of approved requests for this CT by approveHTTPRequestFor that were not added to the command queue yet.
 	  S16 mQueuedCommands;						// Number of add commands (minus remove commands), for this service, in the command queue.
 	  											// This value can temporarily become negative when remove commands are added to the queue for add requests that were already processed.
-	  U16 mAdded;								// Number of active easy handles with this service.
+	  U16 mAddedEasyHandles;					// Number of active easy handles with this service.
 	  U16 mFlags;								// ctf_empty: Set to true when the queue becomes precisely empty.
 	  											// ctf_full : Set to true when the queue is popped and then still isn't empty;
 												// ctf_starvation: Set to true when the queue was about to be popped but was already empty.
 												// ctf_success: Set to true when a curl request finished successfully.
 	  U32 mDownloading;							// The number of active easy handles with this service for which data was received.
 	  U16 mMaxPipelinedRequests;				// The maximum number of accepted requests for this service and (approved) capability type, that didn't finish yet.
-	  U16 mConcurrentConnections;				// The maximum number of allowed concurrent connections to the service of this capability type.
+	  U16 mMaxAddedEasyHandles;					// The maximum number of allowed concurrent active requests to the service of this capability type.
 
 	  // Declare, not define, constructor and destructor - in order to avoid instantiation of queued_request_type from header.
 	  CapabilityType(void);
 	  ~CapabilityType();
 
-	  S32 pipelined_requests(void) const { return mApprovedRequests + mQueuedCommands + mQueuedRequests.size() + mAdded; }
+	  S32 pipelined_requests(void) const { return mApprovedRequests + mQueuedCommands + mQueuedRequests.size() + mAddedEasyHandles; }
 	};
 
 	friend class AIServiceBar;
 	CapabilityType mCapabilityType[number_of_capability_types];
 
 	AIAverage mHTTPBandwidth;					// Keeps track on number of bytes received for this service in the past second.
-	int mConcurrentConnections;					// The maximum number of allowed concurrent connections to this service.
+	int mMaxTotalAddedEasyHandles;				// The maximum number of allowed concurrent active requests to this service.
 	int mApprovedRequests;						// The number of approved requests for this service by approveHTTPRequestFor that were not added to the command queue yet.
-	int mTotalAdded;							// Number of active easy handles with this service.
+	int mTotalAddedEasyHandles;					// Number of active easy handles with this service.
 	int mEventPolls;							// Number of active event poll handles with this service.
 	int mEstablishedConnections;				// Number of connected sockets to this service.
 
@@ -275,7 +275,7 @@ class AIPerService {
 								   bool downloaded_something, bool success);			// Called when an easy handle for this service is removed again from the multi handle.
 	void download_started(AICapabilityType capability_type) { ++mCapabilityType[capability_type].mDownloading; }
 	bool throttled(AICapabilityType capability_type) const;		// Returns true if the maximum number of allowed requests for this service/capability type have been added to the multi handle.
-	bool nothing_added(AICapabilityType capability_type) const { return mCapabilityType[capability_type].mAdded == 0; }
+	bool nothing_added(AICapabilityType capability_type) const { return mCapabilityType[capability_type].mAddedEasyHandles == 0; }
 
 	bool queue(AICurlEasyRequest const& easy_request, AICapabilityType capability_type, bool force_queuing = true);	// Add easy_request to the queue if queue is empty or force_queuing.
 	bool cancel(AICurlEasyRequest const& easy_request, AICapabilityType capability_type);							// Remove easy_request from the queue (if it's there).

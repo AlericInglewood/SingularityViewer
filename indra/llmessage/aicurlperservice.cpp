@@ -72,9 +72,9 @@ using namespace AICurlPrivate;
 
 AIPerService::AIPerService(void) :
 		mHTTPBandwidth(25),	// 25 = 1000 ms / 40 ms.
-		mConcurrentConnections(CurlConcurrentConnectionsPerService),
+		mMaxTotalAddedEasyHandles(CurlConcurrentConnectionsPerService),
 		mApprovedRequests(0),
-		mTotalAdded(0),
+		mTotalAddedEasyHandles(0),
 		mEventPolls(0),
 		mEstablishedConnections(0),
 		mUsedCT(0),
@@ -85,11 +85,11 @@ AIPerService::AIPerService(void) :
 AIPerService::CapabilityType::CapabilityType(void) :
   		mApprovedRequests(0),
 		mQueuedCommands(0),
-		mAdded(0),
+		mAddedEasyHandles(0),
 		mFlags(0),
 		mDownloading(0),
 		mMaxPipelinedRequests(CurlConcurrentConnectionsPerService),
-		mConcurrentConnections(CurlConcurrentConnectionsPerService)
+		mMaxAddedEasyHandles(CurlConcurrentConnectionsPerService)
 {
 }
 
@@ -300,20 +300,20 @@ void AIPerService::redivide_connections(void)
 	else
 	{
 	  // Give every other type (that is not in use) one connection, so they can be used (at which point they'll get more).
-	  mCapabilityType[order[i]].mConcurrentConnections = 1;
+	  mCapabilityType[order[i]].mMaxAddedEasyHandles = 1;
 	}
   }
   // Keep one connection in reserve for currently unused capability types (that have been used before).
   int reserve = (mUsedCT != mCTInUse) ? 1 : 0;
-  // Distribute (mConcurrentConnections - reserve) over number_of_capability_types_in_use.
-  U16 max_connections_per_CT = (mConcurrentConnections - reserve) / number_of_capability_types_in_use + 1;
+  // Distribute (mMaxAddedEasyHandles - reserve) over number_of_capability_types_in_use.
+  U16 max_connections_per_CT = (mMaxTotalAddedEasyHandles - reserve) / number_of_capability_types_in_use + 1;
   // The first count CTs get max_connections_per_CT connections.
-  int count = (mConcurrentConnections - reserve) % number_of_capability_types_in_use;
+  int count = (mMaxTotalAddedEasyHandles - reserve) % number_of_capability_types_in_use;
   for(int i = 1, j = 0;; --i)
   {
 	while (j < count)
 	{
-	  mCapabilityType[used_order[j++]].mConcurrentConnections = max_connections_per_CT;
+	  mCapabilityType[used_order[j++]].mMaxAddedEasyHandles = max_connections_per_CT;
 	}
 	if (i == 0)
 	{
@@ -324,7 +324,7 @@ void AIPerService::redivide_connections(void)
 	// Never assign 0 as maximum.
 	if (max_connections_per_CT > 1)
 	{
-	  // The remaining CTs get one connection less so that the sum of all assigned connections is mConcurrentConnections - reserve.
+	  // The remaining CTs get one connection less so that the sum of all assigned connections is mMaxAddedEasyHandles - reserve.
 	  --max_connections_per_CT;
 	}
   }
@@ -332,8 +332,8 @@ void AIPerService::redivide_connections(void)
 
 bool AIPerService::throttled(AICapabilityType capability_type) const
 {
-  return mTotalAdded >= mConcurrentConnections ||
-		 mCapabilityType[capability_type].mAdded >= mCapabilityType[capability_type].mConcurrentConnections;
+  return mTotalAddedEasyHandles >= mMaxTotalAddedEasyHandles ||
+		 mCapabilityType[capability_type].mAddedEasyHandles >= mCapabilityType[capability_type].mMaxAddedEasyHandles;
 }
 
 void AIPerService::added_to_multi_handle(AICapabilityType capability_type, bool event_poll)
@@ -351,12 +351,12 @@ void AIPerService::added_to_multi_handle(AICapabilityType capability_type, bool 
 	// use for the Event Poll.
 	//
 	// This translates to that, since we're adding an event_poll and are about to remove it from
-	// either the command queue OR the request queue, that when mAdded == 1 at the end of this function
+	// either the command queue OR the request queue, that when mAddedEasyHandles == 1 at the end of this function
 	// (and the rest of the pipeline is empty) we want to mark this capability type as unused.
 	//
-	// If mEventPolls > 0 at this point then mAdded will not be incremented.
-	// If mEventPolls == 0 then mAdded will be incremented and thus should be 0 now.
-	// In other words, if the number of mAdded requests is equal to the number of (counted)
+	// If mEventPolls > 0 at this point then mAddedEasyHandles will not be incremented.
+	// If mEventPolls == 0 then mAddedEasyHandles will be incremented and thus should be 0 now.
+	// In other words, if the number of mAddedEasyHandles requests is equal to the number of (counted)
 	// mEventPoll requests right now, then that will still be the case after we added another
 	// event poll request (the transition from used to unused only being necessary because
 	// event poll requests in the pipe line ARE counted; not because that is necessary but
@@ -366,7 +366,7 @@ void AIPerService::added_to_multi_handle(AICapabilityType capability_type, bool 
 	// the command queue, or the request queue, so that pipelined_requests() will return 1 more than
 	// the actual count.
 	U16 counted_event_polls = (mEventPolls == 0) ? 0 : 1;
-	if (mCapabilityType[capability_type].mAdded == counted_event_polls &&
+	if (mCapabilityType[capability_type].mAddedEasyHandles == counted_event_polls &&
 		mCapabilityType[capability_type].pipelined_requests() == counted_event_polls + 1)
 	{
 	  mark_unused(capability_type);
@@ -377,18 +377,18 @@ void AIPerService::added_to_multi_handle(AICapabilityType capability_type, bool 
 	  return;
 	}
   }
-  ++mCapabilityType[capability_type].mAdded;
-  ++mTotalAdded;
+  ++mCapabilityType[capability_type].mAddedEasyHandles;
+  ++mTotalAddedEasyHandles;
 }
 
 void AIPerService::removed_from_multi_handle(AICapabilityType capability_type, bool event_poll, bool downloaded_something, bool success)
 {
   CapabilityType& ct(mCapabilityType[capability_type]);
-  llassert(mTotalAdded > 0 && ct.mAdded > 0 && (!event_poll || mEventPolls));
+  llassert(mTotalAddedEasyHandles > 0 && ct.mAddedEasyHandles > 0 && (!event_poll || mEventPolls));
   if (!event_poll || --mEventPolls == 0)
   {
-	--ct.mAdded;
-	--mTotalAdded;
+	--ct.mAddedEasyHandles;
+	--mTotalAddedEasyHandles;
   }
   if (downloaded_something)
   {
@@ -399,7 +399,7 @@ void AIPerService::removed_from_multi_handle(AICapabilityType capability_type, b
   // in other words, when there are only long poll connections left, then mark the capability type
   // as unused.
   U16 counted_event_polls = (capability_type != cap_other || mEventPolls == 0) ? 0 : 1;
-  if (ct.mAdded == counted_event_polls && ct.pipelined_requests() == counted_event_polls)
+  if (ct.mAddedEasyHandles == counted_event_polls && ct.pipelined_requests() == counted_event_polls)
   {
 	mark_unused(capability_type);
   }
@@ -475,7 +475,7 @@ void AIPerService::add_queued_to(curlthread::MultiHandle* multi_handle, bool onl
 	  success_this_pass = false;
 	}
 	CapabilityType& ct(mCapabilityType[i]);
-	if (!pass != !ct.mAdded)						// Does mAdded match what we're looking for (first mAdded == 0, then mAdded != 0)?
+	if (!pass != !ct.mAddedEasyHandles)						// Does mAddedEasyHandles match what we're looking for (first mAddedEasyHandles == 0, then mAddedEasyHandles != 0)?
 	{
 	  continue;
 	}
@@ -485,12 +485,12 @@ void AIPerService::add_queued_to(curlthread::MultiHandle* multi_handle, bool onl
 	  only_this_service = true;
 	  break;
 	}
-	if (mTotalAdded >= mConcurrentConnections)
+	if (mTotalAddedEasyHandles >= mMaxTotalAddedEasyHandles)
 	{
 	  // We hit the maximum number of connections for this service. Abort any attempt to add anything to this service.
 	  break;
 	}
-	if (ct.mAdded >= ct.mConcurrentConnections)
+	if (ct.mAddedEasyHandles >= ct.mMaxAddedEasyHandles)
 	{
 	  // We hit the maximum number of connections for this capability type. Try the next one.
 	  continue;
@@ -624,16 +624,16 @@ void AIPerService::adjust_concurrent_connections(int increment)
   for (AIPerService::iterator iter = instance_map_w->begin(); iter != instance_map_w->end(); ++iter)
   {
 	PerService_wat per_service_w(*iter->second);
-	U16 old_concurrent_connections = per_service_w->mConcurrentConnections;
-	int new_concurrent_connections = llclamp(old_concurrent_connections + increment, 1, (int)CurlConcurrentConnectionsPerService);
-	per_service_w->mConcurrentConnections = (U16)new_concurrent_connections;
-	increment = per_service_w->mConcurrentConnections - old_concurrent_connections;
+	U16 old_max_added_easy_handles = per_service_w->mMaxTotalAddedEasyHandles;
+	int new_max_added_easy_handles = llclamp(old_max_added_easy_handles + increment, 1, (int)CurlConcurrentConnectionsPerService);
+	per_service_w->mMaxTotalAddedEasyHandles = (U16)new_max_added_easy_handles;
+	increment = per_service_w->mMaxTotalAddedEasyHandles - old_max_added_easy_handles;
 	for (int i = 0; i < number_of_capability_types; ++i)
 	{
 	  per_service_w->mCapabilityType[i].mMaxPipelinedRequests = llmax(per_service_w->mCapabilityType[i].mMaxPipelinedRequests + increment, 0);
-	  int new_concurrent_connections_per_capability_type =
-		  llclamp((new_concurrent_connections * per_service_w->mCapabilityType[i].mConcurrentConnections + old_concurrent_connections / 2) / old_concurrent_connections, 1, new_concurrent_connections);
-	  per_service_w->mCapabilityType[i].mConcurrentConnections = (U16)new_concurrent_connections_per_capability_type;
+	  int new_max_added_easy_handles_per_capability_type =
+		  llclamp((new_max_added_easy_handles * per_service_w->mCapabilityType[i].mMaxAddedEasyHandles + old_max_added_easy_handles / 2) / old_max_added_easy_handles, 1, new_max_added_easy_handles);
+	  per_service_w->mCapabilityType[i].mMaxAddedEasyHandles = (U16)new_max_added_easy_handles_per_capability_type;
 	}
   }
 }
