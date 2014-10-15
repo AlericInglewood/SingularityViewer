@@ -96,7 +96,7 @@ static U32 const approved_mask = 3;		// The mask of cap_texture OR-ed with the m
 // so that at any moment there is at most one instance per service (hostname:port).
 // Those instances then are used to queue curl requests when the maximum number of added easy handles
 // for that service already have been reached. And to keep track of the bandwidth usage, and the
-// number of queued requests in the pipeline, for this service.
+// number of queued requests in the "unfinished pipeline", for this service.
 class AIPerService {
   public:
 	typedef std::map<std::string, AIPerServicePtr> instance_map_type;
@@ -153,14 +153,14 @@ class AIPerService {
 												// ctf_starvation: Set to true when the queue was about to be popped but was already empty.
 												// ctf_success: Set to true when a curl request finished successfully.
 	  U32 mDownloading;							// The number of active easy handles with this service for which data was received.
-	  U16 mMaxPipelinedRequests;				// The maximum number of accepted requests for this service and (approved) capability type, that didn't finish yet.
+	  U16 mMaxUnfinishedRequests;				// The maximum number of accepted requests for this service and (approved) capability type, that didn't finish yet.
 	  U16 mMaxAddedEasyHandles;					// The maximum number of allowed concurrent active requests to the service of this capability type.
 
 	  // Declare, not define, constructor and destructor - in order to avoid instantiation of queued_request_type from header.
 	  CapabilityType(bool pipeline_support);
 	  ~CapabilityType();
 
-	  S32 pipelined_requests(void) const { return mApprovedRequests + mQueuedCommands + mQueuedRequests.size() + mAddedEasyHandles; }
+	  S32 unfinished_requests(void) const { return mApprovedRequests + mQueuedCommands + mQueuedRequests.size() + mAddedEasyHandles; }
 	};
 
 	bool mPipelineSupport;						// Set to true if this service supports HTTP pipelining.
@@ -224,6 +224,8 @@ class AIPerService {
 	U32 is_used(void) const { return mUsedCT; }						// Non-zero if this service was used for any capability type.
 	U32 is_inuse(void) const { return mCTInUse; }					// Non-zero if this service is in use for any capability type.
 
+	bool is_http_pipeline(void) const { return mPipelineSupport; }
+
 	// Global administration of the total number of queued requests of all services combined.
   private:
 	struct TotalQueued {
@@ -240,21 +242,21 @@ class AIPerService {
   public:
 	static S32 total_approved_queue_size(void) { return TotalQueued_rat(sTotalQueued)->approved; }
 
-	// Global administration of the maximum number of pipelined requests of all services combined.
+	// Global administration of the maximum number of unfinished requests of all services combined.
   private:
-	struct MaxPipelinedRequests {
+	struct MaxUnfinishedRequests {
 		S32 threshold;							// The maximum total number of accepted requests that didn't finish yet.
-		U64 last_increment;						// Last time that sMaxPipelinedRequests was incremented.
-		U64 last_decrement;						// Last time that sMaxPipelinedRequests was decremented.
-		MaxPipelinedRequests(void) : threshold(32), last_increment(0), last_decrement(0) { }
+		U64 last_increment;						// Last time that sMaxUnfinishedRequests was incremented.
+		U64 last_decrement;						// Last time that sMaxUnfinishedRequests was decremented.
+		MaxUnfinishedRequests(void) : threshold(32), last_increment(0), last_decrement(0) { }
 	};
-	static AIThreadSafeSimpleDC<MaxPipelinedRequests> sMaxPipelinedRequests;
-	typedef AIAccessConst<MaxPipelinedRequests> MaxPipelinedRequests_crat;
-	typedef AIAccess<MaxPipelinedRequests> MaxPipelinedRequests_rat;
-	typedef AIAccess<MaxPipelinedRequests> MaxPipelinedRequests_wat;
+	static AIThreadSafeSimpleDC<MaxUnfinishedRequests> sMaxUnfinishedRequests;
+	typedef AIAccessConst<MaxUnfinishedRequests> MaxUnfinishedRequests_crat;
+	typedef AIAccess<MaxUnfinishedRequests> MaxUnfinishedRequests_rat;
+	typedef AIAccess<MaxUnfinishedRequests> MaxUnfinishedRequests_wat;
   public:
-	static void setMaxPipelinedRequests(S32 threshold) { MaxPipelinedRequests_wat(sMaxPipelinedRequests)->threshold = threshold; }
-	static void incrementMaxPipelinedRequests(S32 increment) { MaxPipelinedRequests_wat(sMaxPipelinedRequests)->threshold += increment; }
+	static void setMaxUnfinishedRequests(S32 threshold) { MaxUnfinishedRequests_wat(sMaxUnfinishedRequests)->threshold = threshold; }
+	static void incrementMaxUnfinishedRequests(S32 increment) { MaxUnfinishedRequests_wat(sMaxUnfinishedRequests)->threshold += increment; }
 
 	// Global administration of throttle fraction (which is the same for all services).
   private:
@@ -289,7 +291,7 @@ class AIPerService {
 														// Add queued easy handle (if any) to the multi handle. The request is removed from the queue,
 														// followed by either a call to added_to_multi_handle() or to queue() to add it back.
 
-	S32 pipelined_requests(AICapabilityType capability_type) const { return mCapabilityType[capability_type].pipelined_requests(); }
+	S32 unfinished_requests(AICapabilityType capability_type) const { return mCapabilityType[capability_type].unfinished_requests(); }
 
 	AIAverage& bandwidth(void) { return mHTTPBandwidth; }
 	AIAverage const& bandwidth(void) const { return mHTTPBandwidth; }

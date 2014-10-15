@@ -92,7 +92,7 @@ AIPerService::CapabilityType::CapabilityType(bool pipeline_support) :
 		mAddedEasyHandles(0),
 		mFlags(0),
 		mDownloading(0),
-		mMaxPipelinedRequests(pipeline_support ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService),
+		mMaxUnfinishedRequests(pipeline_support ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService),
 		mMaxAddedEasyHandles(pipeline_support ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService)
 {
 }
@@ -372,7 +372,7 @@ void AIPerService::added_to_multi_handle(AICapabilityType capability_type, bool 
 	// the actual count.
 	U16 counted_event_polls = (mEventPolls == 0) ? 0 : 1;
 	if (mCapabilityType[capability_type].mAddedEasyHandles == counted_event_polls &&
-		mCapabilityType[capability_type].pipelined_requests() == counted_event_polls + 1)
+		mCapabilityType[capability_type].unfinished_requests() == counted_event_polls + 1)
 	{
 	  mark_unused(capability_type);
 	}
@@ -404,7 +404,7 @@ void AIPerService::removed_from_multi_handle(AICapabilityType capability_type, b
   // in other words, when there are only long poll handles left, then mark the capability type
   // as unused.
   U16 counted_event_polls = (capability_type != cap_other || mEventPolls == 0) ? 0 : 1;
-  if (ct.mAddedEasyHandles == counted_event_polls && ct.pipelined_requests() == counted_event_polls)
+  if (ct.mAddedEasyHandles == counted_event_polls && ct.unfinished_requests() == counted_event_polls)
   {
 	mark_unused(capability_type);
   }
@@ -637,7 +637,7 @@ void AIPerService::adjust_max_added_easy_handles(int increment, bool for_pipelin
 	increment = per_service_w->mMaxTotalAddedEasyHandles - old_max_added_easy_handles;
 	for (int i = 0; i < number_of_capability_types; ++i)
 	{
-	  per_service_w->mCapabilityType[i].mMaxPipelinedRequests = llmax(per_service_w->mCapabilityType[i].mMaxPipelinedRequests + increment, 0);
+	  per_service_w->mCapabilityType[i].mMaxUnfinishedRequests = llmax(per_service_w->mCapabilityType[i].mMaxUnfinishedRequests + increment, 0);
 	  int new_max_added_easy_handles_per_capability_type =
 		  llclamp((new_max_added_easy_handles * per_service_w->mCapabilityType[i].mMaxAddedEasyHandles + old_max_added_easy_handles / 2) / old_max_added_easy_handles, 1, new_max_added_easy_handles);
 	  per_service_w->mCapabilityType[i].mMaxAddedEasyHandles = (U16)new_max_added_easy_handles_per_capability_type;

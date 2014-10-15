@@ -80,7 +80,7 @@ class MultiHandle : public CurlMultiHandle
 	typedef std::set<AICurlEasyRequest, AICurlEasyRequestCompare> addedEasyRequests_type;
 	addedEasyRequests_type mAddedEasyRequests;	// All easy requests currently added to the multi handle.
 	long mTimeout;								// The last timeout in ms as set by the callback CURLMOPT_TIMERFUNCTION.
-	static LLAtomicU32 sTotalAdded;				// The (sum of the) size of mAddedEasyRequests (of every MultiHandle, but there is only one).
+	static LLAtomicU32 sTotalAddedEasyHandles;	// The (sum of the) size of mAddedEasyRequests (of every MultiHandle, but there is only one).
 
   private:
 	// Store result and trigger events for easy request.
@@ -106,10 +106,11 @@ class MultiHandle : public CurlMultiHandle
 	void handle_stalls(void);
 
 	// Return the total number of added curl requests.
-	static U32 total_added_size(void) { return sTotalAdded; }
+	static U32 total_added_size(void) { return sTotalAddedEasyHandles; }
 
 	// Return true if we reached the global maximum number of connections.
-	static bool added_maximum(void) { return sTotalAdded >= curl_max_total_concurrent_connections; }
+	// If the current grid supports HTTP pipelining, we will never reach the maximum number of connections, so just return false.
+	static bool added_maximum(void) { return !current_grid_supports_pipelining && sTotalAddedEasyHandles >= curl_max_total_concurrent_connections; }
 
 	// This is called when the current grid successfully connected.
 	// If enabled then libcurl will attempt to use an existing pipeline for all added easy handles.
