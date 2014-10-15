@@ -281,6 +281,9 @@ AIThreadSafeDC<Command> command_being_processed;
 typedef AIWriteAccess<Command> command_being_processed_wat;
 typedef AIReadAccess<Command> command_being_processed_rat;
 
+// Cached value of gHippoGridManager->getConnectedGrid()->isPipelineSupport().
+bool current_grid_supports_pipelining;
+
 namespace curlthread {
 // All functions in this namespace are only run by the curl thread, unless they are marked with MAIN-THREAD.
 
@@ -1640,6 +1643,12 @@ MultiHandle::MultiHandle(void) : mTimeout(-1), mReadPollSet(NULL), mWritePollSet
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_SOCKETDATA, this));
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_TIMERFUNCTION, &MultiHandle::timer_callback));
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_TIMERDATA, this));
+}
+
+void MultiHandle::setPipelineSupport(bool enable)
+{
+  check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_PIPELINING, enable ? 1L : 0L));
+  current_grid_supports_pipelining = enable;
 }
 
 MultiHandle::~MultiHandle()

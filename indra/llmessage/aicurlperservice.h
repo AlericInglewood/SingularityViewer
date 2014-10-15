@@ -184,7 +184,7 @@ class AIPerService {
 	// Helper struct, used in the static resetUsed.
 	struct ResetUsed { void operator()(instance_map_type::value_type const& service) const; };
 
-	void redivide_connections(void);
+	void redivide_easy_handle_slots(void);
 	void mark_inuse(AICapabilityType capability_type)
 	{
 	  U32 bit = CT2mask(capability_type);
@@ -194,7 +194,7 @@ class AIPerService {
 		mUsedCT |= bit;
 		if (mUsedCT != bit)					// and more than one CT use this service.
 		{
-		  redivide_connections();
+		  redivide_easy_handle_slots();
 		}
 	  }
 	}
@@ -206,7 +206,7 @@ class AIPerService {
 		mCTInUse &= ~bit;
 		if (mCTInUse && mUsedCT != bit)		// and more than one CT use this service, and at least one is in use.
 		{
-		  redivide_connections();
+		  redivide_easy_handle_slots();
 		}
 	  }
 	}

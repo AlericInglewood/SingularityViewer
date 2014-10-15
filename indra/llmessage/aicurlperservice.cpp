@@ -46,9 +46,6 @@ AIThreadSafeSimpleDC<AIPerService::TotalQueued> AIPerService::sTotalQueued;
 
 #undef AICurlPrivate
 
-// Cached value of gHippoGridManager->getConnectedGrid()->isPipelineSupport().
-bool current_grid_supports_pipelining;
-
 namespace AICurlPrivate {
 
 // Cached value of CurlConcurrentConnectionsPerService.
@@ -290,7 +287,7 @@ void AIPerService::release(AIPerServicePtr& instance)
   instance.reset();
 }
 
-void AIPerService::redivide_connections(void)
+void AIPerService::redivide_easy_handle_slots(void)
 {
   // Priority order.
   static AICapabilityType order[number_of_capability_types] = { cap_inventory, cap_texture, cap_mesh, cap_other };
@@ -306,21 +303,22 @@ void AIPerService::redivide_connections(void)
 	}
 	else
 	{
-	  // Give every other type (that is not in use) one connection, so they can be used (at which point they'll get more).
-	  mCapabilityType[order[i]].mMaxAddedEasyHandles = 1;
+	  // Give every other type (that is not in use) one or four easy handles, so they can be used (at which point they'll get more).
+	  // Note that this is overhead - theoretically allowing us to go over the maximum that is set with the respective debug settings.
+	  mCapabilityType[order[i]].mMaxAddedEasyHandles = mPipelineSupport ? 4 : 1;
 	}
   }
-  // Keep one connection in reserve for currently unused capability types (that have been used before).
+  // Keep one easy handle slot in reserve for currently unused capability types (that have been used before).
   int reserve = (mUsedCT != mCTInUse) ? 1 : 0;
   // Distribute (mMaxAddedEasyHandles - reserve) over number_of_capability_types_in_use.
-  U16 max_connections_per_CT = (mMaxTotalAddedEasyHandles - reserve) / number_of_capability_types_in_use + 1;
-  // The first count CTs get max_connections_per_CT connections.
+  U16 max_slots_per_CT = (mMaxTotalAddedEasyHandles - reserve) / number_of_capability_types_in_use + 1;
+  // The first count CTs get max_slots_per_CT easy handle slots.
   int count = (mMaxTotalAddedEasyHandles - reserve) % number_of_capability_types_in_use;
   for(int i = 1, j = 0;; --i)
   {
 	while (j < count)
 	{
-	  mCapabilityType[used_order[j++]].mMaxAddedEasyHandles = max_connections_per_CT;
+	  mCapabilityType[used_order[j++]].mMaxAddedEasyHandles = max_slots_per_CT;
 	}
 	if (i == 0)
 	{
@@ -329,10 +327,10 @@ void AIPerService::redivide_connections(void)
 	// Finish the loop till all used CTs are assigned.
 	count = number_of_capability_types_in_use;
 	// Never assign 0 as maximum.
-	if (max_connections_per_CT > 1)
+	if (max_slots_per_CT > 1)
 	{
-	  // The remaining CTs get one connection less so that the sum of all assigned connections is mMaxAddedEasyHandles - reserve.
-	  --max_connections_per_CT;
+	  // The remaining CTs get one easy handle slot less so that the sum of all assigned slots is mMaxAddedEasyHandles - reserve.
+	  --max_slots_per_CT;
 	}
   }
 }
@@ -349,10 +347,10 @@ void AIPerService::added_to_multi_handle(AICapabilityType capability_type, bool 
   {
 	llassert(capability_type == cap_other);
 	// We want to mark this service as unused when only long polls have been added, because they
-	// are not counted towards the maximum number of connection for this service and therefore
-	// should not cause another capability type to get less connections.
-	// For example, if - like on opensim - Textures and Other capability types use the same
-	// service then it is nonsense to reserve 4 connections Other and only give 4 connections
+	// are not counted towards the maximum number of easy handle slots for this service and therefore
+	// should not cause another capability type to get less easy handle slots.
+	// For example, if - like on opensim, without pipelining - Textures and Other capability types use
+	// the same service then it is nonsense to reserve 4 connections for Other and only give 4 connections
 	// to Textures, only because there is a long poll connection (or any number of long poll
 	// connections). What we want is to see: 0-0-0,{0/7,0} for textures when Other is ONLY in
 	// use for the Event Poll.
@@ -403,7 +401,7 @@ void AIPerService::removed_from_multi_handle(AICapabilityType capability_type, b
 	--ct.mDownloading;
   }
   // If the number of added request handles is equal to the number of counted event poll handles,
-  // in other words, when there are only long poll connections left, then mark the capability type
+  // in other words, when there are only long poll handles left, then mark the capability type
   // as unused.
   U16 counted_event_polls = (capability_type != cap_other || mEventPolls == 0) ? 0 : 1;
   if (ct.mAddedEasyHandles == counted_event_polls && ct.pipelined_requests() == counted_event_polls)
@@ -494,12 +492,12 @@ void AIPerService::add_queued_to(curlthread::MultiHandle* multi_handle, bool onl
 	}
 	if (mTotalAddedEasyHandles >= mMaxTotalAddedEasyHandles)
 	{
-	  // We hit the maximum number of connections for this service. Abort any attempt to add anything to this service.
+	  // We hit the maximum number of easy handles for this service. Abort any attempt to add anything to this service.
 	  break;
 	}
 	if (ct.mAddedEasyHandles >= ct.mMaxAddedEasyHandles)
 	{
-	  // We hit the maximum number of connections for this capability type. Try the next one.
+	  // We hit the maximum number of easy handles for this capability type. Try the next one.
 	  continue;
 	}
 	U32 mask = CT2mask((AICapabilityType)i);

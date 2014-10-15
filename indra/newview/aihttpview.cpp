@@ -79,19 +79,19 @@ void AIServiceBar::draw()
   AIPerService::CapabilityType* cts;
   U32 is_used;
   U32 is_inuse;
-  int total_added;
+  int total_added_easy_handles;
   int event_polls;
   int established_connections;
-  int max_added_easy_handles;
+  int max_total_added_easy_handles;
   size_t bandwidth;
   {
 	PerService_rat per_service_r(*mPerService);
 	is_used = per_service_r->is_used();
 	is_inuse = per_service_r->is_inuse();
-	total_added = per_service_r->mTotalAddedEasyHandles;
+	total_added_easy_handles = per_service_r->mTotalAddedEasyHandles;
 	event_polls = per_service_r->mEventPolls;
 	established_connections = per_service_r->mEstablishedConnections;
-	max_added_easy_handles = per_service_r->mMaxTotalAddedEasyHandles;
+	max_total_added_easy_handles = per_service_r->mMaxTotalAddedEasyHandles;
 	bandwidth = per_service_r->bandwidth().truncateData(AIHTTPView::getTime_40ms());
 	cts = &per_service_r->mCapabilityType[0];	// Not thread-safe, but we're only reading from it and only using the results to show in a debug console.
   }
@@ -150,9 +150,9 @@ void AIServiceBar::draw()
   }
   start = mHTTPView->updateColumn(mc_col, start);
 #ifdef CWDEBUG
-  text = llformat(" | %d,%d,%d/%d", total_added, event_polls, established_connections, max_added_easy_handles);
+  text = llformat(" | %d,%d/%d[%d]", total_added_easy_handles, event_polls, max_total_added_easy_handles, established_connections);
 #else
-  text = llformat(" | %d/%d", total_added, max_added_easy_handles);
+  text = llformat(" | %d/%d", total_added_easy_handles, max_total_added_easy_handles);
 #endif
   LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, text_color, LLFontGL::LEFT, LLFontGL::TOP);
   start += LLFontGL::getFontMonospace()->getWidth(text);

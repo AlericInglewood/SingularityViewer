@@ -17,6 +17,7 @@
 #include "llviewercontrol.h"
 #include "llweb.h"
 #include "aialert.h"
+#include "aicurlthread.h"
 
 // ********************************************************************
 // Global Variables
@@ -699,13 +700,12 @@ const std::string& HippoGridManager::getCurrentGridName() const
 	return mCurrentGrid;
 }
 
-extern bool current_grid_supports_pipelining;
-
 void HippoGridManager::setCurrentGridAsConnected()
 {
 	mConnectedGrid = getCurrentGrid();
-	// Cache this in llmessage, because we can't access gHippoGridManager from there.
-	current_grid_supports_pipelining = mConnectedGrid->isPipelineSupport();
+	// Update pipeline support for the current grid.
+	AICurlMultiHandle_wat multi_handle_w(AICurlMultiHandle::getInstance());
+	multi_handle_w->setPipelineSupport(mConnectedGrid->isPipelineSupport());
 }
 
 
