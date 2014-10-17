@@ -28,7 +28,9 @@
 #define LL_LLAVATARACTIONS_H
 
 class LLAvatarName;
+class LLInventoryPanel;
 class LLFloater;
+class LLView;
 
 /**
  * Friend-related actions (add, remove, offer teleport, etc)
@@ -109,6 +111,16 @@ public:
 	static void teleport_request_callback(const LLSD& notification, const LLSD& response);
 
 	/**
+	 * Share items with the avatar.
+	 */
+	static void share(const LLUUID& id);
+
+	/**
+	 * Share items with the picked avatars.
+	 */
+	static void shareWithAvatars(LLView * panel);
+
+	/**
 	 * Block/unblock the avatar.
 	 */
 	static void toggleBlock(const LLUUID& id);
@@ -155,6 +167,7 @@ public:
 	 * Invite avatar to a group.
 	 */	
 	static void inviteToGroup(const LLUUID& id);
+	static void inviteToGroup(const uuid_vec_t& ids);
 	
 	/**
 	 * Kick avatar off grid
@@ -190,6 +203,20 @@ public:
 	static bool canOfferTeleport(const uuid_vec_t& ids);
 
 	/**
+	 * Checks whether all items selected in the given inventory panel can be shared
+	 *
+	 * @param inv_panel Inventory panel to get selection from. If NULL, the active inventory panel is used.
+	 *
+	 * @return false if the selected items cannot be shared or the active inventory panel cannot be obtained
+	 */
+	static bool canShareSelectedItems(LLInventoryPanel* inv_panel = NULL);
+
+	/**
+	 * Checks whether agent is mappable
+	 */
+	static bool isAgentMappable(const LLUUID& agent_id);
+
+	/**
 	 * Builds a string of residents' display names separated by "words_separator" string.
 	 *
 	 * @param avatar_names - a vector of given avatar names from which resulting string is built
@@ -205,6 +232,8 @@ public:
 	 */
 	static void buildResidentsString(const uuid_vec_t& avatar_uuids, std::string& residents_string);
 
+	static std::set<LLUUID> getInventorySelectedUUIDs();
+
 	/**
 	 * Copy the selected avatar's UUID to clipboard
 	 */
@@ -217,7 +246,7 @@ private:
 	static bool handleKick(const LLSD& notification, const LLSD& response);
 	static bool handleFreeze(const LLSD& notification, const LLSD& response);
 	static bool handleUnfreeze(const LLSD& notification, const LLSD& response);
-	static void callback_invite_to_group(LLUUID group_id, LLUUID id);
+	static void callback_invite_to_group(LLUUID group_id, uuid_vec_t& ids);
 	static void on_avatar_name_cache_teleport_request(const LLUUID& id, const LLAvatarName& av_name);
 
 public:

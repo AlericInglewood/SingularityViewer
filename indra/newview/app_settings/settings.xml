@@ -755,6 +755,17 @@
       <key>Value</key>
       <integer>0</integer>
     </map>
+    <key>LiruHighlightNewInventory</key>
+    <map>
+      <key>Comment</key>
+      <string>When false, new inventory items will not be highlighted upon being accepted.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <boolean>1</boolean>
+    </map>
     <key>LiruLegacyDisplayMuteds</key>
     <map>
       <key>Comment</key>
@@ -764,7 +775,7 @@
       <key>Type</key>
       <string>Boolean</string>
       <key>Value</key>
-      <integer>1</integer>
+      <integer>0</integer>
     </map>
     <key>LiruLegacyLandmarks</key>
     <map>
@@ -803,6 +814,17 @@
     <map>
       <key>Comment</key>
       <string>While true, automatic detach is performed upon all copyable attachments just before legacy outfit creation to preserve any modifications to them.  As a last resort, setting this false allows creating a legacy outfit that won't save changes made to copyable attachments since wearing them or login.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>LiruResizeRootWithScreen</key>
+    <map>
+      <key>Comment</key>
+      <string>When false, the ui view won't resize when the screen does (floaters won't move around without user interaction, but they also might be restricted from moving everywhere).</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -5075,6 +5097,39 @@ This should be as low as possible, but too low may break functionality</string>
       <key>Value</key>
       <integer>0</integer>
     </map>
+    <key>ContextConeInAlpha</key>
+    <map>
+      <key>Comment</key>
+      <string>Cone In Alpha</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.0</real>
+    </map>
+    <key>ContextConeOutAlpha</key>
+    <map>
+      <key>Comment</key>
+      <string>Cone Out Alpha</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>1.0</real>
+    </map>
+    <key>ContextConeFadeTime</key>
+    <map>
+      <key>Comment</key>
+      <string>Cone Fade Time</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>.08</real>
+    </map>
     <key>CookiesEnabled</key>
     <map>
       <key>Comment</key>
@@ -7723,6 +7778,17 @@ This should be as low as possible, but too low may break functionality</string>
       <integer>1</integer>
       <key>Type</key>
       <string>U32</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>RadarAlertShowDist</key>
+    <map>
+      <key>Comment</key>
+      <string>Show distance in radar announcements.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
       <key>Value</key>
       <integer>1</integer>
     </map>
@@ -16895,6 +16961,28 @@ This should be as low as possible, but too low may break functionality</string>
       <string>String</string>
       <key>Value</key>
       <string>0</string>
+    </map>
+    <key>VivoxShutdownTimeout</key>
+    <map>
+      <key>Comment</key>
+      <string>shutdown timeout in miliseconds.  The amount of time to wait for the service to shutdown gracefully after the last disconnect</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>String</string>
+      <key>Value</key>
+      <string>5</string>
+    </map>
+    <key>VivoxLogDirectory</key>
+    <map>
+      <key>Comment</key>
+      <string>Default log path is Application Support/SecondLife/logs specify alternate absolute path here.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>String</string>
+      <key>Value</key>
+      <string />
     </map>
     <key>VivoxDebugSIPURIHostName</key>
     <map>

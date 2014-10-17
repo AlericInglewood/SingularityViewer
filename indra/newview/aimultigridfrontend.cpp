@@ -1814,8 +1814,7 @@ void FrontEnd::multiplex_impl(state_type run_state)
 		{
 		  increase_new_upload_stats(mAssetType);
 		}
-		std::string upload_message = "Uploading...\n\n";
-		upload_message.append(mDisplayName);
+		std::string upload_message = "Uploading texture...\n\n" + mDisplayName;
 		LLUploadDialog::modalUploadDialog(upload_message);
 
 		llinfos << "*** Uploading: "

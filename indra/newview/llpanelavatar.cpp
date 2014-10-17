@@ -473,7 +473,7 @@ BOOL LLPanelAvatarSecondLife::postBuild(void)
 
 	getChild<LLUICtrl>("Find on Map")->setCommitCallback(boost::bind(LLAvatarActions::showOnMap, boost::bind(&LLPanelAvatar::getAvatarID, pa)));
 	getChild<LLUICtrl>("Instant Message...")->setCommitCallback(boost::bind(LLAvatarActions::startIM, boost::bind(&LLPanelAvatar::getAvatarID, pa)));
-	getChild<LLUICtrl>("GroupInvite_Button")->setCommitCallback(boost::bind(LLAvatarActions::inviteToGroup, boost::bind(&LLPanelAvatar::getAvatarID, pa)));
+	getChild<LLUICtrl>("GroupInvite_Button")->setCommitCallback(boost::bind(static_cast<void(*)(const LLUUID&)>(LLAvatarActions::inviteToGroup), boost::bind(&LLPanelAvatar::getAvatarID, pa)));
 
 	getChild<LLUICtrl>("Add Friend...")->setCommitCallback(boost::bind(LLAvatarActions::requestFriendshipDialog, boost::bind(&LLPanelAvatar::getAvatarID, pa)));
 	getChild<LLUICtrl>("Pay...")->setCommitCallback(boost::bind(LLAvatarActions::pay, boost::bind(&LLPanelAvatar::getAvatarID, pa)));
@@ -1631,12 +1631,12 @@ void LLPanelAvatar::resetGroupList()
 
 			group_list->deleteAllItems();
 			
-			S32 count = gAgent.mGroups.count();
+			S32 count = gAgent.mGroups.size();
 			LLUUID id;
 			
 			for(S32 i = 0; i < count; ++i)
 			{
-				LLGroupData group_data = gAgent.mGroups.get(i);
+				LLGroupData group_data = gAgent.mGroups[i];
 				id = group_data.mID;
 				std::string group_string;
 				/* Show group title?  DUMMY_POWER for Don Grep

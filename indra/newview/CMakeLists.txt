@@ -453,6 +453,7 @@ set(viewer_SOURCE_FILES
     llscrollingpanelparam.cpp
     llscrollingpanelparambase.cpp
     llselectmgr.cpp
+    llshareavatarhandler.cpp
     llsky.cpp
     llslurl.cpp
     llspatialpartition.cpp
@@ -1898,7 +1899,7 @@ if (WINDOWS)
 
     set_target_properties(llcommon
         PROPERTIES
-        LINK_FLAGS "/debug /NODEFAULTLIB:LIBCMT"
+        LINK_FLAGS "/debug /NODEFAULTLIB:LIBCMT /LTCG"
         LINK_FLAGS_DEBUG "/NODEFAULTLIB:\"LIBCMT;LIBCMTD;MSVCRT\""
         )
 

@@ -42,7 +42,7 @@
   </menu_item_call>
   <menu_item_call label="Invite To Group" name="Invite To Group">
     <on_click function="List.InviteToGroup"/>
-    <on_visible function="List.EnableSingleSelected"/>
+    <on_visible function="List.EnableAnySelected"/>
   </menu_item_call>
   <menu_item_call label="Ban From Group" name="Ban From Group">
     <on_click function="List.BanFromGroup"/>
@@ -54,6 +54,10 @@
   </menu_item_call>
   <menu_item_call label="Request Teleport" name="Request Teleport">
     <on_click function="List.RequestTeleport"/>
+    <on_visible function="List.EnableSingleSelected"/>
+  </menu_item_call>
+  <menu_item_call label="Share" name="Share">
+    <on_click function="List.Share"/>
     <on_visible function="List.EnableSingleSelected"/>
   </menu_item_call>
   <menu_item_separator/>

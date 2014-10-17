@@ -755,7 +755,7 @@ void init_menus()
 	ins = gMenuBarView->getChildView("insert_admin", true, false);
 	ins->setVisible(false);*/
 
-	LLEnvManagerNew::instance().setRegionChangeCallback(&region_change);
+	gAgent.addRegionChangedCallback(&region_change);
 }
 
 
@@ -2818,24 +2818,27 @@ bool handle_go_to()
 	std::vector<std::string> strings;
 	std::string val;
 	LLVector3d pos = LLToolPie::getInstance()->getPick().mPosGlobal;
-	val = llformat("%g", pos.mdV[VX]);
+	val = llformat("%.9g", pos.mdV[VX]);
 	strings.push_back(val);
-	val = llformat("%g", pos.mdV[VY]);
+	val = llformat("%.9g", pos.mdV[VY]);
 	strings.push_back(val);
-	val = llformat("%g", pos.mdV[VZ]);
+	val = llformat("%.9g", pos.mdV[VZ]);
 	strings.push_back(val);
 	send_generic_message("autopilot", strings);
 
 	LLViewerParcelMgr::getInstance()->deselectLand();
 
-	if (isAgentAvatarValid() && !gSavedSettings.getBOOL("AutoPilotLocksCamera"))
+	if (gSavedSettings.getBOOL("SinguMotionResetsCamera"))
 	{
-		gAgentCamera.setFocusGlobal(gAgentCamera.getFocusTargetGlobal(), gAgentAvatarp->getID());
-	}
-	else 
-	{
-		// Snap camera back to behind avatar
-		gAgentCamera.setFocusOnAvatar(TRUE, ANIMATE);
+		if (!gSavedSettings.getBOOL("AutoPilotLocksCamera"))
+		{
+			gAgentCamera.setFocusGlobal(gAgentCamera.getFocusTargetGlobal(), gAgentID);
+		}
+		else
+		{
+			// Snap camera back to behind avatar
+			gAgentCamera.setFocusOnAvatar(TRUE, ANIMATE);
+		}
 	}
 
 	// Could be first use
@@ -2927,6 +2930,7 @@ class LLObjectImportUpload : public view_listener_t
 //---------------------------------------------------------------------------
 // Parcel freeze, eject, etc.
 //---------------------------------------------------------------------------
+void send_freeze(const LLUUID& avatar_id, bool freeze);
 bool callback_freeze(const LLSD& notification, const LLSD& response)
 {
 	LLUUID avatar_id = notification["payload"]["avatar_id"].asUUID();
@@ -2934,27 +2938,7 @@ bool callback_freeze(const LLSD& notification, const LLSD& response)
 
 	if (0 == option || 1 == option)
 	{
-		U32 flags = KICK_FLAGS_FREEZE;
-		if (1 == option)
-		{
-			// unfreeze
-			flags |= KICK_FLAGS_UNFREEZE;
-		}
-
-		LLMessageSystem* msg = gMessageSystem;
-		LLVOAvatar* avatarp = gObjectList.findAvatar(avatar_id);
-
-		if (avatarp && avatarp->getRegion())
-		{
-			msg->newMessage("FreezeUser");
-			msg->nextBlock("AgentData");
-			msg->addUUID("AgentID", gAgent.getID());
-			msg->addUUID("SessionID", gAgent.getSessionID());
-			msg->nextBlock("Data");
-			msg->addUUID("TargetID", avatar_id );
-			msg->addU32("Flags", flags );
-			msg->sendReliable( avatarp->getRegion()->getHost() );
-		}
+		send_freeze(avatar_id, !option);
 	}
 	return false;
 }
@@ -3981,17 +3965,7 @@ class LLWorldEnableFly : public view_listener_t
 {
 	bool handleEvent(LLPointer<LLEvent> event, const LLSD& userdata)
 	{
-		BOOL sitting = FALSE;
-		static LLCachedControl<bool> continue_flying_on_unsit("LiruContinueFlyingOnUnsit");
-		if (continue_flying_on_unsit)
-		{
-			sitting = false;
-		}
-		else if (gAgentAvatarp)
-		{
-			sitting = gAgentAvatarp->isSitting();
-		}
-		gMenuHolder->findControl(userdata["control"].asString())->setValue(!sitting);
+		gMenuHolder->findControl(userdata["control"].asString())->setValue(gAgent.enableFlying());
 		return true;
 	}
 };
@@ -9062,7 +9036,7 @@ class ListInviteToGroup : public view_listener_t
 {
 	bool handleEvent(LLPointer<LLEvent> event, const LLSD& userdata)
 	{
-		LLAvatarActions::inviteToGroup(get_focused_list_id_selected());
+		LLAvatarActions::inviteToGroup(get_focused_list_ids_selected());
 		return true;
 	}
 };
@@ -9108,6 +9082,15 @@ class ListRequestTeleport : public view_listener_t
 	bool handleEvent(LLPointer<LLEvent> event, const LLSD& userdata)
 	{
 		LLAvatarActions::teleportRequest(get_focused_list_id_selected());
+		return true;
+	}
+};
+
+class ListShare : public view_listener_t
+{
+	bool handleEvent(LLPointer<LLEvent> event, const LLSD& userdata)
+	{
+		LLAvatarActions::share(get_focused_list_id_selected());
 		return true;
 	}
 };
@@ -9566,6 +9549,7 @@ void initialize_menus()
 	addMenu(new ListRemoveFriend(), "List.RemoveFriend");
 	addMenu(new ListRequestFriendship(), "List.RequestFriendship");
 	addMenu(new ListRequestTeleport(), "List.RequestTeleport");
+	addMenu(new ListShare(), "List.Share");
 	addMenu(new ListShowProfile(), "List.ShowProfile");
 	addMenu(new ListShowWebProfile(), "List.ShowWebProfile");
 	addMenu(new ListStartAdhocCall(), "List.StartAdhocCall");
