@@ -36,6 +36,10 @@
 #include "llhttpclient.h"
 #include "llinventory.h"
 
+class AIHTTPTimeoutPolicy;
+extern AIHTTPTimeoutPolicy assetUploadResponder_timeout;
+extern AIHTTPTimeoutPolicy newAgentInventoryVariablePriceResponder_timeout;
+
 void on_new_single_inventory_upload_complete(LLAssetType::EType asset_type,
 											 LLInventoryType::EType inventory_type,
 											 const std::string inventory_type_string,
@@ -49,8 +53,6 @@ void on_new_single_inventory_upload_complete(LLAssetType::EType asset_type,
 // via capabilities
 class LLAssetUploadResponder : public LLHTTPClient::ResponderWithResult
 {
-protected:
-	LOG_CLASS(LLAssetUploadResponder);
 public:
 	LLAssetUploadResponder(const LLSD& post_data,
 							const LLUUID& vfile_id,
@@ -59,12 +61,10 @@ public:
 							const std::string& file_name,
 							LLAssetType::EType asset_type);
 	~LLAssetUploadResponder();
+    /*virtual*/ void httpFailure(void);
+	/*virtual*/ void httpSuccess(void);
+	/*virtual*/ AIHTTPTimeoutPolicy const& getHTTPTimeoutPolicy(void) const { return assetUploadResponder_timeout; }
 
-protected:
-	virtual void httpFailure();
-	virtual void httpSuccess();
-
-public:
 	virtual void uploadUpload(const LLSD& content);
 	virtual void uploadComplete(const LLSD& content);
 	virtual void uploadFailure(const LLSD& content);
@@ -76,24 +76,25 @@ protected:
 	std::string mFileName;
 };
 
-// TODO*: Remove this once deprecated
 class LLNewAgentInventoryResponder : public LLAssetUploadResponder
 {
-	LOG_CLASS(LLNewAgentInventoryResponder);
+	void (*mCallBack)(bool, void*);
+	void* mUserData;
 public:
 	LLNewAgentInventoryResponder(
 		const LLSD& post_data,
 		const LLUUID& vfile_id,
-		LLAssetType::EType asset_type);
+		LLAssetType::EType asset_type,
+		void (*callback)(bool, void*) = NULL,
+		void* user_data = NULL);
 	LLNewAgentInventoryResponder(
 		const LLSD& post_data,
 		const std::string& file_name,
 		LLAssetType::EType asset_type);
+    /*virtual*/ void httpFailure(void);
 	virtual void uploadComplete(const LLSD& content);
 	virtual void uploadFailure(const LLSD& content);
-	/*virtual*/ char const* getName() const { return "LLNewAgentInventoryResponder"; }
-protected:
-	virtual void httpFailure();
+	/*virtual*/ char const* getName(void) const { return "LLNewAgentInventoryResponder"; }
 };
 
 // A base class which goes through and performs some default
@@ -103,7 +104,6 @@ protected:
 class LLNewAgentInventoryVariablePriceResponder :
 	public LLHTTPClient::ResponderWithResult
 {
-	LOG_CLASS(LLNewAgentInventoryVariablePriceResponder);
 public:
 	LLNewAgentInventoryVariablePriceResponder(
 		const LLUUID& vfile_id,
@@ -116,11 +116,10 @@ public:
 		const LLSD& inventory_info);
 	virtual ~LLNewAgentInventoryVariablePriceResponder();
 
-private:
-	/* virtual */ void httpFailure();
-	/* virtual */ void httpSuccess();
+	/*virtual*/ void httpFailure(void);
+	/*virtual*/ void httpSuccess(void);
+	/*virtual*/ AIHTTPTimeoutPolicy const& getHTTPTimeoutPolicy(void) const { return newAgentInventoryVariablePriceResponder_timeout; }
 
-public:
 	virtual void onApplicationLevelError(
 		const LLSD& error);
 	virtual void showConfirmationDialog(
@@ -133,6 +132,25 @@ private:
 	Impl* mImpl;
 };
 
+struct LLBakedUploadData;
+class LLSendTexLayerResponder : public LLAssetUploadResponder
+{
+	LOG_CLASS(LLSendTexLayerResponder);
+public:
+	LLSendTexLayerResponder(const LLSD& post_data,
+							const LLUUID& vfile_id,
+							LLAssetType::EType asset_type,
+							LLBakedUploadData * baked_upload_data);
+
+	~LLSendTexLayerResponder();
+
+	/*virtual*/ void uploadComplete(const LLSD& content);
+	/*virtual*/ void httpFailure(void);
+	/*virtual*/ char const* getName(void) const { return "LLSendTexLayerResponder"; }
+
+	LLBakedUploadData * mBakedUploadData;
+};
+
 class LLUpdateAgentInventoryResponder : public LLAssetUploadResponder
 {
 public:
@@ -143,7 +161,7 @@ public:
 								const std::string& file_name,
 											   LLAssetType::EType asset_type);
 	virtual void uploadComplete(const LLSD& content);
-	/*virtual*/ char const* getName() const { return "LLUpdateAgentInventoryResponder"; }
+	/*virtual*/ char const* getName(void) const { return "LLUpdateAgentInventoryResponder"; }
 };
 
 class LLUpdateTaskInventoryResponder : public LLAssetUploadResponder
@@ -161,7 +179,7 @@ public:
 								LLAssetType::EType asset_type);
 
 	virtual void uploadComplete(const LLSD& content);
-	/*virtual*/ char const* getName() const { return "LLUpdateTaskInventoryResponder"; }
+	/*virtual*/ char const* getName(void) const { return "LLUpdateTaskInventoryResponder"; }
 
 private:
 	LLUUID mQueueId;
