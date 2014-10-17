@@ -2755,14 +2755,18 @@ U32 getNumHTTPCommands(void)
   return command_queue_r->size;
 }
 
+// This only returns the total number of queued requests not for non-HTTP-pipeline services.
+// The total number of queued requests for HTTP-pipeline services is not interesting (what *is*
+// interesting is the number per service, but they are counted elsewhere).
 U32 getNumHTTPQueued(void)
 {
-  return AIPerService::total_approved_queue_size();
+  return AIPerService::total_approved_non_http_pipeline_queued();
 }
 
+// The total number of HTTP connections.
 U32 getNumHTTPAdded(void)
 {
-  return AICurlPrivate::curlthread::MultiHandle::total_added_size();
+  return AIPerService::total_added_connections();
 }
 
 U32 getMaxHTTPAdded(void)
@@ -2800,10 +2804,11 @@ bool AIPerService::sNoHTTPBandwidthThrottling;
 // It is therefore guaranteed that in one loop of LLTextureFetchWorker::doWork,
 // or LLInventoryModelBackgroundFetch::bulkFetch (the two functions currently
 // calling this function) this function will stop returning aprovement once we
-// reached the threshold of "unfinished" requests (the sum of approved requests,
-// requests in the command queue, the ones throttled and queued in
-// AIPerService::mQueuedRequests and the already running requests
-// (in MultiHandle::mAddedEasyRequests)).
+// reached the threshold of "unfinished" to-be-connections-requests (the sum
+// of all approved requests for non-HTTP pipeline services, such requests in
+// the command queue, the ones throttled and queued in AIPerService::mQueuedRequests
+// and those already active (in MultiHandle::mAddedEasyRequests), plus the
+// number of HTTP pipeline services with at least one unfinished request).
 //
 // A request has two types of reasons why it can be throttled:
 // 1) The number of active easy handles (requests).
@@ -2825,8 +2830,10 @@ bool AIPerService::sNoHTTPBandwidthThrottling;
 //
 // The "unfinished pipeline" is as follows:
 //
-// <approvement>				// If the number of requests in the pipeline is less than a threshold
-//       |          			// and the global bandwidth usage is not too large.
+// <approvement>				// If the number of to-be-connections-requests in the pipeline
+//       |						// is less than a threshold, the number of unfinished requests
+//       |						// for the current CT has not reached the maximum, and the global
+//       |						// bandwidth usage is not too large.
 //       V
 // <command queue>
 //       |
@@ -2859,19 +2866,20 @@ AIPerService::Approvement* AIPerService::approveHTTPRequestFor(AIPerServicePtr c
   // Do certain things at most once every 40ms.
   U64 const sTime_40ms = get_clock_count() * HTTPTimeout::sClockWidth_40ms;							// Time in 40ms units.
 
-  // Cache all sTotalQueued info.
+  // Cache all sTotalNonHTTPPipelineQueued info.
   bool starvation, decrement_threshold;
-  S32 total_approved_queuedapproved_or_added = MultiHandle::total_added_size();
+  S32 unfinished_connection_requests = sAddedConnections;
   {
-	TotalQueued_wat total_queued_w(sTotalQueued);
-	total_approved_queuedapproved_or_added += total_queued_w->approved;
-	starvation = total_queued_w->starvation;
-	decrement_threshold = total_queued_w->full && !total_queued_w->empty;
-	total_queued_w->starvation = total_queued_w->empty = total_queued_w->full = false;				// Reset flags.
+	TotalNonHTTPPipelineQueued_wat total_non_http_pipeline_queued_w(sTotalNonHTTPPipelineQueued);
+	unfinished_connection_requests += total_non_http_pipeline_queued_w->approved;
+	starvation = total_non_http_pipeline_queued_w->starvation;
+	decrement_threshold = total_non_http_pipeline_queued_w->full && !total_non_http_pipeline_queued_w->empty;
+	total_non_http_pipeline_queued_w->starvation = total_non_http_pipeline_queued_w->empty = total_non_http_pipeline_queued_w->full = false;				// Reset flags.
   }
 
   // Check if it's ok to get a new request for this particular capability type and update the per-capability-type threshold.
 
+  bool unfinished_connection_requests_incremented = false;
   bool reject, equal, increment_threshold, http_pipeline;
   {
 	PerService_wat per_service_w(*per_service);		// Keep this lock for the duration of accesses to ct.
@@ -2905,9 +2913,13 @@ AIPerService::Approvement* AIPerService::approveHTTPRequestFor(AIPerServicePtr c
 	  // too small value from unfinished_requests() and approving too many requests.
 	  ct.mApprovedRequests++;
 	  per_service_w->mApprovedRequests++;
+	  // We only count the number of approved requests for non-HTTP pipeline services.
+	  unfinished_connection_requests_incremented = !per_service_w->is_http_pipeline();
+	  if (unfinished_connection_requests_incremented)
+		sApprovedNonHTTPPipelineRequests++;
 	}
-	total_approved_queuedapproved_or_added += per_service_w->mApprovedRequests;
   }
+  unfinished_connection_requests += sApprovedNonHTTPPipelineRequests;
 
   // Whether or not we're going to approve a new request, decrement the global threshold first, when appropriate.
   // Requests over HTTP pipelines are not taken into account for the threshold.
@@ -2940,17 +2952,18 @@ AIPerService::Approvement* AIPerService::approveHTTPRequestFor(AIPerServicePtr c
 	PerService_wat per_service_w(*per_service);
 	per_service_w->mCapabilityType[capability_type].mApprovedRequests--;		// Not approved after all.
 	per_service_w->mApprovedRequests--;
+	if (unfinished_connection_requests_incremented)
+	  --sApprovedNonHTTPPipelineRequests;
 	return NULL;
   }
 
-  // The following is irrelevant when doing HTTP pipelining since a new request doesn't create a new connection
-  // (well, unless it is the first-- too bad; we expect to never reach any significant number of connections in
-  // the first place in this case) and therefore has no influence on anything "global".
+  // When doing HTTP pipelining a new request only creates a new connection when it is the first
+  // request. If that is the case then we don't want to disallow it: that one connection is way
+  // too important.
   if (!http_pipeline)
   {
 	// Check if it's ok to get a new request based on the total number of requests and increment the threshold if appropriate.
 
-	S32 const unfinished_requests = command_queue_rat(command_queue)->size + total_approved_queuedapproved_or_added;
 	// We can't take the command being processed (command_being_processed) into account without
 	// introducing relatively long waiting times for some mutex (namely between when the command
 	// is moved from command_queue to command_being_processed, till it's actually being added to
@@ -2963,8 +2976,8 @@ AIPerService::Approvement* AIPerService::approveHTTPRequestFor(AIPerServicePtr c
 	// number of requests queued in AIPerService objects, minus the number of already running requests
 	// (excluding non-approved requests queued in their CT queue).
 	MaxUnfinishedRequests_wat max_unfinished_requests_w(sMaxUnfinishedRequests);
-	reject = unfinished_requests >= max_unfinished_requests_w->threshold;
-	equal = unfinished_requests == max_unfinished_requests_w->threshold;
+	reject = unfinished_connection_requests >= max_unfinished_requests_w->threshold;
+	equal = unfinished_connection_requests == max_unfinished_requests_w->threshold;
 	increment_threshold = starvation;
 	if (increment_threshold && reject)
 	{
@@ -2982,6 +2995,8 @@ AIPerService::Approvement* AIPerService::approveHTTPRequestFor(AIPerServicePtr c
 	  PerService_wat per_service_w(*per_service);
 	  per_service_w->mCapabilityType[capability_type].mApprovedRequests--;		// Not approved after all.
 	  per_service_w->mApprovedRequests--;
+	  if (unfinished_connection_requests_incremented)
+		--sApprovedNonHTTPPipelineRequests;
 	  return NULL;
 	}
   }

@@ -42,7 +42,9 @@
 #include "llcontrol.h"
 
 AIPerService::threadsafe_instance_map_type AIPerService::sInstanceMap;
-AIThreadSafeSimpleDC<AIPerService::TotalQueued> AIPerService::sTotalQueued;
+LLAtomicU32 AIPerService::sApprovedNonHTTPPipelineRequests;
+AIThreadSafeSimpleDC<AIPerService::TotalNonHTTPPipelineQueued> AIPerService::sTotalNonHTTPPipelineQueued;
+LLAtomicU32 AIPerService::sAddedConnections;
 
 #undef AICurlPrivate
 
@@ -383,7 +385,10 @@ void AIPerService::added_to_multi_handle(AICapabilityType capability_type, bool 
 	}
   }
   ++mCapabilityType[capability_type].mAddedEasyHandles;
-  ++mTotalAddedEasyHandles;
+  if (mTotalAddedEasyHandles++ == 0 || !mPipelineSupport)
+  {
+	sAddedConnections++;
+  }
 }
 
 void AIPerService::removed_from_multi_handle(AICapabilityType capability_type, bool event_poll, bool downloaded_something, bool success)
@@ -393,7 +398,10 @@ void AIPerService::removed_from_multi_handle(AICapabilityType capability_type, b
   if (!event_poll || --mEventPolls == 0)
   {
 	--ct.mAddedEasyHandles;
-	--mTotalAddedEasyHandles;
+	if (--mTotalAddedEasyHandles == 0 || !mPipelineSupport)
+	{
+	  --sAddedConnections;
+	}
   }
   if (downloaded_something)
   {
@@ -422,9 +430,9 @@ bool AIPerService::queue(AICurlEasyRequest const& easy_request, AICapabilityType
   if (needs_queuing)
   {
 	queued_requests.push_back(easy_request.get_ptr());
-	if (is_approved(capability_type))
+	if (!mPipelineSupport && is_approved(capability_type))
 	{
-	  TotalQueued_wat(sTotalQueued)->approved++;
+	  TotalNonHTTPPipelineQueued_wat(sTotalNonHTTPPipelineQueued)->approved++;
 	}
   }
   return needs_queuing;
@@ -451,11 +459,11 @@ bool AIPerService::cancel(AICurlEasyRequest const& easy_request, AICapabilityTyp
 	prev = cur;
   }
   mCapabilityType[capability_type].mQueuedRequests.pop_back();		// if this is safe.
-  if (is_approved(capability_type))
+  if (!mPipelineSupport && is_approved(capability_type))
   {
-	TotalQueued_wat total_queued_w(sTotalQueued);
-	llassert(total_queued_w->approved > 0);
-	total_queued_w->approved--;
+	TotalNonHTTPPipelineQueued_wat total_non_http_pipeline_queued_w(sTotalNonHTTPPipelineQueued);
+	llassert(total_non_http_pipeline_queued_w->approved > 0);
+	total_non_http_pipeline_queued_w->approved--;
   }
   return true;
 }
@@ -527,11 +535,11 @@ void AIPerService::add_queued_to(curlthread::MultiHandle* multi_handle, bool onl
 	  success |= mask;
 	  success_this_pass = true;
 	  // Update approved count.
-	  if (is_approved((AICapabilityType)i))
+	  if (!mPipelineSupport && is_approved((AICapabilityType)i))
 	  {
-		TotalQueued_wat total_queued_w(sTotalQueued);
-		llassert(total_queued_w->approved > 0);
-		total_queued_w->approved--;
+		TotalNonHTTPPipelineQueued_wat total_non_http_pipeline_queued_w(sTotalNonHTTPPipelineQueued);
+		llassert(total_non_http_pipeline_queued_w->approved > 0);
+		total_non_http_pipeline_queued_w->approved--;
 	  }
 	}
   }
@@ -558,26 +566,27 @@ void AIPerService::add_queued_to(curlthread::MultiHandle* multi_handle, bool onl
 	}
   }
 
-  // Update the flags of sTotalQueued.
+  // Update the flags of sTotalNonHTTPPipelineQueued.
+  if (!mPipelineSupport)
   {
-	TotalQueued_wat total_queued_w(sTotalQueued);
-	if (total_queued_w->approved == 0)
+	TotalNonHTTPPipelineQueued_wat total_non_http_pipeline_queued_w(sTotalNonHTTPPipelineQueued);
+	if (total_non_http_pipeline_queued_w->approved == 0)
 	{
 	  if ((success & approved_mask))
 	  {
 		// We obtained an approved request from the queue, and after that there were no more requests in any (approved) queue.
-		total_queued_w->empty = true;
+		total_non_http_pipeline_queued_w->empty = true;
 	  }
 	  else
 	  {
 		// Every queue of every approved CT is empty!
-		total_queued_w->starvation = true;
+		total_non_http_pipeline_queued_w->starvation = true;
 	  }
 	}
 	else if ((success & approved_mask))
 	{
 	  // We obtained an approved request from the queue, and even after that there was at least one more request in some (approved) queue.
-	  total_queued_w->full = true;
+	  total_non_http_pipeline_queued_w->full = true;
 	}
   }
  
@@ -608,15 +617,15 @@ void AIPerService::purge(void)
   {
 	Dout(dc::curl, "Purging queues of service \"" << service->first << "\".");
 	PerService_wat per_service_w(*service->second);
-	TotalQueued_wat total_queued_w(sTotalQueued);
+	TotalNonHTTPPipelineQueued_wat total_non_http_pipeline_queued_w(sTotalNonHTTPPipelineQueued);
 	for (int i = 0; i < number_of_capability_types; ++i)
 	{
 	  size_t s = per_service_w->mCapabilityType[i].mQueuedRequests.size();
 	  per_service_w->mCapabilityType[i].mQueuedRequests.clear();
-	  if (is_approved((AICapabilityType)i))
+	  if (!per_service_w->mPipelineSupport && is_approved((AICapabilityType)i))
 	  {
-		llassert(total_queued_w->approved >= (S32)s);
-		total_queued_w->approved -= s;
+		llassert(total_non_http_pipeline_queued_w->approved >= (S32)s);
+		total_non_http_pipeline_queued_w->approved -= s;
 	  }
 	}
   }
