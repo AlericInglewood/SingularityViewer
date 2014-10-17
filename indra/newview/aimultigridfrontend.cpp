@@ -80,8 +80,7 @@
 //           tid, asset_type,			// Or, instead of these two, a filename is passed. See below.
 //           name, desc, compression_info, destination_folder_type, inv_type, next_owner_perms, group_perms, everyone_perms, display_name,
 //           udp_callback,				// void (*)(LLUUID const& asset_id, void* user_data, S32 status, LLExtStat ext_status)
-//           expected_upload_cost,
-//           userdata);
+//           expected_upload_cost);
 //
 // You now would do,
 //
@@ -90,8 +89,8 @@
 //           tid, asset_type,		// Same as above.
 //           name, desc, compression_info, destination_folder_type, inv_type, next_owner_perms, group_perms, everyone_perms, display_name,	// Same as above.
 //           expected_upload_cost,
-//           user_callback,			// void (*)(bool, void*)
-//           userdata,
+//           user_callback,			// Singularity extension since LL removed this -- void (*)(bool, void*)
+//           userdata,				// Singularity extension since LL removed this                  <--'
 //           AIMultiGrid::UploadResponderFactory<LLNewAgentInventoryResponder>());
 //
 // The state machine runs itself: there is no need to call mg_front_end->run() after this as you'd do with normal statemachines.
@@ -314,16 +313,15 @@ void increase_new_upload_stats(LLAssetType::EType asset_type)
 
 LLAssetID generate_asset_id_for_new_upload(LLTransactionID const& tid)
 {
-  LLAssetID uuid;
-
   if (gDisconnected)
   {
-	uuid.setNull();
+	LLAssetID rv;
+
+	rv.setNull();
+	return rv;
   }
-  else
-  {
-	uuid = tid.makeAssetID(gAgent.getSecureSessionID());
-  }
+
+  LLAssetID uuid = tid.makeAssetID(gAgent.getSecureSessionID());
 
   return uuid;
 }

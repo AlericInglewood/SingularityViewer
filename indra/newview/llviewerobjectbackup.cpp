@@ -165,7 +165,7 @@ public:
 		self->uploadNextAsset();
 	}
 
-	/*virtual*/ char const* getName(void) const { return "importResponder"; }
+	/*virtual*/ char const* getName(void) const { return "ImportObjectResponder"; }
 };
 
 class BackupCacheReadResponder : public LLTextureCache::ReadResponder
@@ -1628,5 +1628,5 @@ void LLObjectBackup::uploadNextAsset()
 		LLFolderType::FT_TEXTURE, LLInventoryType::defaultForAssetType(LLAssetType::AT_TEXTURE),
 		LLFloaterPerms::getNextOwnerPerms(), LLFloaterPerms::getGroupPerms(), LLFloaterPerms::getNextOwnerPerms(),
 		struid, LLGlobalEconomy::Singleton::getInstance()->getPriceUpload(), NULL, NULL,
-		AIMultiGrid::UploadResponderFactory<importResponder>());
+		AIMultiGrid::UploadResponderFactory<ImportObjectResponder>());
 }

@@ -37,6 +37,7 @@
 #include "llagent.h"
 #include "llcompilequeue.h"
 #include "llfloaterbuycurrency.h"
+#include "statemachine/aifilepicker.h"
 #include "llinventorydefines.h"
 #include "llinventoryobserver.h"
 #include "llinventorypanel.h"
@@ -65,8 +66,6 @@
 #include "llsdserialize.h"
 #include "llsdutil.h"
 #include "llvfs.h"
-
-#include "statemachine/aifilepicker.h"
 
 // When uploading multiple files, don't display any of them when uploading more than this number.
 static const S32 FILE_COUNT_DISPLAY_THRESHOLD = 5;
@@ -190,9 +189,10 @@ void on_new_single_inventory_upload_complete(
 LLAssetUploadResponder::LLAssetUploadResponder(const LLSD &post_data,
 											   const LLUUID& vfile_id,
 											   LLAssetType::EType asset_type)
-:	mPostData(post_data),
-	mVFileID(vfile_id),
-	mAssetType(asset_type)
+:
+	  mPostData(post_data),
+	  mVFileID(vfile_id),
+	  mAssetType(asset_type)
 {
 	if (!gVFS->getExists(vfile_id, asset_type))
 	{
@@ -207,9 +207,10 @@ LLAssetUploadResponder::LLAssetUploadResponder(
 	const LLSD &post_data,
 											   const std::string& file_name, 
 											   LLAssetType::EType asset_type)
-:	mPostData(post_data),
-	mFileName(file_name),
-	mAssetType(asset_type)
+:
+	  mPostData(post_data),
+	  mFileName(file_name),
+	  mAssetType(asset_type)
 {
 }
 
@@ -223,7 +224,7 @@ LLAssetUploadResponder::~LLAssetUploadResponder()
 }
 
 // virtual
-void LLAssetUploadResponder::httpFailure(void)
+void LLAssetUploadResponder::httpFailure()
 {
 	llinfos << "LLAssetUploadResponder::error " << mStatus 
 			<< " reason: " << mReason << llendl;
@@ -248,15 +249,21 @@ void LLAssetUploadResponder::httpFailure(void)
 }
 
 //virtual 
-void LLAssetUploadResponder::httpSuccess(void)
+void LLAssetUploadResponder::httpSuccess()
 {
+	const LLSD& content = getContent();
+	if (!content.isMap())
+	{
+		failureResult(HTTP_INTERNAL_ERROR_OTHER, "Malformed response contents", content);
+		return;
+	}
 	lldebugs << "LLAssetUploadResponder::result from capabilities" << llendl;
 
-	std::string state = mContent["state"];
+	const std::string& state = content["state"].asString();
 
 	if (state == "upload")
 	{
-		uploadUpload(mContent);
+		uploadUpload(content);
 	}
 	else if (state == "complete")
 	{
@@ -264,20 +271,20 @@ void LLAssetUploadResponder::httpSuccess(void)
 		if (mFileName.empty())
 		{
 			// rename the file in the VFS to the actual asset id
-			// llinfos << "Changing uploaded asset UUID to " << mContent["new_asset"].asUUID() << llendl;
-			gVFS->renameFile(mVFileID, mAssetType, mContent["new_asset"].asUUID(), mAssetType);
+			// LL_INFOS() << "Changing uploaded asset UUID to " << content["new_asset"].asUUID() << LL_ENDL;
+			gVFS->renameFile(mVFileID, mAssetType, content["new_asset"].asUUID(), mAssetType);
 		}
-		uploadComplete(mContent);
+		uploadComplete(content);
 	}
 	else
 	{
-		uploadFailure(mContent);
+		uploadFailure(content);
 	}
 }
 
 void LLAssetUploadResponder::uploadUpload(const LLSD& content)
 {
-	std::string uploader = content["uploader"];
+	const std::string& uploader = content["uploader"].asString();
 	if (mFileName.empty())
 	{
 		LLHTTPClient::postFile(uploader, mVFileID, mAssetType, this);
@@ -293,7 +300,7 @@ void LLAssetUploadResponder::uploadFailure(const LLSD& content)
 	// remove the "Uploading..." message
 	LLUploadDialog::modalUploadFinished();
 	
-	std::string reason = content["state"];
+	const std::string& reason = content["state"].asString();
 	// deal with L$ errors
 	if (reason == "insufficient funds")
 	{
@@ -324,11 +331,11 @@ LLNewAgentInventoryResponder::LLNewAgentInventoryResponder(
 }
 
 // virtual
-void LLNewAgentInventoryResponder::httpFailure(void)
+void LLNewAgentInventoryResponder::httpFailure()
 {
+	// Singu note: We need this callback to determine if the upload of a snapshot was successful or not. LL removed it.
 	if (mCallBack)
 	{
-		//Singu note: We pass the UUID upon success. The callback signature was changed from (bool, void*) to (LLUUID const&, void*, bool). Pass a dummy UUID upon failure.
 		LLUUID dummy;
 		(*mCallBack)(dummy, mUserData, false);
 	}
@@ -340,9 +347,9 @@ void LLNewAgentInventoryResponder::httpFailure(void)
 //virtual 
 void LLNewAgentInventoryResponder::uploadFailure(const LLSD& content)
 {
+	// Singu note: We need this callback to determine if the upload of a snapshot was successful or not. LL removed it.
 	if (mCallBack)
 	{
-		//Singu note: We pass the UUID upon success. The callback signature was changed from (bool, void*) to (LLUUID const&, void*, bool). Pass a dummy UUID upon failure.
 		LLUUID dummy;
 		(*mCallBack)(dummy, mUserData, false);
 	}
@@ -358,15 +365,15 @@ void LLNewAgentInventoryResponder::uploadComplete(const LLSD& content)
 
 	LLUUID new_id = content["new_asset"];
 
+	// Singu note: We need this callback to determine if the upload of a snapshot was successful or not. LL removed it.
 	if (mCallBack)
 	{
-		//Singu note: We pass the UUID upon success. The callback signature was changed from (bool, void*) to (LLUUID const&, void*, bool).
 		(*mCallBack)(new_id, mUserData, true);
 	}
 
 	//std::ostringstream llsdxml;
 	//LLSDSerialize::toXML(content, llsdxml);
-	//llinfos << "upload complete content:\n " << llsdxml.str() << llendl;
+	//LL_INFOS() << "upload complete content:\n " << llsdxml.str() << LL_ENDL;
 
 	LLAssetType::EType asset_type = LLAssetType::lookup(mPostData["asset_type"].asString());
 	LLInventoryType::EType inventory_type = LLInventoryType::lookup(mPostData["inventory_type"].asString());
@@ -454,57 +461,6 @@ void LLNewAgentInventoryResponder::uploadComplete(const LLSD& content)
 	*/
 }
 
-LLSendTexLayerResponder::LLSendTexLayerResponder(const LLSD& post_data,
-												 const LLUUID& vfile_id,
-												 LLAssetType::EType asset_type,
-												 LLBakedUploadData * baked_upload_data) : 
-	LLAssetUploadResponder(post_data, vfile_id, asset_type),
-	mBakedUploadData(baked_upload_data)
-{
-}
-
-LLSendTexLayerResponder::~LLSendTexLayerResponder()
-{
-	// mBakedUploadData is normally deleted by calls to LLViewerTexLayerSetBuffer::onTextureUploadComplete() below
-	if (mBakedUploadData)
-	{	// ...but delete it in the case where uploadComplete() is never called
-		delete mBakedUploadData;
-		mBakedUploadData = NULL;
-	}
-}
-
-
-// Baked texture upload completed
-void LLSendTexLayerResponder::uploadComplete(const LLSD& content)
-{
-	LLUUID item_id = mPostData["item_id"];
-
-	std::string result = content["state"];
-	LLUUID new_id = content["new_asset"];
-
-	llinfos << "result: " << result << " new_id: " << new_id << llendl;
-	if (result == "complete"
-		&& mBakedUploadData != NULL)
-	{	// Invoke 
-		LLViewerTexLayerSetBuffer::onTextureUploadComplete(new_id, (void*) mBakedUploadData, 0, LL_EXSTAT_NONE);
-		mBakedUploadData = NULL;	// deleted in onTextureUploadComplete()
-	}
-	else
-	{	// Invoke the original callback with an error result
-		LLViewerTexLayerSetBuffer::onTextureUploadComplete(new_id, (void*) mBakedUploadData, -1, LL_EXSTAT_NONE);
-		mBakedUploadData = NULL;	// deleted in onTextureUploadComplete()
-	}
-}
-
-void LLSendTexLayerResponder::httpFailure(void)
-{
-	llinfos << "status: " << mStatus << " reason: " << mReason << llendl;
-	
-	// Invoke the original callback with an error result
-	LLViewerTexLayerSetBuffer::onTextureUploadComplete(LLUUID(), (void*) mBakedUploadData, -1, LL_EXSTAT_NONE);
-	mBakedUploadData = NULL;	// deleted in onTextureUploadComplete()
-}
-
 LLUpdateAgentInventoryResponder::LLUpdateAgentInventoryResponder(
 	const LLSD& post_data,
 	const LLUUID& vfile_id,
@@ -531,7 +487,7 @@ void LLUpdateAgentInventoryResponder::uploadComplete(const LLSD& content)
 	if(!item)
 	{
 		llwarns << "Inventory item for " << mVFileID
-			<< " is no longer in agent inventory." << llendl;
+			<< " is no longer in agent inventory." << LL_ENDL;
 		return;
 	}
 
@@ -542,7 +498,7 @@ void LLUpdateAgentInventoryResponder::uploadComplete(const LLSD& content)
 	gInventory.notifyObservers();
 
 	llinfos << "Inventory item " << item->getName() << " saved into "
-		<< content["new_asset"].asString() << llendl;
+		<< content["new_asset"].asString() << LL_ENDL;
 
 	LLInventoryType::EType inventory_type = new_item->getInventoryType();
 	switch(inventory_type)
@@ -603,6 +559,7 @@ void LLUpdateAgentInventoryResponder::uploadComplete(const LLSD& content)
 			{
 				previewp->onUpdateSucceeded();
 			}
+
 			break;
 		}
 		case LLInventoryType::IT_WEARABLE:
@@ -648,8 +605,7 @@ void LLUpdateTaskInventoryResponder::uploadComplete(const LLSD& content)
 		case LLAssetType::AT_NOTECARD:
 		{
 			// Update the UI with the new asset.
-			LLPreviewNotecard* nc;
-			nc = (LLPreviewNotecard*)LLPreview::find(item_id);
+			LLPreviewNotecard* nc = (LLPreviewNotecard*)LLPreview::find(item_id);
 			if (nc)
 			{
 				// *HACK: we have to delete the asset in the VFS so
@@ -672,8 +628,7 @@ void LLUpdateTaskInventoryResponder::uploadComplete(const LLSD& content)
 		{
 			if (mQueueId.notNull())
 			{
-				LLFloaterCompileQueue* queue = 
-					(LLFloaterCompileQueue*) LLFloaterScriptQueue::findInstance(mQueueId);
+				LLFloaterCompileQueue* queue = (LLFloaterCompileQueue*) LLFloaterScriptQueue::findInstance(mQueueId);
 				if (NULL != queue)
 				{
 					queue->removeItemByItemID(item_id);
@@ -722,7 +677,7 @@ public:
 		{
 			llwarns
 				<< "LLAssetUploadResponder called with nonexistant "
-				<< "vfile_id " << vfile_id << llendl;
+				<< "vfile_id " << vfile_id << LL_ENDL;
 			mVFileID.setNull();
 			mAssetType = LLAssetType::AT_NONE;
 		}
@@ -1018,17 +973,15 @@ LLNewAgentInventoryVariablePriceResponder::~LLNewAgentInventoryVariablePriceResp
 	delete mImpl;
 }
 
-void LLNewAgentInventoryVariablePriceResponder::httpFailure(void)
+void LLNewAgentInventoryVariablePriceResponder::httpFailure()
 {
-	lldebugs 
-		<< "LLNewAgentInventoryVariablePrice::error " << mStatus
-		<< " reason: " << mReason << llendl;
+	const LLSD& content = getContent();
+	LL_WARNS("Upload") << dumpResponse() << LL_ENDL;
 
-	if ( mContent.has("error") )
-	{
 		static const std::string _ERROR = "error";
-
-		mImpl->onTransportError(mContent[_ERROR]);
+	if ( content.has(_ERROR) )
+	{
+		mImpl->onTransportError(content[_ERROR]);
 	}
 	else
 	{
@@ -1036,8 +989,14 @@ void LLNewAgentInventoryVariablePriceResponder::httpFailure(void)
 	}
 }
 
-void LLNewAgentInventoryVariablePriceResponder::httpSuccess(void)
+void LLNewAgentInventoryVariablePriceResponder::httpSuccess()
 {
+	const LLSD& content = getContent();
+	if (!content.isMap())
+	{
+		failureResult(HTTP_INTERNAL_ERROR_OTHER, "Malformed response contents", content);
+		return;
+	}
 	// Parse out application level errors and the appropriate
 	// responses for them
 	static const std::string _ERROR = "error";
@@ -1051,13 +1010,14 @@ void LLNewAgentInventoryVariablePriceResponder::httpSuccess(void)
 	static const std::string _RSVP = "rsvp";
 
 	// Check for application level errors
-	if (mContent.has(_ERROR))
+	if ( content.has(_ERROR) )
 	{
-		onApplicationLevelError(mContent[_ERROR]);
+		LL_WARNS("Upload") << dumpResponse() << LL_ENDL;
+		onApplicationLevelError(content[_ERROR]);
 		return;
 	}
 
-	std::string state = mContent[_STATE];
+	std::string state = content[_STATE];
 	LLAssetType::EType asset_type = mImpl->getAssetType();
 
 	if (_COMPLETE == state)
@@ -1066,11 +1026,11 @@ void LLNewAgentInventoryVariablePriceResponder::httpSuccess(void)
 		if (mImpl->getFilename().empty())
 		{
 			// rename the file in the VFS to the actual asset id
-			// llinfos << "Changing uploaded asset UUID to " << mContent["new_asset"].asUUID() << llendl;
+			// LL_INFOS() << "Changing uploaded asset UUID to " << content["new_asset"].asUUID() << LL_ENDL;
 			gVFS->renameFile(
 				mImpl->getVFileID(),
 				asset_type,
-				mContent["new_asset"].asUUID(),
+				content["new_asset"].asUUID(),
 				asset_type);
 		}
 
@@ -1081,8 +1041,8 @@ void LLNewAgentInventoryVariablePriceResponder::httpSuccess(void)
 			mImpl->getFolderID(),
 			mImpl->getItemName(),
 			mImpl->getItemDescription(),
-			mContent,
-			mContent[_UPLOAD_PRICE].asInteger());
+			content,
+			content[_UPLOAD_PRICE].asInteger());
 
 		// TODO* Add bulk (serial) uploading or add
 		// a super class of this that does so
@@ -1090,12 +1050,13 @@ void LLNewAgentInventoryVariablePriceResponder::httpSuccess(void)
 	else if ( _CONFIRM_UPLOAD == state )
 	{
 		showConfirmationDialog(
-			mContent[_UPLOAD_PRICE].asInteger(),
-			mContent[_RESOURCE_COST].asInteger(),
-			mContent[_RSVP].asString());
+			content[_UPLOAD_PRICE].asInteger(),
+			content[_RESOURCE_COST].asInteger(),
+			content[_RSVP].asString());
 	}
 	else
 	{
+		LL_WARNS("Upload") << dumpResponse() << LL_ENDL;
 		onApplicationLevelError("");
 	}
 }
