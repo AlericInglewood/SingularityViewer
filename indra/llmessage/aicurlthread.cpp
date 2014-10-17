@@ -2914,7 +2914,7 @@ AIPerService::Approvement* AIPerService::approveHTTPRequestFor(AIPerServicePtr c
 	  ct.mApprovedRequests++;
 	  per_service_w->mApprovedRequests++;
 	  // We only count the number of approved requests for non-HTTP pipeline services.
-	  unfinished_connection_requests_incremented = !per_service_w->is_http_pipeline();
+	  unfinished_connection_requests_incremented = !http_pipeline;
 	  if (unfinished_connection_requests_incremented)
 		sApprovedNonHTTPPipelineRequests++;
 	}

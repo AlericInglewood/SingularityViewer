@@ -232,6 +232,7 @@ class AIPerService {
 	U32 is_inuse(void) const { return mCTInUse; }					// Non-zero if this service is in use for any capability type.
 
 	bool is_http_pipeline(void) const { return mPipelineSupport; }
+	void set_http_pipeline(bool enable);							// Call this to switch HTTP pipelining on or off for this service.
 
 	// Global administration of the total number of queued requests of all services combined.
   private:

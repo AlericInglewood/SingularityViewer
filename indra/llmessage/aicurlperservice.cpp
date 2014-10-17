@@ -677,3 +677,25 @@ void AIPerService::Approvement::not_honored(void)
   llwarns << "Approvement for has not been honored." << llendl;
 }
 
+void AIPerService::set_http_pipeline(bool enable)
+{
+  if (mPipelineSupport != enable)
+  {
+	mPipelineSupport = enable;
+	int const sign = enable ? -1 : 1;
+	sApprovedNonHTTPPipelineRequests += sign * mApprovedRequests;
+	TotalNonHTTPPipelineQueued_wat total_non_http_pipeline_queued_w(sTotalNonHTTPPipelineQueued);
+	for (int i = 0; i < number_of_capability_types; ++i)
+	{
+	  AICapabilityType capability_type = (AICapabilityType)i;
+	  if (is_approved(capability_type))
+	  {
+		sApprovedNonHTTPPipelineRequests += sign * mCapabilityType[capability_type].mQueuedCommands;
+		total_non_http_pipeline_queued_w->approved += sign * mCapabilityType[capability_type].mQueuedRequests.size();
+	  }
+	}
+	sAddedConnections += sign * (mTotalAddedEasyHandles ? mTotalAddedEasyHandles - 1 : 0);
+	mMaxTotalAddedEasyHandles = enable ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService;
+	redivide_easy_handle_slots();
+  }
+}
