@@ -5947,7 +5947,9 @@ The Object was deselected before the export could occur. Export aborted.
    icon="alertmodal.tga"
    name="HelpPipelineSupport"
    type="alertmodal">
-This checkbox should be checked only on grids that actually support HTTP pipelining. If unsure, uncheck it. Currently the only known grid that supports it is SecondLife(tm).
+This checkbox should be checked only on grids that actually support HTTP pipelining.
+If unsure, uncheck it. Currently the only known grid that supports it is SecondLife(tm).
+If you are already logged in then a relog is required for a change to take effect.
   </notification>
 
   <notification
