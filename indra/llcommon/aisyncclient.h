@@ -61,6 +61,7 @@ struct LLFrameTimer
   F64 getStartTime() const { return mStartTime; }
   void reset(double expiration) { mStartTime = getCurrentTime(); mExpiry = mStartTime + expiration; }
   bool hasExpired(void) const { return getCurrentTime() > mExpiry; }
+  void copy(LLFrameTimer const& timer) { mStartTime = timer.mStartTime; mExpiry = timer.mExpiry; }
 };
 
 template<typename T>

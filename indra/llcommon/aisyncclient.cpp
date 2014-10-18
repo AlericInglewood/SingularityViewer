@@ -436,7 +436,7 @@ class TestsuiteKey : public AISyncKey
 	int mIndex;
 
   public:
-	TestsuiteKey(int index) : mIndex(index) { }
+	TestsuiteKey(AISyncKey const* from_key, int index) : AISyncKey(from_key), mIndex(index) { }
 
 	int getIndex(void) const { return mIndex; }
 
@@ -477,9 +477,9 @@ class TestsuiteClient : public AISyncClient
 {
   // AISyncClient events.
   protected:
-	/*virtual*/ AISyncKey* createSyncKey(void) const
+	/*virtual*/ AISyncKey* createSyncKey(AISyncKey const* from_key) const
 	{
-	  return new TestsuiteKey<synckeytype>(mIndex);
+	  return new TestsuiteKey<synckeytype>(from_key, mIndex);
 	}
 
   private:
@@ -490,7 +490,7 @@ class TestsuiteClient : public AISyncClient
 
   public:
 	TestsuiteClient() : mIndex(-1), mRequestedRegistered(false), mRequestedReady(0), mActualReady1(false) { }
-	~TestsuiteClient() { if (is_registered()) this->ready(mRequestedReady, (synceventset_t)0); }
+	~TestsuiteClient() { unregister_client(); if (is_registered()) this->ready(mRequestedReady, (synceventset_t)0); }
 
 	void setIndex(int index) { mIndex = index; }
 
