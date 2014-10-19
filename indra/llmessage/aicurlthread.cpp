@@ -2390,21 +2390,24 @@ int debug_callback(CURL* handle, curl_infotype infotype, char* buf, size_t size,
   }
   if (infotype == CURLINFO_TEXT)
   {
-	if (!strncmp(buf, "STATE: WAITCONNECT => ", 22))
+	if (!strncmp(buf, "STATE: WAIT", 11) && (buf[11] == 'C' || buf[11] == 'D'))			// WAITCONNECT or WAITDO.
 	{
-	  if (buf[22] == 'P' || buf[22] == 'D')		// PROTOCONNECT or DO.
+	  int pos = (buf[11] == 'C') ? 22 : 17;			// Skip "STATE: WAITCONNECT => " or "STATE: WAITDO => ".
+	  llassert(!strncmp(buf + pos - 4, " => ", 4));
+	  if (buf[pos] == 'P' || buf[pos] == 'D')		// PROTOCONNECT or DO.
 	  {
+		llassert(!strncmp(buf + pos, "PROTOCONNECT", 12) || !strncmp(buf + pos, "DO ", 3));
 		int n = size - 1;
 		while (buf[n] != ')')
 		{
-		  llassert(n > 56);
+		  llassert(n > pos + 34);
 		  --n;
 		}
 		int connectionnr = 0;
 		int factor = 1;
 		do
 		{
-		  llassert(n > 56);
+		  llassert(n > pos + 34);
 		  --n;
 		  connectionnr += factor * (buf[n] - '0');
 		  factor *= 10;
@@ -2415,7 +2418,7 @@ int debug_callback(CURL* handle, curl_infotype infotype, char* buf, size_t size,
 	  }
 	  else
 	  {
-	  	llassert(buf[22] == 'C');				// COMPLETED (connection failure).
+		llassert(!strncmp(buf + pos, "COMPLETED", 9) || !strncmp(buf + pos, "WAITDO", 6));		// COMPLETED (connection failure), or WAITDO.
 	  }
 	}
 	else if (!strncmp(buf, "Closing connection", 18))

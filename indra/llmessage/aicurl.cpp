@@ -1360,13 +1360,16 @@ static AIPerServicePtr sConnections[64];
 
 void BufferedCurlEasyRequest::connection_established(int connectionnr)
 {
-  PerService_rat per_service_r(*mPerServicePtr);
-  int n = per_service_r->connection_established();
-  llassert(sConnections[connectionnr] == NULL);		// Only one service can use a connection at a time.
   llassert_always(connectionnr < 64);
-  sConnections[connectionnr] = mPerServicePtr;
-  Dout(dc::curlio, (void*)get_lockobj() << " Connection established (#" << connectionnr << "). Now " << n << " connections [" << (void*)&*per_service_r << "].");
-  llassert(sConnections[connectionnr] != NULL);
+  llassert(sConnections[connectionnr] == NULL || sConnections[connectionnr] == mPerServicePtr);	// Only one service can use a connection at a time.
+  if (sConnections[connectionnr] == NULL)		// Not a re-used connection?
+  {
+	PerService_rat per_service_r(*mPerServicePtr);
+	int n = per_service_r->connection_established();
+	sConnections[connectionnr] = mPerServicePtr;
+	Dout(dc::curlio, (void*)get_lockobj() << " Connection established (#" << connectionnr << "). Now " << n << " connections [" << (void*)&*per_service_r << "].");
+	llassert(sConnections[connectionnr] != NULL);
+  }
 }
 
 void BufferedCurlEasyRequest::connection_closed(int connectionnr)
