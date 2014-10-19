@@ -78,7 +78,6 @@ class HippoPanelGridsImpl : public HippoPanelGrids
 		static void onClickDefault(void *data);
 		static void onClickGridInfo(void *data);
 		static void onClickHelpRenderCompat(void *data);
-		static void onClickHelpPipelineSupport(void *data);
 		static void onClickAdvanced(void *data);
 
 		void enableEditing(bool);
@@ -139,7 +138,6 @@ BOOL HippoPanelGridsImpl::postBuild()
 	requires<LLButton>("btn_default");
 	requires<LLButton>("btn_gridinfo");
 	requires<LLButton>("btn_help_render_compat");
-	requires<LLButton>("btn_help_pipeline_support");
 	if (!checkRequirements()) return false;
 	
 	LLComboBox *platform = getChild<LLComboBox>("platform");
@@ -153,7 +151,6 @@ BOOL HippoPanelGridsImpl::postBuild()
 	childSetAction("btn_default", onClickDefault, this);
 	childSetAction("btn_gridinfo", onClickGridInfo, this);
 	childSetAction("btn_help_render_compat", onClickHelpRenderCompat, this);
-	childSetAction("btn_help_pipeline_support", onClickHelpPipelineSupport, this);
 	childSetAction("btn_advanced", onClickAdvanced, this);
 	
 	childSetCommitCallback("grid_selector", onSelectGrid, this);
@@ -249,7 +246,6 @@ void HippoPanelGridsImpl::loadCurGrid()
 		childSetText("register", gridInfo->getRegisterUrl());
 		childSetText("password", gridInfo->getPasswordUrl());
 		childSetValue("render_compat", gridInfo->isRenderCompat());
-		childSetValue("pipeline_support", gridInfo->isPipelineSupport());
 		enableEditing(!gridInfo->getLocked());
 	} else {
 		std::string empty = "";
@@ -265,7 +261,6 @@ void HippoPanelGridsImpl::loadCurGrid()
 		childSetText("register", empty);
 		childSetText("password", empty);
 		childSetValue("render_compat", true);
-		childSetValue("pipeline_support", false);
 		enableEditing(true);
 	}
 
@@ -369,7 +364,6 @@ bool HippoPanelGridsImpl::saveCurGrid()
 	gridInfo->setPasswordUrl(childGetValue("password"));
 	gridInfo->setSearchUrl(childGetValue("search"));
 	gridInfo->setRenderCompat(childGetValue("render_compat"));
-	gridInfo->setPipelineSupport(childGetValue("pipeline_support"));
 	
 	refresh();
 	return true;
@@ -428,7 +422,6 @@ void HippoPanelGridsImpl::retrieveGridInfo()
 		if (grid->getPasswordUrl() != "") childSetText("password", grid->getPasswordUrl());
 		if (grid->getSearchUrl() != "") childSetText("search", grid->getSearchUrl());
 		if (grid->getGridMessage() != "") childSetText("gridmessage", grid->getGridMessage());
-		childSetValue("pipeline_support", grid->isPipelineSupport());
 	}
 	catch(AIAlert::ErrorCode const& error)
 	{
@@ -527,25 +520,44 @@ void HippoPanelGridsImpl::onClickAdvanced(void *data)
 	{
 		self->retrieveGridInfo();
 	}
-	bool visibility = !self->childIsVisible("loginpage_label");
-	self->childSetVisible("loginpage_label", visibility);
-	self->childSetVisible("loginpage", visibility);
-	self->childSetVisible("helperuri_label", visibility);
-	self->childSetVisible("helperuri", visibility);
-	self->childSetVisible("website_label", visibility);
-	self->childSetVisible("website", visibility);
-	self->childSetVisible("support_label", visibility);
-	self->childSetVisible("support", visibility);
-	self->childSetVisible("register_label", visibility);
-	self->childSetVisible("register", visibility);
-	self->childSetVisible("password_label", visibility);
-	self->childSetVisible("password", visibility);
-	self->childSetVisible("search_label", visibility);
-	self->childSetVisible("search", visibility);
-	self->childSetVisible("render_compat", visibility);
-	self->childSetVisible("pipeline_support", visibility);
-	self->childSetVisible("btn_help_render_compat", visibility);
-	self->childSetVisible("btn_help_pipeline_support", visibility);
+	if(self->childIsVisible("loginpage_label"))
+	{
+		self->childSetVisible("loginpage_label", false);
+		self->childSetVisible("loginpage", false);
+		self->childSetVisible("helperuri_label", false);
+		self->childSetVisible("helperuri", false);
+		self->childSetVisible("website_label", false);
+		self->childSetVisible("website", false);
+		self->childSetVisible("support_label", false);
+		self->childSetVisible("support", false);
+		self->childSetVisible("register_label", false);
+		self->childSetVisible("register", false);
+		self->childSetVisible("password_label", false);
+		self->childSetVisible("password", false);
+		self->childSetVisible("search_label", false);
+		self->childSetVisible("search", false);
+		self->childSetVisible("render_compat", false);
+		self->childSetVisible("btn_help_render_compat", false);
+	}
+	else
+	{
+		self->childSetVisible("loginpage_label", true);
+		self->childSetVisible("loginpage", true);
+		self->childSetVisible("helperuri_label", true);
+		self->childSetVisible("helperuri", true);
+		self->childSetVisible("website_label", true);
+		self->childSetVisible("website", true);
+		self->childSetVisible("support_label", true);
+		self->childSetVisible("support", true);
+		self->childSetVisible("register_label", true);
+		self->childSetVisible("register", true);
+		self->childSetVisible("password_label", true);
+		self->childSetVisible("password", true);
+		self->childSetVisible("search_label", true);
+		self->childSetVisible("search", true);
+		self->childSetVisible("render_compat", true);
+		self->childSetVisible("btn_help_render_compat", true);
+	}
 }
 
 // static
@@ -554,11 +566,6 @@ void HippoPanelGridsImpl::onClickHelpRenderCompat(void *data)
 	LLNotificationsUtil::add("HelpRenderCompat");
 }
 
-// static
-void HippoPanelGridsImpl::onClickHelpPipelineSupport(void *data)
-{
-	LLNotificationsUtil::add("HelpPipelineSupport");
-}
 
 void HippoPanelGridsImpl::enableEditing(bool b)
 {
@@ -576,7 +583,6 @@ void HippoPanelGridsImpl::enableEditing(bool b)
 		"btn_delete",
 		"btn_gridinfo",
 		"render_compat",
-		"pipeline_support",
 		"gridmessage",
 		0
 	};

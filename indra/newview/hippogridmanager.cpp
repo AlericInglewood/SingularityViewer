@@ -56,7 +56,6 @@ HippoGridInfo::HippoGridInfo(const std::string& gridName) :
 	mIsInProductionGrid(false),
 	mIsInAvination(false),
 	mRenderCompat(true),
-	mPipelineSupport(false),
 	mInvLinks(false),
 	mAutoUpdate(false),
 	mLocked(false),
@@ -235,11 +234,6 @@ void HippoGridInfo::setGridMessage(const std::string& message)
 void HippoGridInfo::setRenderCompat(bool compat)
 {
 	mRenderCompat = compat;
-}
-
-void HippoGridInfo::setPipelineSupport(bool support)
-{
-	mPipelineSupport = support;
 }
 
 void HippoGridInfo::setCurrencySymbol(const std::string& sym)
@@ -930,8 +924,6 @@ void HippoGridManager::parseData(LLSD &gridInfo, bool mergeIfNewer)
 			if (gridMap.has("password")) grid->setPasswordUrl(gridMap["password"]);
 			if (gridMap.has("search")) grid->setSearchUrl(gridMap["search"]);
 			if (gridMap.has("render_compat")) grid->setRenderCompat(gridMap["render_compat"]);
-			if (gridMap.has("pipeline_support")) grid->setPipelineSupport(gridMap["pipeline_support"]);
-			else grid->setPipelineSupport(grid->isSecondLife());	// First time, initialize false except for SL.
 			if (gridMap.has("inventory_links")) grid->setSupportsInvLinks(gridMap["inventory_links"]);
 			if (gridMap.has("auto_update")) grid->mAutoUpdate = gridMap["auto_update"];
 			if (gridMap.has("locked")) grid->mLocked = gridMap["locked"];
@@ -969,7 +961,6 @@ void HippoGridManager::saveFile()
 		
 		gridInfo[i]["search"] = grid->getSearchUrl();
 		gridInfo[i]["render_compat"] = grid->isRenderCompat();
-		gridInfo[i]["pipeline_support"] = grid->isPipelineSupport();
 		gridInfo[i]["inventory_links"] = grid->supportsInvLinks();
 		gridInfo[i]["auto_update"] = grid->getAutoUpdate();
 		gridInfo[i]["locked"] = grid->getLocked();
