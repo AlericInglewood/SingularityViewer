@@ -281,9 +281,6 @@ AIThreadSafeDC<Command> command_being_processed;
 typedef AIWriteAccess<Command> command_being_processed_wat;
 typedef AIReadAccess<Command> command_being_processed_rat;
 
-// Cached value of gHippoGridManager->getConnectedGrid()->isPipelineSupport().
-bool current_grid_supports_pipelining;
-
 namespace curlthread {
 // All functions in this namespace are only run by the curl thread, unless they are marked with MAIN-THREAD.
 
@@ -1643,12 +1640,7 @@ MultiHandle::MultiHandle(void) : mTimeout(-1), mReadPollSet(NULL), mWritePollSet
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_SOCKETDATA, this));
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_TIMERFUNCTION, &MultiHandle::timer_callback));
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_TIMERDATA, this));
-}
-
-void MultiHandle::setPipelineSupport(bool enable)
-{
-  check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_PIPELINING, enable ? 1L : 0L));
-  current_grid_supports_pipelining = enable;
+  //check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_PIPELINING, 1L));
 }
 
 MultiHandle::~MultiHandle()
@@ -1664,6 +1656,12 @@ MultiHandle::~MultiHandle()
   }
   delete mWritePollSet;
   delete mReadPollSet;
+}
+
+//static
+bool MultiHandle::added_maximum(void)
+{
+  return AIPerService::total_added_connections() >= curl_max_total_concurrent_connections;
 }
 
 void MultiHandle::handle_stalls(void)
@@ -1791,7 +1789,7 @@ bool MultiHandle::add_easy_request(AICurlEasyRequest const& easy_request, bool f
 	}
 	bool too_much_bandwidth = !curl_easy_request_w->approved() && AIPerService::checkBandwidthUsage(per_service, get_clock_count() * HTTPTimeout::sClockWidth_40ms);
 	PerService_wat per_service_w(*per_service);
-	if (!too_much_bandwidth && !MultiHandle::added_maximum() && !per_service_w->throttled(capability_type))
+	if (!too_much_bandwidth && (per_service_w->is_http_pipeline() || !MultiHandle::added_maximum()) && !per_service_w->throttled(capability_type))
 	{
 	  curl_easy_request_w->set_timeout_opts();
 	  if (curl_easy_request_w->add_handle_to_multi(curl_easy_request_w, mMultiHandle) == CURLM_OK)
@@ -2392,21 +2390,24 @@ int debug_callback(CURL* handle, curl_infotype infotype, char* buf, size_t size,
   }
   if (infotype == CURLINFO_TEXT)
   {
-	if (!strncmp(buf, "STATE: WAITCONNECT => ", 22))
+	if (!strncmp(buf, "STATE: WAIT", 11) && (buf[11] == 'C' || buf[11] == 'D'))			// WAITCONNECT or WAITDO.
 	{
-	  if (buf[22] == 'P' || buf[22] == 'D')		// PROTOCONNECT or DO.
+	  int pos = (buf[11] == 'C') ? 22 : 17;			// Skip "STATE: WAITCONNECT => " or "STATE: WAITDO => ".
+	  llassert(!strncmp(buf + pos - 4, " => ", 4));
+	  if (buf[pos] == 'P' || buf[pos] == 'D')		// PROTOCONNECT or DO.
 	  {
+		llassert(!strncmp(buf + pos, "PROTOCONNECT", 12) || !strncmp(buf + pos, "DO ", 3));
 		int n = size - 1;
 		while (buf[n] != ')')
 		{
-		  llassert(n > 56);
+		  llassert(n > pos + 34);
 		  --n;
 		}
 		int connectionnr = 0;
 		int factor = 1;
 		do
 		{
-		  llassert(n > 56);
+		  llassert(n > pos + 34);
 		  --n;
 		  connectionnr += factor * (buf[n] - '0');
 		  factor *= 10;
@@ -2417,7 +2418,7 @@ int debug_callback(CURL* handle, curl_infotype infotype, char* buf, size_t size,
 	  }
 	  else
 	  {
-	  	llassert(buf[22] == 'C');				// COMPLETED (connection failure).
+		llassert(!strncmp(buf + pos, "COMPLETED", 9) || !strncmp(buf + pos, "WAITDO", 6));		// COMPLETED (connection failure), or WAITDO.
 	  }
 	}
 	else if (!strncmp(buf, "Closing connection", 18))
@@ -2508,13 +2509,14 @@ int debug_callback(CURL* handle, curl_infotype infotype, char* buf, size_t size,
 	  }
 	  ++i;
 	}
-	if (!finished && size > 9 && buf[0] == '<')
+	if (!finished && ((size > 9 && buf[0] == '<') || request->mDebugHumanReadable))
 	{
 	  // Human readable output: html, xml or llsd.
-	  if (!strncmp(buf, "<!DOCTYPE", 9) || !strncmp(buf, "<?xml", 5) || !strncmp(buf, "<llsd>", 6))
+	  if (request->mDebugHumanReadable || !strncmp(buf, "<!DOCTYPE", 9) || !strncmp(buf, "<?xml", 5) || !strncmp(buf, "<llsd>", 6))
 	  {
 		LibcwDoutStream << ": \"" << libcwd::buf2str(buf, size) << '"';
 		finished = true;
+		request->mDebugHumanReadable = true;
 	  }
 	}
 	if (!finished)

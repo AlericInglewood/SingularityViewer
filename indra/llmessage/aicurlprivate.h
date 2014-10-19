@@ -323,6 +323,7 @@ class CurlEasyRequest : public CurlEasyHandle {
 #ifdef CWDEBUG
   public:
 	bool mDebugIsHeadOrGetMethod;
+	bool mDebugHumanReadable;
 #endif
 
   public:
@@ -343,7 +344,7 @@ class CurlEasyRequest : public CurlEasyHandle {
 	// Throws AICurlNoEasyHandle.
 	CurlEasyRequest(void) : mHeaders(NULL), mHandleEventsTarget(NULL), mContentLength(0), mResult(CURLE_FAILED_INIT), mTimeoutPolicy(NULL), mTimeoutIsOrphan(false)
 #ifdef CWDEBUG
-		, mDebugIsHeadOrGetMethod(false)
+		, mDebugIsHeadOrGetMethod(false), mDebugHumanReadable(false)
 #endif
 		{ applyDefaultOptions(); }
   public:

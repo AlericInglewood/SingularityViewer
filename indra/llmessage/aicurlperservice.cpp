@@ -75,10 +75,9 @@ void intrusive_ptr_release(RefCountedThreadSafePerService* per_service)
 using namespace AICurlPrivate;
 
 AIPerService::AIPerService(void) :
-		mPipelineSupport(current_grid_supports_pipelining),
-		mCapabilityType(number_of_capability_types, mPipelineSupport),
+		mPipelineSupport(false),
 		mHTTPBandwidth(25),	// 25 = 1000 ms / 40 ms.
-		mMaxTotalAddedEasyHandles(mPipelineSupport ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService),
+		mMaxTotalAddedEasyHandles(CurlConcurrentConnectionsPerService),
 		mApprovedRequests(0),
 		mTotalAddedEasyHandles(0),
 		mEventPolls(0),
@@ -88,14 +87,14 @@ AIPerService::AIPerService(void) :
 {
 }
 
-AIPerService::CapabilityType::CapabilityType(bool pipeline_support) :
+AIPerService::CapabilityType::CapabilityType(void) :
   		mApprovedRequests(0),
 		mQueuedCommands(0),
 		mAddedEasyHandles(0),
 		mFlags(0),
 		mDownloading(0),
-		mMaxUnfinishedRequests(pipeline_support ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService),
-		mMaxAddedEasyHandles(pipeline_support ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService)
+		mMaxUnfinishedRequests(CurlConcurrentConnectionsPerService),
+		mMaxAddedEasyHandles(CurlConcurrentConnectionsPerService)
 {
 }
 
@@ -492,7 +491,7 @@ void AIPerService::add_queued_to(curlthread::MultiHandle* multi_handle, bool onl
 	{
 	  continue;
 	}
-	if (multi_handle->added_maximum())
+	if (!mPipelineSupport && curlthread::MultiHandle::added_maximum())
 	{
 	  // We hit the maximum number of global connections. Abort every attempt to add anything.
 	  only_this_service = true;
@@ -668,6 +667,10 @@ void AIPerService::Approvement::honored(void)
 	llassert(per_service_w->mCapabilityType[mCapabilityType].mApprovedRequests > 0 && per_service_w->mApprovedRequests > 0);
 	per_service_w->mCapabilityType[mCapabilityType].mApprovedRequests--;
 	per_service_w->mApprovedRequests--;
+	if (!per_service_w->is_http_pipeline())
+	{
+	  --sApprovedNonHTTPPipelineRequests;
+	}
   }
 }
 

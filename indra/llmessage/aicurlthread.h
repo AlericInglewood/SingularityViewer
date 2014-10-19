@@ -37,9 +37,6 @@
 #undef AICurlPrivate
 
 namespace AICurlPrivate {
-
-extern bool current_grid_supports_pipelining;
-
 namespace curlthread {
 
 extern U32 curl_max_total_concurrent_connections;
@@ -109,12 +106,7 @@ class MultiHandle : public CurlMultiHandle
 	static U32 total_added_size(void) { return sTotalAddedEasyHandles; }
 
 	// Return true if we reached the global maximum number of connections.
-	// If the current grid supports HTTP pipelining, we will never reach the maximum number of connections, so just return false.
-	static bool added_maximum(void) { return !current_grid_supports_pipelining && sTotalAddedEasyHandles >= curl_max_total_concurrent_connections; }
-
-	// This is called when the current grid successfully connected.
-	// If enabled then libcurl will attempt to use an existing pipeline for all added easy handles.
-	void setPipelineSupport(bool enable);
+	static bool added_maximum(void);
 
   public:
 	//-----------------------------------------------------------------------------
