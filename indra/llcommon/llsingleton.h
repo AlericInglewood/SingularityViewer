@@ -99,22 +99,24 @@ private:
 
 	struct SingletonData;
 
-	// stores pointer to singleton instance
+	// Unnecessary attempt to destruct singletons at the end of the application
+	// (which only gives rise to possible deinitialization order fiasco's so
+	// why are we doing this at all?).
 	struct SingletonLifetimeManager
 	{
-		SingletonLifetimeManager()
-		{
-			construct();
-		}
-
-		static void construct()
-		{
-			SingletonData& sData(getData());
-			sData.mInitState = CONSTRUCTING;
-			sData.mInstance = constructSingleton();
-			sData.mInitState = INITIALIZING;
-		}
-
+		// Singu note: LL also uses an instance of this class to
+		// initialize the singleton class (we do that in getInstance
+		// now, under state UNINITIALIZED, see below). That voids
+		// the whole idea of having LLSingletonRegistry however:
+		// if the getInstance function is instantiated more than
+		// once (and it is, since this template code is a header
+		// and the compilation units are assembled in more than
+		// one library) then the singleton is constructed multiple
+		// times (the previous ones just leaking and unused afterwards).
+		// I left this in for the destruction (the first destruction
+		// of those instances will destruct it), although that is
+		// rather unnecessary of course - and in many cases even
+		// dangerous.  --Aleric
 		~SingletonLifetimeManager()
 		{
 			SingletonData& sData(getData());
@@ -124,6 +126,8 @@ private:
 			}
 		}
 	};
+
+	static SingletonLifetimeManager sLifeTimeMgr;
 
 public:
 	virtual ~LLSingleton()
@@ -178,33 +182,28 @@ public:
 
 	static DERIVED_TYPE* getInstance()
 	{
-		static SingletonLifetimeManager sLifeTimeMgr;
 		SingletonData& sData(getData());
 
 		switch (sData.mInitState)
 		{
+		case DELETED:
+			llwarns << "Trying to access deleted singleton " << typeid(DERIVED_TYPE).name() << " creating new instance" << LL_ENDL;
+			/* fall-through */
 		case UNINITIALIZED:
-			// should never be uninitialized at this point
-			llassert(false);
-			return NULL;
+			// This must be the first time we get here.
+			sData.mInitState = CONSTRUCTING;
+			sData.mInstance = constructSingleton();
+			sData.mInitState = INITIALIZING;			// Singu note: LL sets the state to INITIALIZED here *already* - which avoids the warning below, but is clearly total bullshit.
+			sData.mInstance->initSingleton();
+			sData.mInitState = INITIALIZED;
+			return sData.mInstance;
+		case INITIALIZING:
+			llwarns << "Using singleton " << typeid(DERIVED_TYPE).name() << " during its own initialization, before its initialization completed!" << LL_ENDL;
+			return sData.mInstance;
 		case CONSTRUCTING:
 			llerrs << "Tried to access singleton " << typeid(DERIVED_TYPE).name() << " from singleton constructor!" << LL_ENDL;
 			return NULL;
-		case INITIALIZING:
-			// go ahead and flag ourselves as initialized so we can be reentrant during initialization
-			sData.mInitState = INITIALIZED;	
-			// initialize singleton after constructing it so that it can reference other singletons which in turn depend on it,
-			// thus breaking cyclic dependencies
-			sData.mInstance->initSingleton(); 
-			return sData.mInstance;
 		case INITIALIZED:
-			return sData.mInstance;
-		case DELETED:
-			llwarns << "Trying to access deleted singleton " << typeid(DERIVED_TYPE).name() << " creating new instance" << LL_ENDL;
-			SingletonLifetimeManager::construct();
-			// same as first time construction
-			sData.mInitState = INITIALIZED;	
-			sData.mInstance->initSingleton(); 
 			return sData.mInstance;
 		}
 
@@ -252,5 +251,8 @@ private:
 		DERIVED_TYPE*	mInstance;
 	};
 };
+
+template <typename DERIVED_TYPE>
+typename LLSingleton<DERIVED_TYPE>::SingletonLifetimeManager LLSingleton<DERIVED_TYPE>::sLifeTimeMgr;
 
 #endif

@@ -94,9 +94,9 @@ static U32 const approved_mask = 3;		// The mask of cap_texture OR-ed with the m
 
 // This class provides a static interface to create and maintain instances of AIPerService objects,
 // so that at any moment there is at most one instance per service (hostname:port).
-// Those instances then are used to queue curl requests when the maximum number of connections
+// Those instances then are used to queue curl requests when the maximum number of added easy handles
 // for that service already have been reached. And to keep track of the bandwidth usage, and the
-// number of queued requests in the pipeline, for this service.
+// number of queued requests in the "unfinished pipeline", for this service.
 class AIPerService {
   public:
 	typedef std::map<std::string, AIPerServicePtr> instance_map_type;
@@ -145,41 +145,53 @@ class AIPerService {
 
 	  queued_request_type mQueuedRequests;		// Waiting (throttled) requests.
 	  U16 mApprovedRequests;					// The number of approved requests for this CT by approveHTTPRequestFor that were not added to the command queue yet.
-	  S16 mQueuedCommands;						// Number of add commands (minus remove commands), for this service, in the command queue.
+	  S16 mQueuedCommands;						// Number of add commands (minus remove commands), for this CT, in the command queue.
 	  											// This value can temporarily become negative when remove commands are added to the queue for add requests that were already processed.
-	  U16 mAdded;								// Number of active easy handles with this service.
+	  U16 mAddedEasyHandles;					// Number of active easy handles with this service.
 	  U16 mFlags;								// ctf_empty: Set to true when the queue becomes precisely empty.
 	  											// ctf_full : Set to true when the queue is popped and then still isn't empty;
 												// ctf_starvation: Set to true when the queue was about to be popped but was already empty.
 												// ctf_success: Set to true when a curl request finished successfully.
 	  U32 mDownloading;							// The number of active easy handles with this service for which data was received.
-	  U16 mMaxPipelinedRequests;				// The maximum number of accepted requests for this service and (approved) capability type, that didn't finish yet.
-	  U16 mConcurrentConnections;				// The maximum number of allowed concurrent connections to the service of this capability type.
+	  U16 mMaxUnfinishedRequests;				// The maximum number of accepted requests for this service and (approved) capability type, that didn't finish yet.
+	  U16 mMaxAddedEasyHandles;					// The maximum number of allowed concurrent active requests to the service of this capability type.
 
 	  // Declare, not define, constructor and destructor - in order to avoid instantiation of queued_request_type from header.
-	  CapabilityType(void);
+	  CapabilityType(bool pipeline_support);
 	  ~CapabilityType();
 
-	  S32 pipelined_requests(void) const { return mApprovedRequests + mQueuedCommands + mQueuedRequests.size() + mAdded; }
+	  S32 unfinished_requests(void) const { return mApprovedRequests + mQueuedCommands + mQueuedRequests.size() + mAddedEasyHandles; }
 	};
 
+	bool mPipelineSupport;						// Set to true if this service supports HTTP pipelining.
+
 	friend class AIServiceBar;
-	CapabilityType mCapabilityType[number_of_capability_types];
+	std::vector<CapabilityType> mCapabilityType;
 
 	AIAverage mHTTPBandwidth;					// Keeps track on number of bytes received for this service in the past second.
-	int mConcurrentConnections;					// The maximum number of allowed concurrent connections to this service.
-	int mApprovedRequests;						// The number of approved requests for this service by approveHTTPRequestFor that were not added to the command queue yet.
-	int mTotalAdded;							// Number of active easy handles with this service.
+	int mMaxTotalAddedEasyHandles;				// The maximum number of allowed concurrent active requests to this service.
+												// In the case of HTTP pipelining this is the maximum number of active requests in the http pipeline,
+												// otherwise it is the maximum number of concurrent connections.
+												// In both cases this is equal to the total number of added easy handles.
+	int mApprovedRequests;						// The number of by approveHTTPRequestFor approved requests for this service that were not added to the command queue yet.
+	int mTotalAddedEasyHandles;					// Number of active easy handles with this service.
 	int mEventPolls;							// Number of active event poll handles with this service.
 	int mEstablishedConnections;				// Number of connected sockets to this service.
 
 	U32 mUsedCT;								// Bit mask with one bit per capability type. A '1' means the capability was in use since the last resetUsedCT().
 	U32 mCTInUse;								// Bit mask with one bit per capability type. A '1' means the capability is in use right now.
 
+	// Approved non-HTTP pipeline requests until that are not in the command queue yet.
+	// Requests for HTTP pipeline capable services are not counted (until they are actually added;
+	// they only count for 1 connection anyway so precision isn't that important).
+	static LLAtomicU32 sApprovedNonHTTPPipelineRequests;	// (minus those that are already queued CapabilityType::mQueuedRequests).
+	// The total number of connections (added non-HTTP pipeline requests, plus 1 for each active HTTP pipelined service).
+	static LLAtomicU32 sAddedConnections;
+
 	// Helper struct, used in the static resetUsed.
 	struct ResetUsed { void operator()(instance_map_type::value_type const& service) const; };
 
-	void redivide_connections(void);
+	void redivide_easy_handle_slots(void);
 	void mark_inuse(AICapabilityType capability_type)
 	{
 	  U32 bit = CT2mask(capability_type);
@@ -189,7 +201,7 @@ class AIPerService {
 		mUsedCT |= bit;
 		if (mUsedCT != bit)					// and more than one CT use this service.
 		{
-		  redivide_connections();
+		  redivide_easy_handle_slots();
 		}
 	  }
 	}
@@ -201,7 +213,7 @@ class AIPerService {
 		mCTInUse &= ~bit;
 		if (mCTInUse && mUsedCT != bit)		// and more than one CT use this service, and at least one is in use.
 		{
-		  redivide_connections();
+		  redivide_easy_handle_slots();
 		}
 	  }
 	}
@@ -219,37 +231,41 @@ class AIPerService {
 	U32 is_used(void) const { return mUsedCT; }						// Non-zero if this service was used for any capability type.
 	U32 is_inuse(void) const { return mCTInUse; }					// Non-zero if this service is in use for any capability type.
 
+	bool is_http_pipeline(void) const { return mPipelineSupport; }
+	void set_http_pipeline(bool enable);							// Call this to switch HTTP pipelining on or off for this service.
+
 	// Global administration of the total number of queued requests of all services combined.
   private:
-	struct TotalQueued {
-		S32 approved;							// The sum of mQueuedRequests.size() of all AIPerService::CapabilityType objects of approved types.
+	struct TotalNonHTTPPipelineQueued {
+		S32 approved;			// The sum of mQueuedRequests.size() of all AIPerService::CapabilityType objects of approved types in non-HTTP-pipeline services.
 		bool empty;								// Set to true when approved becomes precisely zero as the result of popping any queue.
 		bool full;								// Set to true when approved is still larger than zero after popping any queue.
 		bool starvation;						// Set to true when any queue was about to be popped when approved was already zero.
-		TotalQueued(void) : approved(0), empty(false), full(false), starvation(false) { }
+		TotalNonHTTPPipelineQueued(void) : approved(0), empty(false), full(false), starvation(false) { }
 	};
-	static AIThreadSafeSimpleDC<TotalQueued> sTotalQueued;
-	typedef AIAccessConst<TotalQueued> TotalQueued_crat;
-	typedef AIAccess<TotalQueued> TotalQueued_rat;
-	typedef AIAccess<TotalQueued> TotalQueued_wat;
+	static AIThreadSafeSimpleDC<TotalNonHTTPPipelineQueued> sTotalNonHTTPPipelineQueued;
+	typedef AIAccessConst<TotalNonHTTPPipelineQueued> TotalNonHTTPPipelineQueued_crat;
+	typedef AIAccess<TotalNonHTTPPipelineQueued> TotalNonHTTPPipelineQueued_rat;
+	typedef AIAccess<TotalNonHTTPPipelineQueued> TotalNonHTTPPipelineQueued_wat;
   public:
-	static S32 total_approved_queue_size(void) { return TotalQueued_rat(sTotalQueued)->approved; }
+	static S32 total_approved_non_http_pipeline_queued(void) { return TotalNonHTTPPipelineQueued_rat(sTotalNonHTTPPipelineQueued)->approved; }
+	static U32 total_added_connections(void) { return sAddedConnections; }
 
-	// Global administration of the maximum number of pipelined requests of all services combined.
+	// Global administration of the maximum number of unfinished requests of all services combined.
   private:
-	struct MaxPipelinedRequests {
+	struct MaxUnfinishedRequests {
 		S32 threshold;							// The maximum total number of accepted requests that didn't finish yet.
-		U64 last_increment;						// Last time that sMaxPipelinedRequests was incremented.
-		U64 last_decrement;						// Last time that sMaxPipelinedRequests was decremented.
-		MaxPipelinedRequests(void) : threshold(32), last_increment(0), last_decrement(0) { }
+		U64 last_increment;						// Last time that sMaxUnfinishedRequests was incremented.
+		U64 last_decrement;						// Last time that sMaxUnfinishedRequests was decremented.
+		MaxUnfinishedRequests(void) : threshold(32), last_increment(0), last_decrement(0) { }
 	};
-	static AIThreadSafeSimpleDC<MaxPipelinedRequests> sMaxPipelinedRequests;
-	typedef AIAccessConst<MaxPipelinedRequests> MaxPipelinedRequests_crat;
-	typedef AIAccess<MaxPipelinedRequests> MaxPipelinedRequests_rat;
-	typedef AIAccess<MaxPipelinedRequests> MaxPipelinedRequests_wat;
+	static AIThreadSafeSimpleDC<MaxUnfinishedRequests> sMaxUnfinishedRequests;
+	typedef AIAccessConst<MaxUnfinishedRequests> MaxUnfinishedRequests_crat;
+	typedef AIAccess<MaxUnfinishedRequests> MaxUnfinishedRequests_rat;
+	typedef AIAccess<MaxUnfinishedRequests> MaxUnfinishedRequests_wat;
   public:
-	static void setMaxPipelinedRequests(S32 threshold) { MaxPipelinedRequests_wat(sMaxPipelinedRequests)->threshold = threshold; }
-	static void incrementMaxPipelinedRequests(S32 increment) { MaxPipelinedRequests_wat(sMaxPipelinedRequests)->threshold += increment; }
+	static void setMaxUnfinishedRequests(S32 threshold) { MaxUnfinishedRequests_wat(sMaxUnfinishedRequests)->threshold = threshold; }
+	static void incrementMaxUnfinishedRequests(S32 increment) { MaxUnfinishedRequests_wat(sMaxUnfinishedRequests)->threshold += increment; }
 
 	// Global administration of throttle fraction (which is the same for all services).
   private:
@@ -268,14 +284,14 @@ class AIPerService {
 	static bool sNoHTTPBandwidthThrottling;					// Global override to disable bandwidth throttling.
 
   public:
-	void added_to_command_queue(AICapabilityType capability_type) { ++mCapabilityType[capability_type].mQueuedCommands; mark_inuse(capability_type); }
-	void removed_from_command_queue(AICapabilityType capability_type) { --mCapabilityType[capability_type].mQueuedCommands; }
+	void added_to_command_queue(AICapabilityType capability_type) { if (!mPipelineSupport && is_approved(capability_type)) sApprovedNonHTTPPipelineRequests++; ++mCapabilityType[capability_type].mQueuedCommands; mark_inuse(capability_type); }
+	void removed_from_command_queue(AICapabilityType capability_type) { if (!mPipelineSupport && is_approved(capability_type)) --sApprovedNonHTTPPipelineRequests; --mCapabilityType[capability_type].mQueuedCommands; }
 	void added_to_multi_handle(AICapabilityType capability_type, bool event_poll);		// Called when an easy handle for this service has been added to the multi handle.
 	void removed_from_multi_handle(AICapabilityType capability_type, bool event_poll,
 								   bool downloaded_something, bool success);			// Called when an easy handle for this service is removed again from the multi handle.
 	void download_started(AICapabilityType capability_type) { ++mCapabilityType[capability_type].mDownloading; }
 	bool throttled(AICapabilityType capability_type) const;		// Returns true if the maximum number of allowed requests for this service/capability type have been added to the multi handle.
-	bool nothing_added(AICapabilityType capability_type) const { return mCapabilityType[capability_type].mAdded == 0; }
+	bool nothing_added(AICapabilityType capability_type) const { return mCapabilityType[capability_type].mAddedEasyHandles == 0; }
 
 	bool queue(AICurlEasyRequest const& easy_request, AICapabilityType capability_type, bool force_queuing = true);	// Add easy_request to the queue if queue is empty or force_queuing.
 	bool cancel(AICurlEasyRequest const& easy_request, AICapabilityType capability_type);							// Remove easy_request from the queue (if it's there).
@@ -284,7 +300,7 @@ class AIPerService {
 														// Add queued easy handle (if any) to the multi handle. The request is removed from the queue,
 														// followed by either a call to added_to_multi_handle() or to queue() to add it back.
 
-	S32 pipelined_requests(AICapabilityType capability_type) const { return mCapabilityType[capability_type].pipelined_requests(); }
+	S32 unfinished_requests(AICapabilityType capability_type) const { return mCapabilityType[capability_type].unfinished_requests(); }
 
 	AIAverage& bandwidth(void) { return mHTTPBandwidth; }
 	AIAverage const& bandwidth(void) const { return mHTTPBandwidth; }
@@ -294,8 +310,8 @@ class AIPerService {
 	static size_t getHTTPThrottleBandwidth125(void) { return sHTTPThrottleBandwidth125; }
 	static F32 throttleFraction(void) { return ThrottleFraction_wat(sThrottleFraction)->fraction / 1024.f; }
 
-	// Called when CurlConcurrentConnectionsPerService changes.
-	static void adjust_concurrent_connections(int increment);
+	// Called when CurlConcurrentConnectionsPerService or CurlMaxPipelinedRequestsPerService changes.
+	static void adjust_max_added_easy_handles(int increment, bool for_pipeline_support);
 
 	// A helper class to decrement mApprovedRequests after requests approved by approveHTTPRequestFor were handled.
 	class Approvement : public LLThreadSafeRefCount {
@@ -343,6 +359,7 @@ class RefCountedThreadSafePerService : public threadsafe_PerService {
 };
 
 extern U16 CurlConcurrentConnectionsPerService;
+extern U16 CurlMaxPipelinedRequestsPerService;
 
 } // namespace AICurlPrivate
 

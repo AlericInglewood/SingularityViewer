@@ -36,6 +36,7 @@
 #include "llviewerstats.h"
 #include "llfontgl.h"
 #include "aihttptimeout.h"
+#include "hippogridmanager.h"
 
 AIHTTPView* gHttpView = NULL;
 static S32 sLineHeight;
@@ -79,21 +80,21 @@ void AIServiceBar::draw()
   AIPerService::CapabilityType* cts;
   U32 is_used;
   U32 is_inuse;
-  int total_added;
+  int total_added_easy_handles;
   int event_polls;
   int established_connections;
-  int concurrent_connections;
+  int max_total_added_easy_handles;
   size_t bandwidth;
   {
 	PerService_rat per_service_r(*mPerService);
 	is_used = per_service_r->is_used();
 	is_inuse = per_service_r->is_inuse();
-	total_added = per_service_r->mTotalAdded;
+	total_added_easy_handles = per_service_r->mTotalAddedEasyHandles;
 	event_polls = per_service_r->mEventPolls;
 	established_connections = per_service_r->mEstablishedConnections;
-	concurrent_connections = per_service_r->mConcurrentConnections;
+	max_total_added_easy_handles = per_service_r->mMaxTotalAddedEasyHandles;
 	bandwidth = per_service_r->bandwidth().truncateData(AIHTTPView::getTime_40ms());
-	cts = per_service_r->mCapabilityType;	// Not thread-safe, but we're only reading from it and only using the results to show in a debug console.
+	cts = &per_service_r->mCapabilityType[0];	// Not thread-safe, but we're only reading from it and only using the results to show in a debug console.
   }
   for (int col = 0; col < number_of_capability_types; ++col)
   {
@@ -111,14 +112,14 @@ void AIServiceBar::draw()
 	  {
 		text = llformat(" | %hu-%hd-%lu,{%hu/%hu,%u}/%u",
 			ct.mApprovedRequests, ct.mQueuedCommands, ct.mQueuedRequests.size(),
-			ct.mAdded, ct.mConcurrentConnections, ct.mDownloading,
-			ct.mMaxPipelinedRequests);
+			ct.mAddedEasyHandles, ct.mMaxAddedEasyHandles, ct.mDownloading,
+			ct.mMaxUnfinishedRequests);
 	  }
 	  else
 	  {
 		text = llformat(" | --%hd-%lu,{%hu/%hu,%u}",
 			ct.mQueuedCommands, ct.mQueuedRequests.size(),
-			ct.mAdded, ct.mConcurrentConnections, ct.mDownloading);
+			ct.mAddedEasyHandles, ct.mMaxAddedEasyHandles, ct.mDownloading);
 	  }
 	  if (capability_type == cap_texture || capability_type == cap_mesh)
 	  {
@@ -150,9 +151,9 @@ void AIServiceBar::draw()
   }
   start = mHTTPView->updateColumn(mc_col, start);
 #ifdef CWDEBUG
-  text = llformat(" | %d,%d,%d/%d", total_added, event_polls, established_connections, concurrent_connections);
+  text = llformat(" | %d,%d/%d[%d]", total_added_easy_handles, event_polls, max_total_added_easy_handles, established_connections);
 #else
-  text = llformat(" | %d/%d", total_added, concurrent_connections);
+  text = llformat(" | %d/%d", total_added_easy_handles, max_total_added_easy_handles);
 #endif
   LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, text_color, LLFontGL::LEFT, LLFontGL::TOP);
   start += LLFontGL::getFontMonospace()->getWidth(text);
@@ -216,7 +217,8 @@ void AIGLHTTPHeaderBar::draw(void)
   F32 height = v_offset + sLineHeight * number_of_header_lines;
   text = "HTTP console -- [approved]-commandQ-curlQ,{added/max,downloading}[/max][ completed]";
   LLFontGL::getFontMonospace()->renderUTF8(text, 0, h_offset, height, text_color, LLFontGL::LEFT, LLFontGL::TOP);
-  text = " | Added/Max";
+  bool pipeline_support = gHippoGridManager->getCurrentGrid()->isPipelineSupport();
+  text = pipeline_support ? " | Added" : " | Added/Max";
   U32 start = mHTTPView->updateColumn(mc_col, 100);
   LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, LLColor4::green, LLFontGL::LEFT, LLFontGL::TOP);
   start += LLFontGL::getFontMonospace()->getWidth(text);
@@ -243,7 +245,7 @@ void AIGLHTTPHeaderBar::draw(void)
 	start += LLFontGL::getFontMonospace()->getWidth(text);
   }
   start = mHTTPView->updateColumn(mc_col, start);
-  text = llformat(" | %u/%u", AICurlInterface::getNumHTTPAdded(), AICurlInterface::getMaxHTTPAdded());
+  text = llformat(pipeline_support ? " | %u" : " | %u/%u", AICurlInterface::getNumHTTPAdded(), AICurlInterface::getMaxHTTPAdded());
   LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, text_color, LLFontGL::LEFT, LLFontGL::TOP);
   start += LLFontGL::getFontMonospace()->getWidth(text);
 
