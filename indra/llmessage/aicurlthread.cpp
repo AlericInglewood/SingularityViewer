@@ -2499,13 +2499,14 @@ int debug_callback(CURL* handle, curl_infotype infotype, char* buf, size_t size,
 	  }
 	  ++i;
 	}
-	if (!finished && size > 9 && buf[0] == '<')
+	if (!finished && ((size > 9 && buf[0] == '<') || request->mDebugHumanReadable))
 	{
 	  // Human readable output: html, xml or llsd.
-	  if (!strncmp(buf, "<!DOCTYPE", 9) || !strncmp(buf, "<?xml", 5) || !strncmp(buf, "<llsd>", 6))
+	  if (request->mDebugHumanReadable || !strncmp(buf, "<!DOCTYPE", 9) || !strncmp(buf, "<?xml", 5) || !strncmp(buf, "<llsd>", 6))
 	  {
 		LibcwDoutStream << ": \"" << libcwd::buf2str(buf, size) << '"';
 		finished = true;
+		request->mDebugHumanReadable = true;
 	  }
 	}
 	if (!finished)
