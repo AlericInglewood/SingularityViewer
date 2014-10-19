@@ -217,8 +217,7 @@ void AIGLHTTPHeaderBar::draw(void)
   F32 height = v_offset + sLineHeight * number_of_header_lines;
   text = "HTTP console -- [approved]-commandQ-curlQ,{added/max,downloading}[/max][ completed]";
   LLFontGL::getFontMonospace()->renderUTF8(text, 0, h_offset, height, text_color, LLFontGL::LEFT, LLFontGL::TOP);
-  bool pipeline_support = gHippoGridManager->getCurrentGrid()->isPipelineSupport();
-  text = pipeline_support ? " | Added" : " | Added/Max";
+  text = " | Added/Max";
   U32 start = mHTTPView->updateColumn(mc_col, 100);
   LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, LLColor4::green, LLFontGL::LEFT, LLFontGL::TOP);
   start += LLFontGL::getFontMonospace()->getWidth(text);
@@ -245,7 +244,7 @@ void AIGLHTTPHeaderBar::draw(void)
 	start += LLFontGL::getFontMonospace()->getWidth(text);
   }
   start = mHTTPView->updateColumn(mc_col, start);
-  text = llformat(pipeline_support ? " | %u" : " | %u/%u", AICurlInterface::getNumHTTPAdded(), AICurlInterface::getMaxHTTPAdded());
+  text = llformat(" | %u/%u", AICurlInterface::getNumHTTPAdded(), AICurlInterface::getMaxHTTPAdded());
   LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, text_color, LLFontGL::LEFT, LLFontGL::TOP);
   start += LLFontGL::getFontMonospace()->getWidth(text);
 

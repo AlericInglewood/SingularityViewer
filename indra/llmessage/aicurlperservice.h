@@ -157,7 +157,7 @@ class AIPerService {
 	  U16 mMaxAddedEasyHandles;					// The maximum number of allowed concurrent active requests to the service of this capability type.
 
 	  // Declare, not define, constructor and destructor - in order to avoid instantiation of queued_request_type from header.
-	  CapabilityType(bool pipeline_support);
+	  CapabilityType(void);
 	  ~CapabilityType();
 
 	  S32 unfinished_requests(void) const { return mApprovedRequests + mQueuedCommands + mQueuedRequests.size() + mAddedEasyHandles; }
@@ -166,7 +166,7 @@ class AIPerService {
 	bool mPipelineSupport;						// Set to true if this service supports HTTP pipelining.
 
 	friend class AIServiceBar;
-	std::vector<CapabilityType> mCapabilityType;
+	CapabilityType mCapabilityType[number_of_capability_types];
 
 	AIAverage mHTTPBandwidth;					// Keeps track on number of bytes received for this service in the past second.
 	int mMaxTotalAddedEasyHandles;				// The maximum number of allowed concurrent active requests to this service.

@@ -281,9 +281,6 @@ AIThreadSafeDC<Command> command_being_processed;
 typedef AIWriteAccess<Command> command_being_processed_wat;
 typedef AIReadAccess<Command> command_being_processed_rat;
 
-// Cached value of gHippoGridManager->getConnectedGrid()->isPipelineSupport().
-bool current_grid_supports_pipelining;
-
 namespace curlthread {
 // All functions in this namespace are only run by the curl thread, unless they are marked with MAIN-THREAD.
 
@@ -1643,12 +1640,7 @@ MultiHandle::MultiHandle(void) : mTimeout(-1), mReadPollSet(NULL), mWritePollSet
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_SOCKETDATA, this));
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_TIMERFUNCTION, &MultiHandle::timer_callback));
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_TIMERDATA, this));
-}
-
-void MultiHandle::setPipelineSupport(bool enable)
-{
-  check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_PIPELINING, enable ? 1L : 0L));
-  current_grid_supports_pipelining = enable;
+  //check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_PIPELINING, 1L));
 }
 
 MultiHandle::~MultiHandle()
@@ -1664,6 +1656,12 @@ MultiHandle::~MultiHandle()
   }
   delete mWritePollSet;
   delete mReadPollSet;
+}
+
+//static
+bool MultiHandle::added_maximum(void)
+{
+  return AIPerService::total_added_connections() >= curl_max_total_concurrent_connections;
 }
 
 void MultiHandle::handle_stalls(void)
@@ -1791,7 +1789,7 @@ bool MultiHandle::add_easy_request(AICurlEasyRequest const& easy_request, bool f
 	}
 	bool too_much_bandwidth = !curl_easy_request_w->approved() && AIPerService::checkBandwidthUsage(per_service, get_clock_count() * HTTPTimeout::sClockWidth_40ms);
 	PerService_wat per_service_w(*per_service);
-	if (!too_much_bandwidth && !MultiHandle::added_maximum() && !per_service_w->throttled(capability_type))
+	if (!too_much_bandwidth && (per_service_w->is_http_pipeline() || !MultiHandle::added_maximum()) && !per_service_w->throttled(capability_type))
 	{
 	  curl_easy_request_w->set_timeout_opts();
 	  if (curl_easy_request_w->add_handle_to_multi(curl_easy_request_w, mMultiHandle) == CURLM_OK)

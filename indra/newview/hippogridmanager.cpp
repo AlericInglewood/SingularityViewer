@@ -697,9 +697,6 @@ const std::string& HippoGridManager::getCurrentGridName() const
 void HippoGridManager::setCurrentGridAsConnected()
 {
 	mConnectedGrid = getCurrentGrid();
-	// Update pipeline support for the current grid.
-	AICurlMultiHandle_wat multi_handle_w(AICurlMultiHandle::getInstance());
-	multi_handle_w->setPipelineSupport(mConnectedGrid->isPipelineSupport());
 }
 
 
