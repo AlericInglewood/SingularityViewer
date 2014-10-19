@@ -668,6 +668,10 @@ void AIPerService::Approvement::honored(void)
 	llassert(per_service_w->mCapabilityType[mCapabilityType].mApprovedRequests > 0 && per_service_w->mApprovedRequests > 0);
 	per_service_w->mCapabilityType[mCapabilityType].mApprovedRequests--;
 	per_service_w->mApprovedRequests--;
+	if (!per_service_w->is_http_pipeline())
+	{
+	  --sApprovedNonHTTPPipelineRequests;
+	}
   }
 }
 
