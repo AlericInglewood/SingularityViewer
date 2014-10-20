@@ -60,6 +60,9 @@ class MultiHandle : public CurlMultiHandle
 	MultiHandle(void);
 	~MultiHandle();
 
+	// Set or update dynamic pipeline options.
+	void set_pipeline_options(void);
+
 	// Add/remove an easy handle to/from a multi session.
 	bool add_easy_request(AICurlEasyRequest const& easy_request, bool from_queue);
 	CURLMcode remove_easy_request(AICurlEasyRequest const& easy_request, bool as_per_command = false);

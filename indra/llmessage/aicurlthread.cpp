@@ -211,12 +211,13 @@ enum command_st {
   cmd_none,
   cmd_add,
   cmd_boost,
-  cmd_remove
+  cmd_remove,
+  cmd_refresh_pipeline_options
 };
 
 class Command {
   public:
-	Command(void) : mCommand(cmd_none) { }
+	Command(command_st command = cmd_none) : mCommand(command) { /*llassert(command != cmd_add && command != cmd_remove);*/ }
 	Command(AICurlEasyRequest const& easy_request, command_st command) : mCurlEasyRequest(easy_request.get_ptr()), mCommand(command) { }
 
 	command_st command(void) const { return mCommand; }
@@ -1353,6 +1354,11 @@ void AICurlThread::process_commands(AICurlMultiHandle_wat const& multi_handle_w)
 		  multi_handle_w->remove_easy_request(AICurlEasyRequest(command_being_processed_r->easy_request()), true);
 		  break;
 		}
+		case cmd_refresh_pipeline_options:
+		{
+		  multi_handle_w->set_pipeline_options();
+		  break;
+		}
 	  }
 	  // Done processing.
 	  command_being_processed_wat command_being_processed_w(command_being_processed_r);
@@ -1388,6 +1394,7 @@ void AICurlThread::run(void)
 
   {
 	AICurlMultiHandle_wat multi_handle_w(AICurlMultiHandle::getInstance());
+	multi_handle_w->set_pipeline_options();
 	while(mRunning)
 	{
 	  // If mRunning is true then we can only get here if mWakeUpFd != CURL_SOCKET_BAD.
@@ -1640,7 +1647,13 @@ MultiHandle::MultiHandle(void) : mTimeout(-1), mReadPollSet(NULL), mWritePollSet
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_SOCKETDATA, this));
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_TIMERFUNCTION, &MultiHandle::timer_callback));
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_TIMERDATA, this));
-  //check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_PIPELINING, 1L));
+  check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_PIPELINING, 1L));
+}
+
+void MultiHandle::set_pipeline_options(void)
+{
+  long max_pipeline_length = CurlMaxPipelinedRequestsPerService;
+  check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_MAX_PIPELINE_LENGTH, max_pipeline_length));
 }
 
 MultiHandle::~MultiHandle()
@@ -2737,6 +2750,7 @@ bool handleCurlMaxPipelinedRequestsPerService(LLSD const& newvalue)
   {
 	int increment = new_max_pipelined_requests - CurlMaxPipelinedRequestsPerService;
 	CurlMaxPipelinedRequestsPerService = new_max_pipelined_requests;
+	command_queue_wat(command_queue)->commands.push_back(cmd_refresh_pipeline_options);
 	AIPerService::adjust_max_added_easy_handles(increment, true);
 	llinfos << "CurlMaxPipelinedRequestsPerService set to " << CurlMaxPipelinedRequestsPerService << llendl;
   }
