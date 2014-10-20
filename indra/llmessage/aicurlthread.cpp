@@ -26,6 +26,9 @@
  *
  *   28/04/2012
  *   Initial version, written by Aleric Inglewood @ SL
+ *
+ *   20/10/2014
+ *   Added HTTP pipeline support.
  */
 
 #include "linden_common.h"
@@ -212,7 +215,8 @@ enum command_st {
   cmd_add,
   cmd_boost,
   cmd_remove,
-  cmd_refresh_pipeline_options
+  cmd_refresh_pipeline_options,
+  cmd_remove_sites_from_bl
 };
 
 class Command {
@@ -281,6 +285,12 @@ typedef AIAccess<command_queue_st> command_queue_rat;
 AIThreadSafeDC<Command> command_being_processed;
 typedef AIWriteAccess<Command> command_being_processed_wat;
 typedef AIReadAccess<Command> command_being_processed_rat;
+
+// Queue to pass host:port strings that need to be removed from the pipelining blacklist.
+typedef std::deque<std::string> bl_remove_deque_type;
+AIThreadSafeSimpleDC<bl_remove_deque_type> bl_remove_deque;
+typedef AIAccess<bl_remove_deque_type> bl_remove_deque_wat;
+typedef AIAccess<bl_remove_deque_type> bl_remove_deque_rat;
 
 namespace curlthread {
 // All functions in this namespace are only run by the curl thread, unless they are marked with MAIN-THREAD.
@@ -1345,7 +1355,26 @@ void AICurlThread::process_commands(AICurlMultiHandle_wat const& multi_handle_w)
 		  // we first add the easy handle and then remove it from the command queue (which is necessary to
 		  // avoid that another thread adds one just in between).
 		  multi_handle_w->add_easy_request(AICurlEasyRequest(command_being_processed_r->easy_request()), false);
-		  PerService_wat(*per_service)->removed_from_command_queue(capability_type);
+
+		  // Because libcurl is so moronic to say (http://curl.haxx.se/dev/readme-pipelining.html):
+		  //   "Explicitly asking for pipelining handle X and handle Y won't be supported.
+		  //    It isn't easy for an app to do this association."
+		  // we need to add *extra* complexity to work around this limitation, using CURLMOPT_PIPELINING_SITE_BL
+		  // that was added to libcurl 7.30.0. This is a lot less reliable than just allowing users to specify
+		  // with each request if they want pipelining, and uses more CPU, but curl devs are stubborn.
+		  //
+		  // Cache the result of pipelining_bl_update() so we can handle it with per_service unlocked.
+		  AIPerService::pipelining_bl_update_type pipelining_bl_update;
+		  {
+		    PerService_wat per_service_w(*per_service);						// Lock per_service for write access.
+			per_service_w->removed_from_command_queue(capability_type);		// Inform the AIPerService object that the request was removed from the command queue.
+			pipelining_bl_update = per_service_w->pipelining_bl_update();	// Asks the AIPerService object if we need to update the pipelining site blacklist.
+		  }																	// Unlock per_service.
+		  if (AIPerService::pipelining_bl_needs_update(pipelining_bl_update))
+		  {
+			// Update the blacklist.
+			multi_handle_w->bl_update(AICurlEasyRequest_rat(*command_being_processed_r->easy_request())->getLowercaseServicename(), AIPerService::pipelining_bl_needs_adding(pipelining_bl_update));
+		  }
 		  break;
 		}
 		case cmd_remove:
@@ -1357,6 +1386,16 @@ void AICurlThread::process_commands(AICurlMultiHandle_wat const& multi_handle_w)
 		case cmd_refresh_pipeline_options:
 		{
 		  multi_handle_w->set_pipeline_options();
+		  break;
+		}
+		case cmd_remove_sites_from_bl:
+		{
+		  bl_remove_deque_wat bl_remove_deque_w(bl_remove_deque);
+		  while (!bl_remove_deque_w->empty())
+		  {
+			multi_handle_w->bl_update(bl_remove_deque_w->front(), false);
+			bl_remove_deque_w->pop_front();
+		  }
 		  break;
 		}
 	  }
@@ -1654,6 +1693,47 @@ void MultiHandle::set_pipeline_options(void)
 {
   long max_pipeline_length = CurlMaxPipelinedRequestsPerService;
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_MAX_PIPELINE_LENGTH, max_pipeline_length));
+}
+
+void MultiHandle::bl_update(std::string const& site_str, bool add)
+{
+  char const* const site = site_str.c_str();
+  bool exists;
+  std::vector<char const*>::iterator iter = m_pipelining_site_bl.begin();
+  std::vector<char const*>::iterator const end = m_pipelining_site_bl.end();
+  while ((exists = iter != end && *iter) && strcmp(site, *iter)) ++iter;
+  bool const needs_update = exists != add;
+  llassert(needs_update);
+  if (!needs_update)
+  {
+	if (add)
+	{
+	  llwarns << "Trying to add an already blacklisted site to the pipelining blacklist!" << llendl;
+	}
+	else
+	{
+	  llwarns << "Trying to remove a non-existing site from the pipelining blacklist!" << llendl;
+	}
+	return;
+  }
+  size_t const size = m_pipelining_site_bl.size();
+  if (add)
+  {
+	Dout(dc::curlio, "Adding \"" << site << "\" to the pipelining blacklist. Total size is now " << (size ? size : 1) << ".");
+	if (size > 0)
+	  m_pipelining_site_bl.resize(size - 1);	// Remove trailing NULL.
+	m_pipelining_site_bl.push_back(site);
+	m_pipelining_site_bl.push_back(NULL);		// Add trailing NULL.
+  }
+  else
+  {
+	Dout(dc::curlio, "Removing \"" << *iter << "\" from the pipelining blacklist.");
+	m_pipelining_site_bl.erase(iter);
+	if (size == 2);								// Clear vector if only the trailing NULL is left.
+	  m_pipelining_site_bl.clear();
+  }
+  // Let libcurl copy the updated list.
+  check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_PIPELINING_SITE_BL, m_pipelining_site_bl.empty() ? NULL : &m_pipelining_site_bl[0]));
 }
 
 MultiHandle::~MultiHandle()
@@ -2067,10 +2147,16 @@ void stopCurlThread(void)
 
 void clearCommandQueue(void)
 {
-	// Clear the command queue now in order to avoid the global deinitialization order fiasco.
-	command_queue_wat command_queue_w(command_queue);
-	command_queue_w->commands.clear();
-	command_queue_w->size = 0;
+  // Clear the command queue now in order to avoid the global deinitialization order fiasco.
+  command_queue_wat command_queue_w(command_queue);
+  command_queue_w->commands.clear();
+  command_queue_w->size = 0;
+}
+
+void removePipeliningBlacklist(std::string const& site)
+{
+  bl_remove_deque_wat(bl_remove_deque)->push_back(site);
+  command_queue_wat(command_queue)->commands.push_back(cmd_remove_sites_from_bl);
 }
 
 //-----------------------------------------------------------------------------
@@ -2403,55 +2489,47 @@ int debug_callback(CURL* handle, curl_infotype infotype, char* buf, size_t size,
   }
   if (infotype == CURLINFO_TEXT)
   {
-	if (!strncmp(buf, "STATE: WAIT", 11) && (buf[11] == 'C' || buf[11] == 'D'))			// WAITCONNECT or WAITDO.
-	{
-	  int pos = (buf[11] == 'C') ? 22 : 17;			// Skip "STATE: WAITCONNECT => " or "STATE: WAITDO => ".
-	  llassert(!strncmp(buf + pos - 4, " => ", 4));
-	  if (buf[pos] == 'P' || buf[pos] == 'D')		// PROTOCONNECT or DO.
-	  {
-		llassert(!strncmp(buf + pos, "PROTOCONNECT", 12) || !strncmp(buf + pos, "DO ", 3));
-		int n = size - 1;
-		while (buf[n] != ')')
-		{
-		  llassert(n > pos + 34);
-		  --n;
-		}
-		int connectionnr = 0;
-		int factor = 1;
-		do
-		{
-		  llassert(n > pos + 34);
-		  --n;
-		  connectionnr += factor * (buf[n] - '0');
-		  factor *= 10;
-		}
-		while(buf[n - 1] != '#');
-		// A new connection was established.
-		request->connection_established(connectionnr);
-	  }
-	  else
-	  {
-		llassert(!strncmp(buf + pos, "COMPLETED", 9) || !strncmp(buf + pos, "WAITDO", 6));		// COMPLETED (connection failure), or WAITDO.
-	  }
-	}
-	else if (!strncmp(buf, "Closing connection", 18))
+	if (!strncmp(buf, "Connected to", 12))				// Connected to foo.net (1.1.1.1) port 80 (#553)\n
 	{
 	  int n = size - 1;
-	  while (!std::isdigit(buf[n]))
+	  while (buf[n] != '#')
 	  {
-		llassert(n > 20);
+		llassert(n > 40);
 		--n;
 	  }
+	  ++n;
+	  llassert(std::isdigit(buf[n]));
 	  int connectionnr = 0;
-	  int factor = 1;
 	  do
 	  {
-		llassert(n > 19);
-		connectionnr += factor * (buf[n] - '0');
-		factor *= 10;
-		--n;
+		connectionnr *= 10;
+		connectionnr += (buf[n] - '0');
+		++n;
+		llassert(n < size);
 	  }
-	  while(buf[n] != '#');
+	  while (std::isdigit(buf[n]));
+	  llassert(buf[n] == ')');
+	  // A new connection was established.
+	  request->connection_established(connectionnr);
+	}
+	else if (!strncmp(buf, "Closing connection", 18))	// Closing connection 553\n  (this used to have a '#' in front of the number).
+	{
+	  int n = 18;
+	  while (!std::isdigit(buf[n]))
+	  {
+		++n;
+		llassert(n < size);
+	  }
+	  int connectionnr = 0;
+	  do
+	  {
+		connectionnr *= 10;
+		connectionnr += (buf[n] - '0');
+		++n;
+		llassert(n < size);
+	  }
+	  while (std::isdigit(buf[n]));
+	  llassert(buf[n] == '\n');
 	  // A connection was closed.
 	  request->connection_closed(connectionnr);
 	}

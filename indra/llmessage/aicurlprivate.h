@@ -55,6 +55,7 @@ bool curlThreadIsRunning(void);
 void wakeUpCurlThread(void);
 void stopCurlThread(void);
 void clearCommandQueue(void);
+void removePipeliningBlacklist(std::string const& site);
 
 #define DECLARE_SETOPT(param_type) \
 	  CURLcode setopt(CURLoption option, param_type parameter)

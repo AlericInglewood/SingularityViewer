@@ -34,6 +34,9 @@
  *   09/04/2013
  *   Renamed everything "host" to "service" and use "hostname:port" as key
  *   instead of just "hostname".
+ *
+ *   20/10/2014
+ *   Added HTTP pipeline support.
  */
 
 #ifndef AICURLPERSERVICE_H
@@ -164,6 +167,7 @@ class AIPerService {
 	};
 
 	bool mPipelineSupport;						// Set to true if this service supports HTTP pipelining.
+	bool mIsBlackListed;						// Set to true if this service was added to the CURLMOPT_PIPELINING_SITE_BL.
 
 	friend class AIServiceBar;
 	CapabilityType mCapabilityType[number_of_capability_types];
@@ -232,7 +236,17 @@ class AIPerService {
 	U32 is_inuse(void) const { return mCTInUse; }					// Non-zero if this service is in use for any capability type.
 
 	bool is_http_pipeline(void) const { return mPipelineSupport; }
+	bool is_blacklisted(void) const { return mIsBlackListed; }
 	void set_http_pipeline(bool enable);							// Call this to switch HTTP pipelining on or off for this service.
+	enum pipelining_bl_update_type { bl_uptodate, bl_needs_removal, bl_needs_adding };
+	static bool pipelining_bl_needs_update(pipelining_bl_update_type bl_update) { return bl_update != bl_uptodate; }
+	static bool pipelining_bl_needs_adding(pipelining_bl_update_type bl_update) { return bl_update == bl_needs_adding; }
+	pipelining_bl_update_type pipelining_bl_update(void)
+	{
+	  pipelining_bl_update_type ret = (mIsBlackListed != mPipelineSupport) ? bl_uptodate : mPipelineSupport ? bl_needs_removal : bl_needs_adding;
+	  mIsBlackListed = !mPipelineSupport;	// Toggle mIsBlackListed if bl needs update, because upon return bl will be synced.
+	  return ret;
+	}
 
 	// Global administration of the total number of queued requests of all services combined.
   private:
