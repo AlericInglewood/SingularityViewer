@@ -1356,12 +1356,30 @@ void BufferedCurlEasyRequest::aborted(U32 http_status, std::string const& reason
 }
 
 #ifdef CWDEBUG
+struct FindServiceNames
+{
+  std::string mName1;
+  std::string mName2;
+  AIPerServicePtr const& mPerService1;
+  AIPerServicePtr const& mPerService2;
+
+  FindServiceNames(AIPerServicePtr const& ptr1, AIPerServicePtr const& ptr2) :
+	mName1("<unknown service>"), mName2("<unknown service>"), mPerService1(ptr1), mPerService2(ptr2) { }
+
+  void operator()(AIPerService::instance_map_type::value_type const& service)
+  {
+    if (service.second == mPerService1)
+	  mName1 = service.first;
+    if (service.second == mPerService2)
+	  mName2 = service.first;
+  }
+};
+
 static std::map<int, AIPerServicePtr> sConnections;
 
 void BufferedCurlEasyRequest::connection_established(int connectionnr)
 {
   std::map<int, AIPerServicePtr>::iterator iter = sConnections.find(connectionnr);
-  llassert(iter == sConnections.end() || iter->second == mPerServicePtr);	// Only one service can use a connection at a time.
   if (iter == sConnections.end())		// Not a re-used connection?
   {
 	PerService_rat per_service_r(*mPerServicePtr);
@@ -1369,6 +1387,22 @@ void BufferedCurlEasyRequest::connection_established(int connectionnr)
 	llassert(mPerServicePtr);
 	sConnections[connectionnr] = mPerServicePtr;
 	Dout(dc::curlio, (void*)get_lockobj() << " Connection established (#" << connectionnr << "). Now " << n << " connections [" << (void*)&*per_service_r << "].");
+  }
+  else if (mPerServicePtr != iter->second)
+  {
+	int old_connectionnr = -1;
+	for (std::map<int, AIPerServicePtr>::iterator iter2 = sConnections.begin(); iter2 != sConnections.end(); ++iter2)
+	{
+	  if (iter2->second == mPerServicePtr)
+	  {
+		old_connectionnr = iter2->first;
+		break;
+	  }
+	}
+	llassert(old_connectionnr != -1);
+	FindServiceNames functor(mPerServicePtr, iter->second);
+	AIPerService::copy_forEach(functor);
+	Dout(dc::curlio, "Ignoring forwarding of connection #" << old_connectionnr << " (" << functor.mName1 << ") to #" << connectionnr << " (" << functor.mName2 << ").");
   }
 }
 

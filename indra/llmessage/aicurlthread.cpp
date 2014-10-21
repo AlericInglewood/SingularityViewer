@@ -50,6 +50,7 @@
 #endif
 #include <deque>
 #include <cctype>
+#include <string.h>			// strdup
 
 // On linux, add -DDEBUG_WINDOWS_CODE_ON_LINUX to test the windows code used in this file.
 #if !defined(DEBUG_WINDOWS_CODE_ON_LINUX) || !defined(LL_LINUX) || defined(LL_RELEASE)
@@ -1702,21 +1703,21 @@ void MultiHandle::bl_update(std::string const& site_str, bool add)
 {
   char const* const site = site_str.c_str();
   bool exists;
-  std::vector<char const*>::iterator iter = m_pipelining_site_bl.begin();
-  std::vector<char const*>::iterator const end = m_pipelining_site_bl.end();
+  std::vector<char*>::iterator iter = m_pipelining_site_bl.begin();
+  std::vector<char*>::iterator const end = m_pipelining_site_bl.end();
   while ((exists = iter != end && *iter) && strcmp(site, *iter)) ++iter;
   bool const needs_update = exists != add;
-  llassert(needs_update);
   if (!needs_update)
   {
 	if (add)
 	{
-	  llwarns << "Trying to add an already blacklisted site to the pipelining blacklist!" << llendl;
+	  llwarns << "Trying to add an already blacklisted site (" << site_str << ") to the pipelining blacklist!" << llendl;
 	}
 	else
 	{
-	  llwarns << "Trying to remove a non-existing site from the pipelining blacklist!" << llendl;
+	  llwarns << "Trying to remove a non-existing site (" << site_str << ") from the pipelining blacklist!" << llendl;
 	}
+	llassert(needs_update);
 	return;
   }
   size_t const size = m_pipelining_site_bl.size();
@@ -1724,16 +1725,21 @@ void MultiHandle::bl_update(std::string const& site_str, bool add)
   {
 	Dout(dc::curlio, "Adding \"" << site << "\" to the pipelining blacklist. Total size is now " << (size ? size : 1) << ".");
 	if (size > 0)
+	{
 	  m_pipelining_site_bl.resize(size - 1);	// Remove trailing NULL.
-	m_pipelining_site_bl.push_back(site);
+	}
+	m_pipelining_site_bl.push_back(strdup(site));
 	m_pipelining_site_bl.push_back(NULL);		// Add trailing NULL.
   }
   else
   {
 	Dout(dc::curlio, "Removing \"" << *iter << "\" from the pipelining blacklist.");
+	free(*iter);
 	m_pipelining_site_bl.erase(iter);
-	if (size == 2);								// Clear vector if only the trailing NULL is left.
+	if (size == 2)								// Clear vector if only the trailing NULL is left.
+	{
 	  m_pipelining_site_bl.clear();
+	}
   }
   // Let libcurl copy the updated list.
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_PIPELINING_SITE_BL, m_pipelining_site_bl.empty() ? NULL : &m_pipelining_site_bl[0]));
