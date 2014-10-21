@@ -1337,50 +1337,53 @@ void AICurlThread::process_commands(AICurlMultiHandle_wat const& multi_handle_w)
 	// Access command_being_processed only.
 	{
 	  command_being_processed_rat command_being_processed_r(command_being_processed);
-	  AICapabilityType capability_type;
-	  AIPerServicePtr per_service;
-	  {
-		AICurlEasyRequest_wat easy_request_w(*command_being_processed_r->easy_request());
-		capability_type = easy_request_w->capability_type();
-		per_service = easy_request_w->getPerServicePtr();
-	  }
 	  switch(command_being_processed_r->command())
 	  {
 		case cmd_none:
 		case cmd_boost:	// FIXME: future stuff
 		  break;
 		case cmd_add:
-		{
-		  // Note: AIPerService::added_to_multi_handle (called from add_easy_request) relies on the fact that
-		  // we first add the easy handle and then remove it from the command queue (which is necessary to
-		  // avoid that another thread adds one just in between).
-		  multi_handle_w->add_easy_request(AICurlEasyRequest(command_being_processed_r->easy_request()), false);
-
-		  // Because libcurl is so moronic to say (http://curl.haxx.se/dev/readme-pipelining.html):
-		  //   "Explicitly asking for pipelining handle X and handle Y won't be supported.
-		  //    It isn't easy for an app to do this association."
-		  // we need to add *extra* complexity to work around this limitation, using CURLMOPT_PIPELINING_SITE_BL
-		  // that was added to libcurl 7.30.0. This is a lot less reliable than just allowing users to specify
-		  // with each request if they want pipelining, and uses more CPU, but curl devs are stubborn.
-		  //
-		  // Cache the result of pipelining_bl_update() so we can handle it with per_service unlocked.
-		  AIPerService::pipelining_bl_update_type pipelining_bl_update;
-		  {
-		    PerService_wat per_service_w(*per_service);						// Lock per_service for write access.
-			per_service_w->removed_from_command_queue(capability_type);		// Inform the AIPerService object that the request was removed from the command queue.
-			pipelining_bl_update = per_service_w->pipelining_bl_update();	// Asks the AIPerService object if we need to update the pipelining site blacklist.
-		  }																	// Unlock per_service.
-		  if (AIPerService::pipelining_bl_needs_update(pipelining_bl_update))
-		  {
-			// Update the blacklist.
-			multi_handle_w->bl_update(AICurlEasyRequest_rat(*command_being_processed_r->easy_request())->getLowercaseServicename(), AIPerService::pipelining_bl_needs_adding(pipelining_bl_update));
-		  }
-		  break;
-		}
 		case cmd_remove:
 		{
-		  PerService_wat(*per_service)->added_to_command_queue(capability_type);		// Not really, but this has the same effect as 'removed a remove command'.
-		  multi_handle_w->remove_easy_request(AICurlEasyRequest(command_being_processed_r->easy_request()), true);
+		  AICapabilityType capability_type;
+		  AIPerServicePtr per_service;
+		  {
+			AICurlEasyRequest_wat easy_request_w(*command_being_processed_r->easy_request());
+			capability_type = easy_request_w->capability_type();
+			per_service = easy_request_w->getPerServicePtr();
+		  }
+		  if (command_being_processed_r->command() == cmd_add)
+		  {
+			// Note: AIPerService::added_to_multi_handle (called from add_easy_request) relies on the fact that
+			// we first add the easy handle and then remove it from the command queue (which is necessary to
+			// avoid that another thread adds one just in between).
+			multi_handle_w->add_easy_request(AICurlEasyRequest(command_being_processed_r->easy_request()), false);
+
+			// Because libcurl is so moronic to say (http://curl.haxx.se/dev/readme-pipelining.html):
+			//   "Explicitly asking for pipelining handle X and handle Y won't be supported.
+			//    It isn't easy for an app to do this association."
+			// we need to add *extra* complexity to work around this limitation, using CURLMOPT_PIPELINING_SITE_BL
+			// that was added to libcurl 7.30.0. This is a lot less reliable than just allowing users to specify
+			// with each request if they want pipelining, and uses more CPU, but curl devs are stubborn.
+			//
+			// Cache the result of pipelining_bl_update() so we can handle it with per_service unlocked.
+			AIPerService::pipelining_bl_update_type pipelining_bl_update;
+			{
+			  PerService_wat per_service_w(*per_service);						// Lock per_service for write access.
+			  per_service_w->removed_from_command_queue(capability_type);		// Inform the AIPerService object that the request was removed from the command queue.
+			  pipelining_bl_update = per_service_w->pipelining_bl_update();	// Asks the AIPerService object if we need to update the pipelining site blacklist.
+			}																	// Unlock per_service.
+			if (AIPerService::pipelining_bl_needs_update(pipelining_bl_update))
+			{
+			  // Update the blacklist.
+			  multi_handle_w->bl_update(AICurlEasyRequest_rat(*command_being_processed_r->easy_request())->getLowercaseServicename(), AIPerService::pipelining_bl_needs_adding(pipelining_bl_update));
+			}
+		  }
+		  else	// cmd_remove
+		  {
+			PerService_wat(*per_service)->added_to_command_queue(capability_type);		// Not really, but this has the same effect as 'removed a remove command'.
+			multi_handle_w->remove_easy_request(AICurlEasyRequest(command_being_processed_r->easy_request()), true);
+		  }
 		  break;
 		}
 		case cmd_refresh_pipeline_options:
@@ -2266,6 +2269,17 @@ void BufferedCurlEasyRequest::received_HTTP_header(void)
 
 void BufferedCurlEasyRequest::received_header(std::string const& key, std::string const& value)
 {
+  // Detect support for HTTP pipelining.
+  //
+  // This is unfortunately heuristic.
+  // We turn on HTTP pipelining if a server replies with a 'Keep-Alive:' header after we sent a HEAD or GET request
+  // to a texture or mesh capability. Otherwise the services stays what it was (by default no HTTP pipelining).
+  if (isHeadOrGet() && (mCapabilityType == cap_texture || mCapabilityType == cap_mesh) && key == "keep-alive")
+  {
+	PerService_wat per_service_w(*mPerServicePtr);
+	per_service_w->set_http_pipeline(true);
+  }
+
   if (mBufferEventsTarget)
 	mBufferEventsTarget->received_header(key, value);
 }

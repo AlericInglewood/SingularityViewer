@@ -562,7 +562,7 @@ void CurlEasyHandle::handle_easy_error(CURLcode code)
 }
 
 // Throws AICurlNoEasyHandle.
-CurlEasyHandle::CurlEasyHandle(void) : mActiveMultiHandle(NULL), mErrorBuffer(NULL), mQueuedForRemoval(false)
+CurlEasyHandle::CurlEasyHandle(void) : mActiveMultiHandle(NULL), mErrorBuffer(NULL), mQueuedForRemoval(false), mHeaderOrGet(false)
 #ifdef DEBUG_CURLIO
 	, mDebug(false)
 #endif

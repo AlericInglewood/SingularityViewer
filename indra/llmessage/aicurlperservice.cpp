@@ -283,7 +283,11 @@ void AIPerService::release(AIPerServicePtr& instance)
 	{
 	  if (instance == iter->second)
 	  {
-		if (is_blacklisted) removePipeliningBlacklist(iter->first);
+		if (is_blacklisted)
+		{
+		  Dout(dc::curlio, "Removing \"" << iter->first << "\" from pipelining blacklist because the AIPerService is destructed.");
+		  removePipeliningBlacklist(iter->first);
+		}
 		instance_map_w->erase(iter);
 		instance.reset();
 		return;
