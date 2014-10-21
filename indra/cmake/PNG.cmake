@@ -15,6 +15,7 @@ else (STANDALONE)
   else(LINUX)
     if (CMAKE_SIZEOF_VOID_P EQUAL 4) # Singu TODO: update png
       set(PNG_LIBRARIES png15)
+      set(PNG_INCLUDE_DIRS ${LIBS_PREBUILT_DIR}/${LL_ARCH_DIR}/include/)
     else ()
       #
       # When we have updated static libraries in competition with older
@@ -30,8 +31,7 @@ else (STANDALONE)
       #
       set(PNG_PRELOAD_ARCHIVES -Wl,--whole-archive png16 -Wl,--no-whole-archive)
       set(PNG_LIBRARIES png16)
-      set(PNG_INCLUDE_DIRS ${LIBS_PREBUILT_DIR}/include/libpng16)
+      set(PNG_INCLUDE_DIRS ${LIBS_PREBUILT_DIR}/${LL_ARCH_DIR}/include/libpng16)
     endif ()
   endif()
-  set(PNG_INCLUDE_DIRS ${LIBS_PREBUILT_DIR}/${LL_ARCH_DIR}/include/)
 endif (STANDALONE)
