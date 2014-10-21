@@ -131,7 +131,7 @@ class AIPerService {
 
 	// Make a copy of the instanceMap and then run 'action(per_service)' on each AIPerService object.
 	template<class Action>
-	static void copy_forEach(Action const& action);
+	static void copy_forEach(Action& action);
 
   private:
 	static U16 const ctf_empty = 1;
@@ -231,7 +231,7 @@ class AIPerService {
 	bool is_used(AICapabilityType capability_type) const { return (mUsedCT & CT2mask(capability_type)); }
 	bool is_inuse(AICapabilityType capability_type) const { return (mCTInUse & CT2mask(capability_type)); }
 
-	static void resetUsed(void) { copy_forEach(ResetUsed()); }
+	static void resetUsed(void) { ResetUsed reset_used; copy_forEach(reset_used); }
 	U32 is_used(void) const { return mUsedCT; }						// Non-zero if this service was used for any capability type.
 	U32 is_inuse(void) const { return mCTInUse; }					// Non-zero if this service is in use for any capability type.
 
@@ -378,7 +378,7 @@ extern U16 CurlMaxPipelinedRequestsPerService;
 } // namespace AICurlPrivate
 
 template<class Action>
-void AIPerService::copy_forEach(Action const& action)
+void AIPerService::copy_forEach(Action& action)
 {
   // Make a copy so we don't need to keep the lock on sInstanceMap for too long.
   std::vector<std::pair<instance_map_type::key_type, instance_map_type::mapped_type> > current_services;
@@ -387,7 +387,12 @@ void AIPerService::copy_forEach(Action const& action)
 	std::copy(instance_map_r->begin(), instance_map_r->end(), std::back_inserter(current_services));
   }
   // Apply the functor on each of the services.
-  std::for_each(current_services.begin(), current_services.end(), action);
+  std::vector<std::pair<instance_map_type::key_type, instance_map_type::mapped_type> >::iterator service = current_services.begin();
+  while (service != current_services.end())
+  {
+	action(*service);
+	++service;
+  }
 }
 
 #endif // AICURLPERSERVICE_H

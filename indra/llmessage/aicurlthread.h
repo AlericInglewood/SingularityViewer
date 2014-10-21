@@ -87,7 +87,7 @@ class MultiHandle : public CurlMultiHandle
 	addedEasyRequests_type mAddedEasyRequests;	// All easy requests currently added to the multi handle.
 	long mTimeout;								// The last timeout in ms as set by the callback CURLMOPT_TIMERFUNCTION.
 	static LLAtomicU32 sTotalAddedEasyHandles;	// The (sum of the) size of mAddedEasyRequests (of every MultiHandle, but there is only one).
-	std::vector<char const*> m_pipelining_site_bl;	// The site blacklist that was last passed to CURLMOPT_PIPELINING_SITE_BL (including trailing NULL), or empty when NULL was passed.
+	std::vector<char*> m_pipelining_site_bl;	// The site blacklist that was last passed to CURLMOPT_PIPELINING_SITE_BL (including trailing NULL), or empty when NULL was passed.
 
   private:
 	// Store result and trigger events for easy request.
