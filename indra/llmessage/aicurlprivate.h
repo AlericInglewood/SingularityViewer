@@ -55,6 +55,7 @@ bool curlThreadIsRunning(void);
 void wakeUpCurlThread(void);
 void stopCurlThread(void);
 void clearCommandQueue(void);
+void removePipeliningBlacklist(std::string const& site);
 
 #define DECLARE_SETOPT(param_type) \
 	  CURLcode setopt(CURLoption option, param_type parameter)
@@ -136,6 +137,13 @@ class CurlEasyHandle : public boost::noncopyable, protected AICurlEasyHandleEven
 	// Returns false when this request should be queued by the curl thread when too much bandwidth is being used.
 	bool approved(void) const { return mApproved; }
 
+	// Called if this request uses a HEAD or GET method.
+	void setHeadOrGet(void) { mHeaderOrGet = true; }
+
+	// Returns false if we can certainly not determine support for HTTP pipelining from the returned headers.
+	// This is because HTTP pipelining is only supported for HEAD or GET methods (see http://curl.haxx.se/dev/readme-pipelining.html).
+	bool isHeadOrGet(void) const { return mHeaderOrGet; }
+
 	// Called when a request is queued for removal. In that case a race between the actual removal
 	// and revoking of the callbacks is harmless (and happens for the raw non-statemachine version).
 	void remove_queued(void) { mQueuedForRemoval = true; }
@@ -153,6 +161,7 @@ class CurlEasyHandle : public boost::noncopyable, protected AICurlEasyHandleEven
 	AIPostFieldPtr mPostField;		// This keeps the POSTFIELD data alive for as long as the easy handle exists.
 	bool mQueuedForRemoval;			// Set if the easy handle is (probably) added to the multi handle, but is queued for removal.
 	LLPointer<AIPerService::Approvement> mApproved;		// When not set then the curl thread should check bandwidth usage and queue this request if too much is being used.
+	bool mHeaderOrGet;				// Set if the request method is HEAD or GET.
 #ifdef DEBUG_CURLIO
 	bool mDebug;
 #endif

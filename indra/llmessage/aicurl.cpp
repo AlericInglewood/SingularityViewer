@@ -562,7 +562,7 @@ void CurlEasyHandle::handle_easy_error(CURLcode code)
 }
 
 // Throws AICurlNoEasyHandle.
-CurlEasyHandle::CurlEasyHandle(void) : mActiveMultiHandle(NULL), mErrorBuffer(NULL), mQueuedForRemoval(false)
+CurlEasyHandle::CurlEasyHandle(void) : mActiveMultiHandle(NULL), mErrorBuffer(NULL), mQueuedForRemoval(false), mHeaderOrGet(false)
 #ifdef DEBUG_CURLIO
 	, mDebug(false)
 #endif
@@ -1356,32 +1356,33 @@ void BufferedCurlEasyRequest::aborted(U32 http_status, std::string const& reason
 }
 
 #ifdef CWDEBUG
-static AIPerServicePtr sConnections[64];
+static std::map<int, AIPerServicePtr> sConnections;
 
 void BufferedCurlEasyRequest::connection_established(int connectionnr)
 {
-  llassert_always(connectionnr < 64);
-  llassert(sConnections[connectionnr] == NULL || sConnections[connectionnr] == mPerServicePtr);	// Only one service can use a connection at a time.
-  if (sConnections[connectionnr] == NULL)		// Not a re-used connection?
+  std::map<int, AIPerServicePtr>::iterator iter = sConnections.find(connectionnr);
+  llassert(iter == sConnections.end() || iter->second == mPerServicePtr);	// Only one service can use a connection at a time.
+  if (iter == sConnections.end())		// Not a re-used connection?
   {
 	PerService_rat per_service_r(*mPerServicePtr);
 	int n = per_service_r->connection_established();
+	llassert(mPerServicePtr);
 	sConnections[connectionnr] = mPerServicePtr;
 	Dout(dc::curlio, (void*)get_lockobj() << " Connection established (#" << connectionnr << "). Now " << n << " connections [" << (void*)&*per_service_r << "].");
-	llassert(sConnections[connectionnr] != NULL);
   }
 }
 
 void BufferedCurlEasyRequest::connection_closed(int connectionnr)
 {
-  if (sConnections[connectionnr] == NULL)
+  std::map<int, AIPerServicePtr>::iterator iter = sConnections.find(connectionnr);
+  if (iter == sConnections.end())
   {
 	Dout(dc::curlio, "Closing connection that never connected (#" << connectionnr << ").");
 	return;
   }
-  PerService_rat per_service_r(*sConnections[connectionnr]);
+  PerService_rat per_service_r(*iter->second);
   int n = per_service_r->connection_closed();
-  sConnections[connectionnr] = NULL;
+  sConnections.erase(iter);
   Dout(dc::curlio, (void*)get_lockobj() << " Connection closed (#" << connectionnr << "); " << n << " connections remaining [" << (void*)&*per_service_r << "].");
 }
 #endif

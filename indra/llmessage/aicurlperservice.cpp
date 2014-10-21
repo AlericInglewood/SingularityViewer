@@ -34,6 +34,9 @@
  *   09/04/2013
  *   Renamed everything "host" to "service" and use "hostname:port" as key
  *   instead of just "hostname".
+ *
+ *   20/10/2014
+ *   Added HTTP pipeline support.
  */
 
 #include "sys.h"
@@ -76,6 +79,7 @@ using namespace AICurlPrivate;
 
 AIPerService::AIPerService(void) :
 		mPipelineSupport(false),
+		mIsBlackListed(false),
 		mHTTPBandwidth(25),	// 25 = 1000 ms / 40 ms.
 		mMaxTotalAddedEasyHandles(CurlConcurrentConnectionsPerService),
 		mApprovedRequests(0),
@@ -261,22 +265,29 @@ void AIPerService::release(AIPerServicePtr& instance)
 	  // Some other thread added this service in the meantime.
 	  return;
 	}
-#ifdef SHOW_ASSERT
+	bool is_blacklisted;
 	{
-	  // The reference in the map is the last one; that means there can't be any curl easy requests queued for this service.
 	  PerService_rat per_service_r(*instance);
+	  is_blacklisted = per_service_r->is_blacklisted();
+#ifdef SHOW_ASSERT
+	  // The reference in the map is the last one; that means there can't be any curl easy requests queued for this service.
 	  for (int i = 0; i < number_of_capability_types; ++i)
 	  {
 	  	llassert(per_service_r->mCapabilityType[i].mQueuedRequests.empty());
 	  }
-	}
 #endif
+	}
 	// Find the service and erase it from the map.
 	iterator const end = instance_map_w->end();
 	for(iterator iter = instance_map_w->begin(); iter != end; ++iter)
 	{
 	  if (instance == iter->second)
 	  {
+		if (is_blacklisted)
+		{
+		  Dout(dc::curlio, "Removing \"" << iter->first << "\" from pipelining blacklist because the AIPerService is destructed.");
+		  removePipeliningBlacklist(iter->first);
+		}
 		instance_map_w->erase(iter);
 		instance.reset();
 		return;
