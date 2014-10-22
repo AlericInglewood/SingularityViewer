@@ -166,7 +166,8 @@ class AIPerService {
 	  S32 unfinished_requests(void) const { return mApprovedRequests + mQueuedCommands + mQueuedRequests.size() + mAddedEasyHandles; }
 	};
 
-	bool mPipelineSupport;						// Set to true if this service supports HTTP pipelining.
+	bool mPipeliningDetected;					// Set to true if the value of mPipelineSupport was actually detected (also when there is no HTTP pipelining detected).
+	bool mPipelineSupport;						// Set to true if this service-- should assume/attempt HTTP pipelining, if mPipeliningDetected is false, otherwise-- supports HTTP pipelining.
 	bool mIsBlackListed;						// Set to true if this service was added to the CURLMOPT_PIPELINING_SITE_BL.
 
 	friend class AIServiceBar;
@@ -235,6 +236,7 @@ class AIPerService {
 	U32 is_used(void) const { return mUsedCT; }						// Non-zero if this service was used for any capability type.
 	U32 is_inuse(void) const { return mCTInUse; }					// Non-zero if this service is in use for any capability type.
 
+	bool http_pipelining_detected(void) const { return mPipeliningDetected; }
 	bool is_http_pipeline(void) const { return mPipelineSupport; }
 	bool is_blacklisted(void) const { return mIsBlackListed; }
 	void set_http_pipeline(bool enable);							// Call this to switch HTTP pipelining on or off for this service.

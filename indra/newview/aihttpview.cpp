@@ -92,7 +92,7 @@ void AIServiceBar::draw()
 	total_added_easy_handles = per_service_r->mTotalAddedEasyHandles;
 	event_polls = per_service_r->mEventPolls;
 	established_connections = per_service_r->mEstablishedConnections;
-	max_total_added_easy_handles = per_service_r->mMaxTotalAddedEasyHandles;
+	max_total_added_easy_handles = per_service_r->mPipeliningDetected ? per_service_r->mMaxTotalAddedEasyHandles : 1;
 	bandwidth = per_service_r->bandwidth().truncateData(AIHTTPView::getTime_40ms());
 	cts = &per_service_r->mCapabilityType[0];	// Not thread-safe, but we're only reading from it and only using the results to show in a debug console.
   }
