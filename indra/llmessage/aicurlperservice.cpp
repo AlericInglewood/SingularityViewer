@@ -719,8 +719,8 @@ void AIPerService::set_http_pipeline(bool enable)
 	  mCapabilityType[i].mMaxUnfinishedRequests = enable ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService;
 	}
 	sAddedConnections += sign * (mTotalAddedEasyHandles ? mTotalAddedEasyHandles - 1 : 0);
+	mMaxTotalAddedEasyHandles = enable ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService;
 	redivide_easy_handle_slots();
   }
   mPipeliningDetected = true;
-  mMaxTotalAddedEasyHandles = enable ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService;
 }
