@@ -78,10 +78,11 @@ void intrusive_ptr_release(RefCountedThreadSafePerService* per_service)
 using namespace AICurlPrivate;
 
 AIPerService::AIPerService(void) :
-		mPipelineSupport(false),
+		mPipeliningDetected(false),
+		mPipelineSupport(true),
 		mIsBlackListed(false),
 		mHTTPBandwidth(25),	// 25 = 1000 ms / 40 ms.
-		mMaxTotalAddedEasyHandles(CurlConcurrentConnectionsPerService),
+		mMaxTotalAddedEasyHandles(CurlMaxPipelinedRequestsPerService),
 		mApprovedRequests(0),
 		mTotalAddedEasyHandles(0),
 		mEventPolls(0),
@@ -97,8 +98,8 @@ AIPerService::CapabilityType::CapabilityType(void) :
 		mAddedEasyHandles(0),
 		mFlags(0),
 		mDownloading(0),
-		mMaxUnfinishedRequests(CurlConcurrentConnectionsPerService),
-		mMaxAddedEasyHandles(CurlConcurrentConnectionsPerService)
+		mMaxUnfinishedRequests(CurlMaxPipelinedRequestsPerService),
+		mMaxAddedEasyHandles(CurlMaxPipelinedRequestsPerService)
 {
 }
 
@@ -320,6 +321,11 @@ void AIPerService::redivide_easy_handle_slots(void)
 	  mCapabilityType[order[i]].mMaxAddedEasyHandles = mPipelineSupport ? 4 : 1;
 	}
   }
+  // Can happen when called from AIPerService::set_http_pipeline.
+  if (number_of_capability_types_in_use == 0)
+  {
+	return;
+  }
   // Keep one easy handle slot in reserve for currently unused capability types (that have been used before).
   int reserve = (mUsedCT != mCTInUse) ? 1 : 0;
   // Distribute (mMaxAddedEasyHandles - reserve) over number_of_capability_types_in_use.
@@ -349,7 +355,7 @@ void AIPerService::redivide_easy_handle_slots(void)
 
 bool AIPerService::throttled(AICapabilityType capability_type) const
 {
-  return mTotalAddedEasyHandles >= mMaxTotalAddedEasyHandles ||
+  return mTotalAddedEasyHandles >= (mPipeliningDetected ? mMaxTotalAddedEasyHandles : 1) ||
 		 mCapabilityType[capability_type].mAddedEasyHandles >= mCapabilityType[capability_type].mMaxAddedEasyHandles;
 }
 
@@ -693,8 +699,11 @@ void AIPerService::Approvement::not_honored(void)
 
 void AIPerService::set_http_pipeline(bool enable)
 {
+  DoutEntering(dc::curlio, "AIPerService::set_http_pipeline(" << enable << ") [" << (void*)this << "]");
   if (mPipelineSupport != enable)
   {
+	Dout(dc::curlio, "Pipeline support changed from " << mPipelineSupport << " to " << enable);
+	llassert(!mPipeliningDetected);		// Would be kinda weird if the detection changed its mind.
 	mPipelineSupport = enable;
 	int const sign = enable ? -1 : 1;
 	sApprovedNonHTTPPipelineRequests += sign * mApprovedRequests;
@@ -707,9 +716,11 @@ void AIPerService::set_http_pipeline(bool enable)
 		sApprovedNonHTTPPipelineRequests += sign * mCapabilityType[capability_type].mQueuedCommands;
 		total_non_http_pipeline_queued_w->approved += sign * mCapabilityType[capability_type].mQueuedRequests.size();
 	  }
+	  mCapabilityType[i].mMaxUnfinishedRequests = enable ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService;
 	}
 	sAddedConnections += sign * (mTotalAddedEasyHandles ? mTotalAddedEasyHandles - 1 : 0);
-	mMaxTotalAddedEasyHandles = enable ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService;
 	redivide_easy_handle_slots();
   }
+  mPipeliningDetected = true;
+  mMaxTotalAddedEasyHandles = enable ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService;
 }

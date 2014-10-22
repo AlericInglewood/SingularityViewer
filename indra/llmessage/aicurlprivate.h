@@ -431,6 +431,7 @@ class BufferedCurlEasyRequest : public CurlEasyRequest {
 	LLHTTPClient::ResponderPtr mResponder;
 	AICapabilityType mCapabilityType;
 	bool mIsEventPoll;
+	bool mReceivedKeepAlive;							// Set when a 'Keep-Alive:' header is received.
 	//U32 mBodyLimit;									// From the old LLURLRequestDetail::mBodyLimit, but never used.
 	U32 mStatus;										// HTTP status, decoded from the first header line.
 	std::string mReason;								// The "reason" from the same header line.

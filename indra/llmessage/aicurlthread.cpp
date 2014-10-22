@@ -2242,14 +2242,10 @@ void BufferedCurlEasyRequest::processOutput(void)
   sResponderCallbackMutex.lock();
   if (!sShuttingDown)
   {
-	if (mBufferEventsTarget)
-	{
-	  // Only the responder registers for these events.
-	  llassert(mBufferEventsTarget == mResponder.get());
-	  // Allow clients to parse result codes and headers before we attempt to parse
-	  // the body and provide completed/result/error calls.
-	  mBufferEventsTarget->completed_headers(responseCode, responseReason, (code == CURLE_FAILED_INIT) ? NULL : &info);
-	}
+	// Only the responder registers for these events.
+	llassert(!mBufferEventsTarget || mBufferEventsTarget == mResponder.get());
+	// Allow clients to parse result codes and headers before we attempt to parse the body and provide completed/result/error calls.
+	completed_headers(responseCode, responseReason, (code == CURLE_FAILED_INIT) ? NULL : &info);
 	mResponder->finished(code, responseCode, responseReason, sChannels, mOutput);
   }
   sResponderCallbackMutex.unlock();
@@ -2269,6 +2265,9 @@ void BufferedCurlEasyRequest::shutdown(void)
 
 void BufferedCurlEasyRequest::received_HTTP_header(void)
 {
+  // Detect support for HTTP pipelining.
+  mReceivedKeepAlive = false;				// The default.
+
   if (mBufferEventsTarget)
 	mBufferEventsTarget->received_HTTP_header();
 }
@@ -2276,14 +2275,9 @@ void BufferedCurlEasyRequest::received_HTTP_header(void)
 void BufferedCurlEasyRequest::received_header(std::string const& key, std::string const& value)
 {
   // Detect support for HTTP pipelining.
-  //
-  // This is unfortunately heuristic.
-  // We turn on HTTP pipelining if a server replies with a 'Keep-Alive:' header after we sent a HEAD or GET request
-  // to a texture or mesh capability. Otherwise the services stays what it was (by default no HTTP pipelining).
-  if (isHeadOrGet() && (mCapabilityType == cap_texture || mCapabilityType == cap_mesh) && key == "keep-alive")
+  if (key == "keep-alive")
   {
-	PerService_wat per_service_w(*mPerServicePtr);
-	per_service_w->set_http_pipeline(true);
+	mReceivedKeepAlive = true;
   }
 
   if (mBufferEventsTarget)
@@ -2292,6 +2286,28 @@ void BufferedCurlEasyRequest::received_header(std::string const& key, std::strin
 
 void BufferedCurlEasyRequest::completed_headers(U32 status, std::string const& reason, AITransferInfo* info)
 {
+  // Detect support for HTTP pipelining.
+  //
+  // This is unfortunately heuristic.
+  // We assume HTTP pipelining iff a server replies with a 'Keep-Alive:' header, after we sent a HEAD or GET request to a texture or mesh capability.
+  // We furthermore assume no HTTP pipelining when a request that is not a HEAD or GET was sent to a capability that is not texture or mesh.
+  // Otherwise the service stays what it was (resulting in at most one connection at a time) until this condition occurs.
+  if ((200 <= status && status < 300) && info &&
+	  isHeadOrGet() == (mCapabilityType == cap_texture || mCapabilityType == cap_mesh))
+  {
+	bool enable = isHeadOrGet() ? mReceivedKeepAlive : false;
+#ifdef CWDEBUG
+	if (debug::channels::dc::curlio.is_on())
+	{
+	  char* eff_url;
+	  getinfo(CURLINFO_EFFECTIVE_URL, &eff_url);
+	  Dout(dc::curlio, "Calling set_http_pipeline(" << enable << ") for " << eff_url << "; status = " << status << "; capability type (t,i,m,o) = " << mCapabilityType);
+	}
+#endif
+	PerService_wat per_service_w(*mPerServicePtr);
+	per_service_w->set_http_pipeline(enable);
+  }
+
   if (mBufferEventsTarget)
 	mBufferEventsTarget->completed_headers(status, reason, info);
 }
