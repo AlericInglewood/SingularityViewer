@@ -316,9 +316,9 @@ void AIPerService::redivide_easy_handle_slots(void)
 	}
 	else
 	{
-	  // Give every other type (that is not in use) one or four easy handles, so they can be used (at which point they'll get more).
+	  // Give every other type (that is not in use) one-ish easy handles, so they can be used (at which point they'll get more).
 	  // Note that this is overhead - theoretically allowing us to go over the maximum that is set with the respective debug settings.
-	  mCapabilityType[order[i]].mMaxAddedEasyHandles = mPipelineSupport ? 4 : 1;
+	  mCapabilityType[order[i]].mMaxAddedEasyHandles = llmax(mMaxTotalAddedEasyHandles / 8, 1);
 	}
   }
   // Can happen when called from AIPerService::set_http_pipeline.
