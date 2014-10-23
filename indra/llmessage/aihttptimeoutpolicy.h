@@ -96,7 +96,7 @@ class AIHTTPTimeoutPolicy {
 
 	// Accessors.
 	char const* name(void) const { return mName ? mName : "AIHTTPTimeoutPolicyBase"; }
-	U16 getConnectTimeout(std::string const& hostname) const;
+	U16 getConnectTimeout(std::string const& hostname, bool& hostname_unresolved_out) const;
 	U16 getDNSLookup(void) const { return mDNSLookupGrace; }
 	U16 getConnect(void) const { return mMaximumConnectTime; }
 	U16 getReplyDelay(void) const { return mMaximumReplyDelay; }
@@ -109,6 +109,9 @@ class AIHTTPTimeoutPolicy {
 
 	// Called once at start up of viewer to set a different default timeout policy than HTTPTimeoutPolicy_default.
 	static void setDefaultCurlTimeout(AIHTTPTimeoutPolicy const& defaultCurlTimeout);
+
+	// Called when a hostname was certainly resolved (might be called multiple times for the same hostname).
+	static void hostname_resolved(std::string const& hostname);
 
 	// Called when a connect to a hostname timed out.
 	static bool connect_timed_out(std::string const& hostname);

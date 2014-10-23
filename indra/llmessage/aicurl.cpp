@@ -1165,13 +1165,13 @@ void CurlEasyRequest::finalizeRequest(std::string const& url, AIHTTPTimeoutPolic
   setopt(CURLOPT_PRIVATE, get_lockobj());
 }
 
-// AIFIXME: Doing this only when it is actually being added assures that the first curl easy handle that is
-// // being added for a particular host will be the one getting extra 'DNS lookup' connect time.
-// // However, if another curl easy handle for the same host is added immediately after, it will
-// // get less connect time, while it still (also) has to wait for this DNS lookup.
+// Doing this only when it is actually being added assures that the first curl easy handles that are
+// being added for a particular host will be the one getting extra 'DNS lookup' connect time,
+// until we connected so that we know that the hostname was resolved.
 void CurlEasyRequest::set_timeout_opts(void)
 {
-  U16 connect_timeout = mTimeoutPolicy->getConnectTimeout(getLowercaseHostname());
+  // This sets mHostnameUnresolved (if the hostname might need a DNS lookup).
+  U16 connect_timeout = mTimeoutPolicy->getConnectTimeout(getLowercaseHostname(), mHostnameUnresolved);
   if (mIsHttps && connect_timeout < 30)
   {
 	DoutCurl("Incrementing CURLOPT_CONNECTTIMEOUT of \"" << mTimeoutPolicy->name() << "\" from " << connect_timeout << " to 30 seconds.");

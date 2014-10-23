@@ -329,6 +329,7 @@ class CurlEasyRequest : public CurlEasyHandle {
 	LLPointer<curlthread::HTTPTimeout> mTimeout;// Timeout administration object associated with last created CurlSocketInfo.
 	bool mTimeoutIsOrphan;						// Set to true when mTimeout is not (yet) associated with a CurlSocketInfo.
 	bool mIsHttps;								// Set if the url starts with "https:".
+	bool mHostnameUnresolved;					// Set to true if the hostname of this request might not have been (DNS) resolved yet.
 #ifdef CWDEBUG
   public:
 	bool mDebugIsHeadOrGetMethod;
@@ -351,7 +352,7 @@ class CurlEasyRequest : public CurlEasyHandle {
   protected:
 	// This class may only be created as base class of BufferedCurlEasyRequest.
 	// Throws AICurlNoEasyHandle.
-	CurlEasyRequest(void) : mHeaders(NULL), mHandleEventsTarget(NULL), mContentLength(0), mResult(CURLE_FAILED_INIT), mTimeoutPolicy(NULL), mTimeoutIsOrphan(false)
+	CurlEasyRequest(void) : mHeaders(NULL), mHandleEventsTarget(NULL), mContentLength(0), mResult(CURLE_FAILED_INIT), mTimeoutPolicy(NULL), mTimeoutIsOrphan(false), mHostnameUnresolved(false)
 #ifdef CWDEBUG
 		, mDebugIsHeadOrGetMethod(false), mDebugHumanReadable(false)
 #endif

@@ -2380,6 +2380,12 @@ size_t BufferedCurlEasyRequest::curlReadCallback(char* data, size_t size, size_t
 	// Transfer timed out. Return CURL_READFUNC_ABORT which will abort with error CURLE_ABORTED_BY_CALLBACK.
 	return CURL_READFUNC_ABORT;
   }
+  // We sent data, so this hostname has certainly resolved.
+  if (self_w->mHostnameUnresolved)
+  {
+	self_w->mHostnameUnresolved = false;	// Only call hostname_resolved() one time.
+	AIHTTPTimeoutPolicy::hostname_resolved(self_w->getLowercaseHostname());
+  }
   return bytes;					// Return the amount actually read (might be lowered by readAfter()).
 }
 

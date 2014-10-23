@@ -68,6 +68,7 @@ struct AIHTTPTimeoutPolicy {
   U16 getLowSpeedTime(void) const { return 30; }
   U32 getLowSpeedLimit(void) const { return 7000; }
   static bool connect_timed_out(std::string const&) { return false; }
+  static void hostname_resolved(std::string const& hostname) { }
 };
 
 namespace AICurlPrivate {
@@ -142,7 +143,7 @@ void HTTPTimeout::being_redirected(void)
 
 void HTTPTimeout::upload_starting(void)
 {
-  // We're not supposed start with an upload when it already finished, unless we're being redirected.
+  // We're not supposed to start with an upload when it already finished, unless we're being redirected.
   llassert(!mUploadFinished || mBeingRedirected);
   mUploadFinished = false;
   // Apparently there is something to upload. Start detecting low speed timeouts.
