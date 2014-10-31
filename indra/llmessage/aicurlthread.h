@@ -98,6 +98,7 @@ class MultiHandle : public CurlMultiHandle
 
     static int socket_callback(CURL* easy, curl_socket_t s, int action, void* userp, void* socketp);
     static int timer_callback(CURLM* multi, long timeout_ms, void* userp);
+    static void pipeline_policy_callback(char const* hostname, int port, curl_pipeline_policy* policy, void* userp);
 
   public:
 	// Returns how long to wait for socket action before calling socket_action(CURL_SOCKET_TIMEOUT, 0), in ms.

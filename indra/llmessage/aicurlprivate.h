@@ -562,7 +562,7 @@ class CurlMultiHandle : public boost::noncopyable {
 // curl_multi_setopt may only be passed a long,
 inline CURLMcode CurlMultiHandle::setopt(CURLMoption option, long parameter)
 {
-  llassert(option == CURLMOPT_MAXCONNECTS || option == CURLMOPT_PIPELINING);
+  llassert(option == CURLMOPT_MAXCONNECTS || option == CURLMOPT_MAX_HOST_CONNECTIONS || option == CURLMOPT_PIPELINING);
   return check_multi_code(curl_multi_setopt(mMultiHandle, option, parameter));
 }
 

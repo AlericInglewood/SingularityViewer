@@ -1691,12 +1691,15 @@ MultiHandle::MultiHandle(void) : mTimeout(-1), mReadPollSet(NULL), mWritePollSet
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_TIMERFUNCTION, &MultiHandle::timer_callback));
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_TIMERDATA, this));
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_PIPELINING, 1L));
+  check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_PIPELINE_POLICY_FUNCTION, &MultiHandle::pipeline_policy_callback));
 }
 
 void MultiHandle::set_pipeline_options(void)
 {
   long max_pipeline_length = CurlMaxPipelinedRequestsPerService;
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_MAX_PIPELINE_LENGTH, max_pipeline_length));
+  long max_host_connections = CurlConcurrentConnectionsPerService;
+  check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_MAX_HOST_CONNECTIONS, max_host_connections));
 }
 
 void MultiHandle::bl_update(std::string const& site_str, bool add)
@@ -2085,6 +2088,38 @@ void MultiHandle::finish_easy_request(AICurlEasyRequest const& easy_request, CUR
 #endif
   // Signal that this easy handle finished.
   curl_easy_request_w->done(curl_easy_request_w, result);
+}
+
+//static
+void MultiHandle::pipeline_policy_callback(char const* hostname, int port, curl_pipeline_policy* policy, void* userp)
+{
+  Dout(dc::curl, "Calling MultiHandle::pipeline_policy_callback(" << hostname << ":" << port << ")");
+  std::ostringstream canonical_servicename;
+  for (char const* p = hostname; *p; ++p)
+  {
+	char c = *p;
+#if APR_CHARSET_EBCDIC
+#error Not implemented
+#else
+	if (c >= 'A' && c <= 'Z')
+	  c += ('a' - 'A');
+#endif
+	canonical_servicename << c;
+  }
+  // The canoncial servicenames do not have :80 appended.
+  if (port != 80)
+  {
+	canonical_servicename << ':' << port;
+  }
+  PerService_wat per_service_w(*AIPerService::instance(canonical_servicename.str()));
+  if (per_service_w->is_blacklisted())
+	policy->flags |= CURL_BLACKLISTED;
+  if (per_service_w->http_pipelining_detected() && per_service_w->is_http_pipeline())
+  {
+	policy->flags |= CURL_SUPPORTS_PIPELINING;
+	Dout(dc::curl, "Service \"" << canonical_servicename.str() << "\" is known - policy flags set to " << policy->flags);
+	policy->max_host_connections = 2;
+  }
 }
 
 } // namespace curlthread
@@ -2850,6 +2885,7 @@ bool handleCurlConcurrentConnectionsPerService(LLSD const& newvalue)
   {
 	int increment = new_concurrent_connections - CurlConcurrentConnectionsPerService;
 	CurlConcurrentConnectionsPerService = new_concurrent_connections;
+	command_queue_wat(command_queue)->commands.push_back(cmd_refresh_pipeline_options);
 	AIPerService::adjust_max_added_easy_handles(increment, false);
 	llinfos << "CurlConcurrentConnectionsPerService set to " << CurlConcurrentConnectionsPerService << llendl;
   }
