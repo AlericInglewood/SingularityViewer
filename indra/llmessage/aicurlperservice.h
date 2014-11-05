@@ -184,6 +184,7 @@ class AIPerService {
 	int mEstablishedConnections;				// Number of connected sockets to this service.
 
 	U32 mUsedCT;								// Bit mask with one bit per capability type. A '1' means the capability was in use since the last resetUsedCT().
+	U32 mUsedCTpersist;							// Same as mUsedCT but is never reset.
 	U32 mCTInUse;								// Bit mask with one bit per capability type. A '1' means the capability is in use right now.
 
 	// Approved non-HTTP pipeline requests until that are not in the command queue yet.
@@ -204,7 +205,8 @@ class AIPerService {
 	  {
 		mCTInUse |= bit;
 		mUsedCT |= bit;
-		if (mUsedCT != bit)					// and more than one CT use this service.
+		mUsedCTpersist |= bit;
+		if (mUsedCTpersist != bit)			// and more than one CT use this service.
 		{
 		  redivide_easy_handle_slots();
 		}
@@ -216,7 +218,7 @@ class AIPerService {
 	  if ((mCTInUse & bit) != 0)			// If this CT went from used to unused
 	  {
 		mCTInUse &= ~bit;
-		if (mCTInUse && mUsedCT != bit)		// and more than one CT use this service, and at least one is in use.
+		if (mCTInUse && mUsedCTpersist != bit)	// and more than one CT use this service, and at least one is in use.
 		{
 		  redivide_easy_handle_slots();
 		}
@@ -236,6 +238,7 @@ class AIPerService {
 	U32 is_used(void) const { return mUsedCT; }						// Non-zero if this service was used for any capability type.
 	U32 is_inuse(void) const { return mCTInUse; }					// Non-zero if this service is in use for any capability type.
 
+	bool is_non_http_pipeline(void) const { return (mUsedCTpersist & (CT2mask(cap_inventory)|CT2mask(cap_other))); }
 	bool http_pipelining_detected(void) const { return mPipeliningDetected; }
 	bool is_http_pipeline(void) const { return mPipelineSupport; }
 	bool is_blacklisted(void) const { return mIsBlackListed; }

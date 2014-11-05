@@ -1935,6 +1935,7 @@ CURLMcode MultiHandle::remove_easy_request(AICurlEasyRequest const& easy_request
 {
   AICurlEasyRequest_wat easy_request_w(*easy_request);
   addedEasyRequests_type::iterator iter = mAddedEasyRequests.find(easy_request);
+  llassert(iter != mAddedEasyRequests.end());
   if (iter == mAddedEasyRequests.end())
   {
 	// The request could be queued.
@@ -2112,10 +2113,25 @@ void MultiHandle::pipeline_policy_callback(char const* hostname, int port, curl_
 	canonical_servicename << ':' << port;
   }
   PerService_wat per_service_w(*AIPerService::instance(canonical_servicename.str()));
-  if (per_service_w->is_blacklisted())
+  if (per_service_w->is_blacklisted() ||
+	  // Force non-http pipelining for services that WE don't trust to do http pipelining.
+	  per_service_w->is_non_http_pipeline() ||
+	  (per_service_w->http_pipelining_detected() && !per_service_w->is_http_pipeline()))
+  {
 	policy->flags |= CURL_BLACKLISTED;
+	Dout(dc::curl, "Enforcing disabling of HTTP pipelining for " << hostname);
+  }
   if (per_service_w->http_pipelining_detected() && per_service_w->is_http_pipeline())
   {
+#ifdef CWDEBUG
+	if (!(policy->flags & CURL_SUPPORTS_PIPELINING))
+	{
+	  Dout(dc::curl|continued_cf, "Turning on HTTP pipelining for " << hostname);
+	  if ((policy->flags & CURL_BLACKLISTED))
+		Dout(dc::continued, ", which - however- is blacklisted.");
+	  Dout(dc::finish, "");
+	}
+#endif
 	policy->flags |= CURL_SUPPORTS_PIPELINING;
 	Dout(dc::curl, "Service \"" << canonical_servicename.str() << "\" is known - policy flags set to " << policy->flags);
 	policy->max_host_connections = 2;

@@ -1402,7 +1402,7 @@ void BufferedCurlEasyRequest::connection_established(int connectionnr)
 	llassert(old_connectionnr != -1);
 	FindServiceNames functor(mPerServicePtr, iter->second);
 	AIPerService::copy_forEach(functor);
-	Dout(dc::curlio, "Ignoring forwarding of connection #" << old_connectionnr << " (" << functor.mName1 << ") to #" << connectionnr << " (" << functor.mName2 << ").");
+	Dout(dc::curlio, (void*)get_lockobj() << "Ignoring forwarding of connection #" << old_connectionnr << " (" << functor.mName1 << ") to #" << connectionnr << " (" << functor.mName2 << ").");
   }
 }
 
@@ -1411,7 +1411,7 @@ void BufferedCurlEasyRequest::connection_closed(int connectionnr)
   std::map<int, AIPerServicePtr>::iterator iter = sConnections.find(connectionnr);
   if (iter == sConnections.end())
   {
-	Dout(dc::curlio, "Closing connection that never connected (#" << connectionnr << ").");
+	Dout(dc::curlio, (void*)get_lockobj() << "Closing connection that never connected (#" << connectionnr << ").");
 	return;
   }
   PerService_rat per_service_r(*iter->second);
