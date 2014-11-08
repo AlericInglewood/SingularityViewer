@@ -849,6 +849,7 @@ void CurlSocketInfo::set_action(int action)
 	  {
 		// If CURL_POLL_OUT is removed and CURLINFO_PRETRANSFER_TIME is already set, then we have nothing more to send apparently.
 		mTimeout->upload_finished();		// Update timeout administration.
+		curl_easy_request_w->upload_finished();
 	  }
 	}
   }
@@ -1899,7 +1900,10 @@ bool MultiHandle::add_easy_request(AICurlEasyRequest const& easy_request, bool f
 	  curl_easy_request_w->set_timeout_opts();
 	  if (curl_easy_request_w->add_handle_to_multi(curl_easy_request_w, mMultiHandle) == CURLM_OK)
 	  {
-		per_service_w->added_to_multi_handle(capability_type, event_poll);	// (About to be) added to mAddedEasyRequests.
+		if (per_service_w->added_to_multi_handle(capability_type, event_poll))	// (About to be) added to mAddedEasyRequests.
+		{
+		  curl_easy_request_w->incremented_service_added_counter();
+		}
 		throttled = false;						// Fall through...
 	  }
 	}
@@ -1964,12 +1968,14 @@ CURLMcode MultiHandle::remove_easy_request(addedEasyRequests_type::iterator cons
   {
 	AICurlEasyRequest_wat curl_easy_request_w(**iter);
 	bool downloaded_something = curl_easy_request_w->received_data();
+	bool is_upload_finished = curl_easy_request_w->is_upload_finished();
 	bool success = curl_easy_request_w->success();
 	res = curl_easy_request_w->remove_handle_from_multi(curl_easy_request_w, mMultiHandle);
 	capability_type = curl_easy_request_w->capability_type();
 	event_poll = curl_easy_request_w->is_event_poll();
 	per_service = curl_easy_request_w->getPerServicePtr();
-	PerService_wat(*per_service)->removed_from_multi_handle(capability_type, event_poll, downloaded_something, success);		// (About to be) removed from mAddedEasyRequests.
+	PerService_wat(*per_service)->removed_from_multi_handle(capability_type, event_poll, downloaded_something, is_upload_finished, success);		// (About to be) removed from mAddedEasyRequests.
+	curl_easy_request_w->reset_upload_finished();
 #ifdef SHOW_ASSERT
 	curl_easy_request_w->mRemovedPerCommand = as_per_command;
 #endif
@@ -2395,8 +2401,10 @@ void BufferedCurlEasyRequest::update_body_bandwidth(void)
   size_t raw_bytes = total_raw_bytes - mTotalRawBytes;
   if (mTotalRawBytes == 0 && total_raw_bytes > 0)
   {
-	// Update service/capability type administration for the HTTP Debug Console.
 	PerService_wat per_service_w(*mPerServicePtr);
+	// In case we missed detection before.
+	upload_finished(per_service_w);
+	// Update service/capability type administration for the HTTP Debug Console.
 	per_service_w->download_started(mCapabilityType);
   }
   mTotalRawBytes = total_raw_bytes;
@@ -2566,6 +2574,7 @@ int BufferedCurlEasyRequest::curlProgressCallback(void* user_data, double dltota
 	{
 	  AICurlEasyRequest_wat self_w(*lockobj);
 	  self_w->httptimeout()->upload_finished();
+	  self_w->upload_finished();
 	}
   }
 

@@ -98,6 +98,7 @@ AIPerService::CapabilityType::CapabilityType(void) :
 		mAddedEasyHandles(0),
 		mFlags(0),
 		mDownloading(0),
+		mUploaded(0),
 		mMaxUnfinishedRequests(CurlMaxPipelinedRequestsPerService),
 		mMaxAddedEasyHandles(CurlMaxPipelinedRequestsPerService)
 {
@@ -359,7 +360,7 @@ bool AIPerService::throttled(AICapabilityType capability_type) const
 		 mCapabilityType[capability_type].mAddedEasyHandles >= mCapabilityType[capability_type].mMaxAddedEasyHandles;
 }
 
-void AIPerService::added_to_multi_handle(AICapabilityType capability_type, bool event_poll)
+bool AIPerService::added_to_multi_handle(AICapabilityType capability_type, bool event_poll)
 {
   if (event_poll)
   {
@@ -397,7 +398,7 @@ void AIPerService::added_to_multi_handle(AICapabilityType capability_type, bool 
 	if (++mEventPolls > 1)
 	{
 	  // This only happens on megaregions. Do not count the additional long poll connections against the maximum handles for this service.
-	  return;
+	  return false;
 	}
   }
   ++mCapabilityType[capability_type].mAddedEasyHandles;
@@ -405,9 +406,10 @@ void AIPerService::added_to_multi_handle(AICapabilityType capability_type, bool 
   {
 	sAddedConnections++;
   }
+  return true;
 }
 
-void AIPerService::removed_from_multi_handle(AICapabilityType capability_type, bool event_poll, bool downloaded_something, bool success)
+void AIPerService::removed_from_multi_handle(AICapabilityType capability_type, bool event_poll, bool downloaded_something, bool upload_finished, bool success)
 {
   CapabilityType& ct(mCapabilityType[capability_type]);
   llassert(mTotalAddedEasyHandles > 0 && ct.mAddedEasyHandles > 0 && (!event_poll || mEventPolls));
@@ -423,6 +425,11 @@ void AIPerService::removed_from_multi_handle(AICapabilityType capability_type, b
   {
 	llassert(ct.mDownloading > 0);
 	--ct.mDownloading;
+  }
+  if (upload_finished)
+  {
+	llassert_always(ct.mUploaded > 0);
+	--ct.mUploaded;
   }
   // If the number of added request handles is equal to the number of counted event poll handles,
   // in other words, when there are only long poll handles left, then mark the capability type

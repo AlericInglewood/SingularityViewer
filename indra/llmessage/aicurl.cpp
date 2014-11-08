@@ -1308,7 +1308,7 @@ bool BufferedCurlEasyRequest::sShuttingDown = false;
 AIAverage BufferedCurlEasyRequest::sHTTPBandwidth(25);
 
 BufferedCurlEasyRequest::BufferedCurlEasyRequest() :
-	mRequestTransferedBytes(0), mTotalRawBytes(0), mStatus(HTTP_INTERNAL_ERROR_OTHER), mBufferEventsTarget(NULL), mCapabilityType(number_of_capability_types)
+	mRequestTransferedBytes(0), mTotalRawBytes(0), mUploadFinished(0), mStatus(HTTP_INTERNAL_ERROR_OTHER), mBufferEventsTarget(NULL), mCapabilityType(number_of_capability_types)
 {
   AICurlInterface::Stats::BufferedCurlEasyRequest_count++;
 }
@@ -1340,6 +1340,7 @@ BufferedCurlEasyRequest::~BufferedCurlEasyRequest()
 	}
   }
   --AICurlInterface::Stats::BufferedCurlEasyRequest_count;
+  llassert(mUploadFinished == 0);
 }
 
 void BufferedCurlEasyRequest::aborted(U32 http_status, std::string const& reason)
