@@ -235,7 +235,7 @@ class AIPerService {
 	bool is_inuse(AICapabilityType capability_type) const { return (mCTInUse & CT2mask(capability_type)); }
 
 	static void resetUsed(void) { ResetUsed reset_used; copy_forEach(reset_used); }
-	U32 is_used(void) const { return mUsedCT; }						// Non-zero if this service was used for any capability type.
+	U32 is_used(void) const { return mUsedCT; }						// Non-zero if this service was used for any capability type since the HTTP console was (re)opened.
 	U32 is_inuse(void) const { return mCTInUse; }					// Non-zero if this service is in use for any capability type.
 
 	bool is_non_http_pipeline(void) const { return (mUsedCTpersist & (CT2mask(cap_inventory)|CT2mask(cap_other))); }

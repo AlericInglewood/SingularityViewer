@@ -320,6 +320,11 @@ void AIPerService::redivide_easy_handle_slots(void)
 	  // Give every other type (that is not in use) one-ish easy handles, so they can be used (at which point they'll get more).
 	  // Note that this is overhead - theoretically allowing us to go over the maximum that is set with the respective debug settings.
 	  mCapabilityType[order[i]].mMaxAddedEasyHandles = llmax(mMaxTotalAddedEasyHandles / 8, 1);
+	  if (order[i] == cap_other)
+	  {
+		// Add one extra for the long poll.
+	    mCapabilityType[order[i]].mMaxAddedEasyHandles += 1;
+	  }
 	}
   }
   // Can happen when called from AIPerService::set_http_pipeline.
