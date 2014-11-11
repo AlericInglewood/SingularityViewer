@@ -348,6 +348,9 @@ class CurlEasyRequest : public CurlEasyHandle {
 	LLPointer<curlthread::HTTPTimeout>& httptimeout(void) { if (!mTimeout) { create_timeout_object(); mTimeoutIsOrphan = true; } return mTimeout; }
 	// Return true if no data has been received on the latest socket (if any) for too long.
 	bool has_stalled(void) { return mTimeout && mTimeout->has_stalled(); }
+	// Accessors for mPerServicePtr.
+	AIPerServicePtr const& get_service_ptr(void) const { return mPerServicePtr; }
+	AIPerServicePtr& get_service_ptr(void) { return mPerServicePtr; }
 
   protected:
 	// This class may only be created as base class of BufferedCurlEasyRequest.
