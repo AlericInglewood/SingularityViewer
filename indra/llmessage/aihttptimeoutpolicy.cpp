@@ -288,22 +288,33 @@ AIHTTPTimeoutPolicy const& AIHTTPTimeoutPolicy::getDebugSettingsCurlTimeout(void
 static AIThreadID curlthread(AIThreadID::none);		// Initialized by getConnectTimeout.
 #endif
 
-static std::set<std::string> gSeenHostnames;
+static std::set<std::string> gResolvedHostnames;
 
-U16 AIHTTPTimeoutPolicy::getConnectTimeout(std::string const& hostname) const
+U16 AIHTTPTimeoutPolicy::getConnectTimeout(std::string const& hostname, bool& hostname_unresolved_out) const
 {
 #ifdef SHOW_ASSERT
-  // Only the CURL-THREAD may access gSeenHostnames.
+  // Only the CURL-THREAD may access gResolvedHostnames.
   if (curlthread.is_no_thread())
 	curlthread.reset();
   llassert(curlthread.equals_current_thread());
 #endif
 
   U16 connect_timeout = mMaximumConnectTime;
-  // Add the hostname to the list of seen hostnames, if not already there.
-  if (gSeenHostnames.insert(hostname).second)
+  // If this hostname was not resolved yet, add extra DNS lookup grace time to the connect timeout.
+  if ((hostname_unresolved_out = gResolvedHostnames.find(hostname) == gResolvedHostnames.end()))
 	connect_timeout += mDNSLookupGrace;			// If the host is not in the list, increase the connect timeout with mDNSLookupGrace.
   return connect_timeout;
+}
+
+//static
+void AIHTTPTimeoutPolicy::hostname_resolved(std::string const& hostname)
+{
+  llassert(curlthread.equals_current_thread());
+
+  // This is called when the hostname was certainly resolved, so we can
+  // stop adding mDNSLookupGrace to the connect time.
+  // Add the hostname to the list of seen hostnames, if not already there.
+  gResolvedHostnames.insert(hostname);
 }
 
 //static
@@ -315,7 +326,7 @@ bool AIHTTPTimeoutPolicy::connect_timed_out(std::string const& hostname)
   // If the hostname is currently in the list, remove it and return true
   // so that subsequent connects will get more time to connect.
   // Otherwise return false.
-  return gSeenHostnames.erase(hostname) > 0;
+  return gResolvedHostnames.erase(hostname) > 0;
 }
 
 //=======================================================================================================

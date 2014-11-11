@@ -68,6 +68,7 @@ struct AIHTTPTimeoutPolicy {
   U16 getLowSpeedTime(void) const { return 30; }
   U32 getLowSpeedLimit(void) const { return 7000; }
   static bool connect_timed_out(std::string const&) { return false; }
+  static void hostname_resolved(std::string const& hostname) { }
 };
 
 namespace AICurlPrivate {
@@ -142,7 +143,7 @@ void HTTPTimeout::being_redirected(void)
 
 void HTTPTimeout::upload_starting(void)
 {
-  // We're not supposed start with an upload when it already finished, unless we're being redirected.
+  // We're not supposed to start with an upload when it already finished, unless we're being redirected.
   llassert(!mUploadFinished || mBeingRedirected);
   mUploadFinished = false;
   // Apparently there is something to upload. Start detecting low speed timeouts.
@@ -448,7 +449,9 @@ void HTTPTimeout::print_diagnostics(CurlEasyRequest const* curl_easy_request, ch
   curl_easy_request->getinfo(CURLINFO_APPCONNECT_TIME, &appconnect_time);
   curl_easy_request->getinfo(CURLINFO_PRETRANSFER_TIME, &pretransfer_time);
   curl_easy_request->getinfo(CURLINFO_STARTTRANSFER_TIME, &starttransfer_time);
-  if (namelookup_time == 0
+  if (namelookup_time == 0 &&
+	  appconnect_time == 0 &&
+	  pretransfer_time == 0
 #if LOWRESTIMER
 	  && connect_time == 0
 #endif
@@ -459,34 +462,35 @@ void HTTPTimeout::print_diagnostics(CurlEasyRequest const* curl_easy_request, ch
 #else
 	llwarns << "Curl returned CURLE_OPERATION_TIMEDOUT and DNS lookup did not occur according to timings. Apparently the resolve attempt timed out (bad network?)" << llendl;
 	llassert(connect_time == 0);
-	llassert(appconnect_time == 0);
-	llassert(pretransfer_time == 0);
 	llassert(starttransfer_time == 0);
 	return;
 #endif
   }
-  // If namelookup_time is less than 500 microseconds, then it's very likely just a DNS cache lookup.
-  else if (namelookup_time < 500e-6)
+  else if (namelookup_time > 0)
   {
+	// If namelookup_time is less than 500 microseconds, then it's very likely just a DNS cache lookup.
+	if (namelookup_time < 500e-6)
+	{
 #if LOWRESTIMER
-	llinfos << "Hostname was most likely still in DNS cache (or lookup occured in under ~10ms)." << llendl;
+	  llinfos << "Hostname was most likely still in DNS cache (or lookup occured in under ~10ms)." << llendl;
 #else
-	llinfos << "Hostname was still in DNS cache." << llendl;
+	  llinfos << "Hostname was still in DNS cache." << llendl;
 #endif
+	}
+	else
+	{
+	  llinfos << "DNS lookup of " << curl_easy_request->getLowercaseHostname() << " took " << namelookup_time << " seconds." << llendl;
+	}
   }
-  else
-  {
-	llinfos << "DNS lookup of " << curl_easy_request->getLowercaseHostname() << " took " << namelookup_time << " seconds." << llendl;
-  }
-  if (connect_time == 0
+  if (connect_time == 0 &&
+	  appconnect_time == 0 &&
+	  pretransfer_time == 0
 #if LOWRESTIMER
 	  && namelookup_time > 0		// connect_time, when set, is namelookup_time + something.
 #endif
 	  )
   {
 	llwarns << "Curl returned CURLE_OPERATION_TIMEDOUT and connection did not occur according to timings: apparently the connect attempt timed out (bad network?)" << llendl;
-	llassert(appconnect_time == 0);
-	llassert(pretransfer_time == 0);
 	llassert(starttransfer_time == 0);
 	return;
   }
@@ -499,7 +503,8 @@ void HTTPTimeout::print_diagnostics(CurlEasyRequest const* curl_easy_request, ch
 	llinfos << "The socket was already connected (to remote or proxy)." << llendl;
 #endif
 	// I'm assuming that the SSL/TLS handshake can be measured with a low res timer.
-	if (appconnect_time == 0)
+	if (appconnect_time == 0 &&
+		pretransfer_time == 0)
 	{
 	  llwarns << "The SSL/TLS handshake never occurred according to the timings!" << llendl;
 	  return;

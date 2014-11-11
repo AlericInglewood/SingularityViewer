@@ -1165,13 +1165,13 @@ void CurlEasyRequest::finalizeRequest(std::string const& url, AIHTTPTimeoutPolic
   setopt(CURLOPT_PRIVATE, get_lockobj());
 }
 
-// AIFIXME: Doing this only when it is actually being added assures that the first curl easy handle that is
-// // being added for a particular host will be the one getting extra 'DNS lookup' connect time.
-// // However, if another curl easy handle for the same host is added immediately after, it will
-// // get less connect time, while it still (also) has to wait for this DNS lookup.
+// Doing this only when it is actually being added assures that the first curl easy handles that are
+// being added for a particular host will be the one getting extra 'DNS lookup' connect time,
+// until we connected so that we know that the hostname was resolved.
 void CurlEasyRequest::set_timeout_opts(void)
 {
-  U16 connect_timeout = mTimeoutPolicy->getConnectTimeout(getLowercaseHostname());
+  // This sets mHostnameUnresolved (if the hostname might need a DNS lookup).
+  U16 connect_timeout = mTimeoutPolicy->getConnectTimeout(getLowercaseHostname(), mHostnameUnresolved);
   if (mIsHttps && connect_timeout < 30)
   {
 	DoutCurl("Incrementing CURLOPT_CONNECTTIMEOUT of \"" << mTimeoutPolicy->name() << "\" from " << connect_timeout << " to 30 seconds.");
@@ -1308,7 +1308,7 @@ bool BufferedCurlEasyRequest::sShuttingDown = false;
 AIAverage BufferedCurlEasyRequest::sHTTPBandwidth(25);
 
 BufferedCurlEasyRequest::BufferedCurlEasyRequest() :
-	mRequestTransferedBytes(0), mTotalRawBytes(0), mStatus(HTTP_INTERNAL_ERROR_OTHER), mBufferEventsTarget(NULL), mCapabilityType(number_of_capability_types)
+	mRequestTransferedBytes(0), mTotalRawBytes(0), mUploadFinished(0), mStatus(HTTP_INTERNAL_ERROR_OTHER), mBufferEventsTarget(NULL), mCapabilityType(number_of_capability_types)
 {
   AICurlInterface::Stats::BufferedCurlEasyRequest_count++;
 }
@@ -1340,6 +1340,7 @@ BufferedCurlEasyRequest::~BufferedCurlEasyRequest()
 	}
   }
   --AICurlInterface::Stats::BufferedCurlEasyRequest_count;
+  llassert(mUploadFinished == 0);
 }
 
 void BufferedCurlEasyRequest::aborted(U32 http_status, std::string const& reason)
@@ -1402,7 +1403,7 @@ void BufferedCurlEasyRequest::connection_established(int connectionnr)
 	llassert(old_connectionnr != -1);
 	FindServiceNames functor(mPerServicePtr, iter->second);
 	AIPerService::copy_forEach(functor);
-	Dout(dc::curlio, "Ignoring forwarding of connection #" << old_connectionnr << " (" << functor.mName1 << ") to #" << connectionnr << " (" << functor.mName2 << ").");
+	Dout(dc::curlio, (void*)get_lockobj() << "Ignoring forwarding of connection #" << old_connectionnr << " (" << functor.mName1 << ") to #" << connectionnr << " (" << functor.mName2 << ").");
   }
 }
 
@@ -1411,7 +1412,7 @@ void BufferedCurlEasyRequest::connection_closed(int connectionnr)
   std::map<int, AIPerServicePtr>::iterator iter = sConnections.find(connectionnr);
   if (iter == sConnections.end())
   {
-	Dout(dc::curlio, "Closing connection that never connected (#" << connectionnr << ").");
+	Dout(dc::curlio, (void*)get_lockobj() << " Closing connection that never connected (#" << connectionnr << ").");
 	return;
   }
   PerService_rat per_service_r(*iter->second);

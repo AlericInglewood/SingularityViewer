@@ -43,6 +43,9 @@
 #include "aicurlperservice.h"
 #include "aicurlthread.h"
 #include "llcontrol.h"
+#ifdef CWDEBUG
+#include <curl/curl.h>	// curl_socket_t
+#endif
 
 AIPerService::threadsafe_instance_map_type AIPerService::sInstanceMap;
 LLAtomicU32 AIPerService::sApprovedNonHTTPPipelineRequests;
@@ -98,6 +101,7 @@ AIPerService::CapabilityType::CapabilityType(void) :
 		mAddedEasyHandles(0),
 		mFlags(0),
 		mDownloading(0),
+		mUploaded(0),
 		mMaxUnfinishedRequests(CurlMaxPipelinedRequestsPerService),
 		mMaxAddedEasyHandles(CurlMaxPipelinedRequestsPerService)
 {
@@ -316,9 +320,14 @@ void AIPerService::redivide_easy_handle_slots(void)
 	}
 	else
 	{
-	  // Give every other type (that is not in use) one or four easy handles, so they can be used (at which point they'll get more).
+	  // Give every other type (that is not in use) one-ish easy handles, so they can be used (at which point they'll get more).
 	  // Note that this is overhead - theoretically allowing us to go over the maximum that is set with the respective debug settings.
-	  mCapabilityType[order[i]].mMaxAddedEasyHandles = mPipelineSupport ? 4 : 1;
+	  mCapabilityType[order[i]].mMaxAddedEasyHandles = llmax(mMaxTotalAddedEasyHandles / 8, 1);
+	  if (order[i] == cap_other)
+	  {
+		// Add one extra for the long poll.
+	    mCapabilityType[order[i]].mMaxAddedEasyHandles += 1;
+	  }
 	}
   }
   // Can happen when called from AIPerService::set_http_pipeline.
@@ -359,7 +368,7 @@ bool AIPerService::throttled(AICapabilityType capability_type) const
 		 mCapabilityType[capability_type].mAddedEasyHandles >= mCapabilityType[capability_type].mMaxAddedEasyHandles;
 }
 
-void AIPerService::added_to_multi_handle(AICapabilityType capability_type, bool event_poll)
+bool AIPerService::added_to_multi_handle(AICapabilityType capability_type, bool event_poll)
 {
   if (event_poll)
   {
@@ -397,7 +406,7 @@ void AIPerService::added_to_multi_handle(AICapabilityType capability_type, bool 
 	if (++mEventPolls > 1)
 	{
 	  // This only happens on megaregions. Do not count the additional long poll connections against the maximum handles for this service.
-	  return;
+	  return false;
 	}
   }
   ++mCapabilityType[capability_type].mAddedEasyHandles;
@@ -405,9 +414,10 @@ void AIPerService::added_to_multi_handle(AICapabilityType capability_type, bool 
   {
 	sAddedConnections++;
   }
+  return true;
 }
 
-void AIPerService::removed_from_multi_handle(AICapabilityType capability_type, bool event_poll, bool downloaded_something, bool success)
+void AIPerService::removed_from_multi_handle(AICapabilityType capability_type, bool event_poll, bool downloaded_something, bool upload_finished, bool success)
 {
   CapabilityType& ct(mCapabilityType[capability_type]);
   llassert(mTotalAddedEasyHandles > 0 && ct.mAddedEasyHandles > 0 && (!event_poll || mEventPolls));
@@ -423,6 +433,11 @@ void AIPerService::removed_from_multi_handle(AICapabilityType capability_type, b
   {
 	llassert(ct.mDownloading > 0);
 	--ct.mDownloading;
+  }
+  if (upload_finished)
+  {
+	llassert_always(ct.mUploaded > 0);
+	--ct.mUploaded;
   }
   // If the number of added request handles is equal to the number of counted event poll handles,
   // in other words, when there are only long poll handles left, then mark the capability type
@@ -719,8 +734,145 @@ void AIPerService::set_http_pipeline(bool enable)
 	  mCapabilityType[i].mMaxUnfinishedRequests = enable ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService;
 	}
 	sAddedConnections += sign * (mTotalAddedEasyHandles ? mTotalAddedEasyHandles - 1 : 0);
+	mMaxTotalAddedEasyHandles = enable ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService;
 	redivide_easy_handle_slots();
   }
   mPipeliningDetected = true;
-  mMaxTotalAddedEasyHandles = enable ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService;
 }
+
+#ifdef CWDEBUG
+extern "C" {
+
+typedef void (*curl_llist_dtor)(void *, void *);
+
+struct curl_llist_element {
+  void *ptr;
+
+  struct curl_llist_element *prev;
+  struct curl_llist_element *next;
+};
+
+struct curl_llist {
+  struct curl_llist_element *head;
+  struct curl_llist_element *tail;
+
+  curl_llist_dtor dtor;
+
+  size_t size;
+};
+
+struct connectdata {
+  long connection_id; /* Contains a unique number to make it easier to
+                         track the connections in the log output */
+  curl_socket_t sock[2]; /* two sockets, the second is used for the data
+                            transfer when doing FTP */
+  struct curl_llist *send_pipe; /* List of handles waiting to
+                                   send on this pipeline */
+  struct curl_llist *recv_pipe; /* List of handles waiting to read
+                                   their responses on this pipeline */
+};
+
+} // extern "C"
+
+//static
+AIPerService::conn_map_type AIPerService::s_conn_map;
+
+//static
+void AIPerService::update_conn(AIPerServicePtr const& per_service, void* conn, int s)
+{
+  llassert(s >= -1);
+  conn_map_type::iterator iter = s_conn_map.find(conn);
+  if (iter == s_conn_map.end())
+  {
+	s_conn_map[conn] = per_service;
+	PerService_wat per_service_w(*per_service);
+	per_service_w->update_curl_conn(conn, -1);
+	if (s >= 0)
+	{
+	  per_service_w->update_curl_conn(conn, s);
+	}
+  }
+  else
+  {
+	llassert(s >= 0);
+	llassert(per_service == iter->second);
+	PerService_wat per_service_w(*per_service);
+	per_service_w->update_curl_conn(conn, s);
+  }
+}
+
+//static
+void AIPerService::destroy_conn(void* conn)
+{
+  conn_map_type::iterator iter = s_conn_map.find(conn);
+  llassert(iter != s_conn_map.end());
+  PerService_wat(*iter->second)->update_curl_conn(conn, -2);
+  s_conn_map.erase(iter);
+}
+
+struct ConnData {
+	ConnData(void) : mFd(-1) { }
+	int mFd;
+};
+
+// This is a horrible hack - and needs a specially hacked libcurl
+// that abuses the socket callback to inform us of connection updates.
+// If s == -1 : A new conn was created, connection in progress.
+// If s >= 0  : A connection is established on socket s.
+// If s == -2 : The conn is destructed.
+void AIPerService::update_curl_conn(void* userp, int s)
+{
+  struct connectdata *conn = static_cast<struct connectdata *>(userp);
+  if (s == -1)
+  {
+	llassert(m_conn_to_data.find(userp) == m_conn_to_data.end());
+	m_conn_to_data[userp] = new ConnData;
+  }
+  else
+  {
+	conn_to_data_type::iterator iter = m_conn_to_data.find(userp);
+	llassert(iter != m_conn_to_data.end());
+	ConnData* data = static_cast<ConnData*>(iter->second);
+	if (s == -2)
+	{
+	  delete data;
+	  m_conn_to_data.erase(iter);
+	  return;
+	}
+	data->mFd = s;
+  }
+}
+
+void AIPerService::get_fd_list(std::vector<std::pair<int, int> >& vec) const
+{
+  for (conn_to_data_type::const_iterator iter = m_conn_to_data.begin(); iter != m_conn_to_data.end(); ++iter)
+  {
+	struct connectdata *conn = static_cast<struct connectdata *>(iter->first);
+	ConnData* data = static_cast<ConnData*>(iter->second);
+	int action = CURL_POLL_NONE;
+	if (conn->send_pipe->head)
+	  action |= CURL_POLL_OUT;
+	if (conn->recv_pipe->head)
+	  action |= CURL_POLL_IN;
+    vec.push_back(std::make_pair(data->mFd, action));
+  }
+}
+
+//static
+fd_set AIPerService::s_read_fd_set;
+fd_set AIPerService::s_write_fd_set;
+
+//static
+void AIPerService::current_fdsets(fd_set* read_fd_set, fd_set* write_fd_set)
+{
+  if (read_fd_set)
+	memcpy(&s_read_fd_set, read_fd_set, sizeof(s_read_fd_set));
+  else
+	memset(&s_read_fd_set, 0, sizeof(s_read_fd_set));
+  if (write_fd_set)
+	memcpy(&s_write_fd_set, write_fd_set, sizeof(s_write_fd_set));
+  else
+	memset(&s_write_fd_set, 0, sizeof(s_write_fd_set));
+}
+
+#endif

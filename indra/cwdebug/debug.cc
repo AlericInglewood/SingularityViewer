@@ -453,7 +453,7 @@ void stop_recording_backtraces(void)
 
 } // namespace debug
 
-#if CWDEBUG_ALLOC
+#if CWDEBUG_ALLOC && CWDEBUG_LOCATION
 // These can be called from gdb.
 void cwdebug_start()
 {

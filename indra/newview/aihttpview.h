@@ -67,6 +67,9 @@ class AIHTTPView : public LLContainerView
 
   public:
 	static U64 getTime_40ms(void) { return sTime_40ms; }
+#ifdef CWDEBUG
+	bool show_fds;
+#endif
 };
 
 extern AIHTTPView *gHttpView;

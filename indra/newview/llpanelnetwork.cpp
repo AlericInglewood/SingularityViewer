@@ -158,7 +158,16 @@ void LLPanelNetwork::onClickClearCache(void*)
 {
 	// flag client cache for clearing next time the client runs
 	gSavedSettings.setBOOL("PurgeCacheOnNextStartup", TRUE);
-	LLNotificationsUtil::add("CacheWillClear");
+	if (gSavedSettings.getBOOL("PurgeCacheOnStartup"))
+	{
+	  llwarns << "User clicked on 'Clear Cache next startup' while they have PurgeCacheOnStartup set! Resetting PurgeCacheOnStartup." << llendl;
+	  gSavedSettings.setBOOL("PurgeCacheOnStartup", FALSE);
+	  LLNotificationsUtil::add("CacheClearReset");
+	}
+	else
+	{
+	  LLNotificationsUtil::add("CacheWillClear");
+	}
 }
 
 // static

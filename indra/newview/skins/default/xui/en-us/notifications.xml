@@ -1226,10 +1226,26 @@ Please select a history item to view.
   </notification>
 
   <notification
-   icon="notify.tga"
+   icon="alert.tga"
    name="CacheWillClear"
-   type="notify">
-    Cache will be cleared after you restart [APP_NAME].
+   type="alert">
+Cache will be cleared after you restart [APP_NAME].
+	<usetemplate
+	  ignoretext="Remind me that clearing the cache requires a viewer restart."
+	  name="okignore"
+	  yestext="Ok"/>
+  </notification>
+
+  <notification
+   icon="alertmodal.tga"
+   name="CacheClearReset"
+   type="alertmodal">
+The debug setting ClearCacheOnStartup was set! This caused your cache to clear EVERY relog, forever! It now has been reset.
+
+Your cache will be cleared once more the next time you restart [APP_NAME].
+    <usetemplate
+     name="okbutton"
+     yestext="Ok"/>
   </notification>
 
   <notification

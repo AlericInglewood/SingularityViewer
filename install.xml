@@ -310,9 +310,9 @@
           <key>linux64</key>
           <map>
             <key>md5sum</key>
-            <string>6d610caca171531d71b79075ebfa54eb</string>
+            <string>10ab8236b8513a672dd389748511d485</string>
             <key>url</key>
-            <uri>https://bitbucket.org/SingularityViewer/libraries/downloads/curl-7.38-linux64-20141020.tar.bz2</uri>
+            <uri>https://github.com/AlericInglewood/curl/releases/download/singu_20141105/curl-7.39.0-pipeline-fixes-linux64-20141105.tar.bz2</uri>
           </map>
           <key>windows</key>
           <map>

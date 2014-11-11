@@ -329,6 +329,7 @@ class CurlEasyRequest : public CurlEasyHandle {
 	LLPointer<curlthread::HTTPTimeout> mTimeout;// Timeout administration object associated with last created CurlSocketInfo.
 	bool mTimeoutIsOrphan;						// Set to true when mTimeout is not (yet) associated with a CurlSocketInfo.
 	bool mIsHttps;								// Set if the url starts with "https:".
+	bool mHostnameUnresolved;					// Set to true if the hostname of this request might not have been (DNS) resolved yet.
 #ifdef CWDEBUG
   public:
 	bool mDebugIsHeadOrGetMethod;
@@ -347,11 +348,14 @@ class CurlEasyRequest : public CurlEasyHandle {
 	LLPointer<curlthread::HTTPTimeout>& httptimeout(void) { if (!mTimeout) { create_timeout_object(); mTimeoutIsOrphan = true; } return mTimeout; }
 	// Return true if no data has been received on the latest socket (if any) for too long.
 	bool has_stalled(void) { return mTimeout && mTimeout->has_stalled(); }
+	// Accessors for mPerServicePtr.
+	AIPerServicePtr const& get_service_ptr(void) const { return mPerServicePtr; }
+	AIPerServicePtr& get_service_ptr(void) { return mPerServicePtr; }
 
   protected:
 	// This class may only be created as base class of BufferedCurlEasyRequest.
 	// Throws AICurlNoEasyHandle.
-	CurlEasyRequest(void) : mHeaders(NULL), mHandleEventsTarget(NULL), mContentLength(0), mResult(CURLE_FAILED_INIT), mTimeoutPolicy(NULL), mTimeoutIsOrphan(false)
+	CurlEasyRequest(void) : mHeaders(NULL), mHandleEventsTarget(NULL), mContentLength(0), mResult(CURLE_FAILED_INIT), mTimeoutPolicy(NULL), mTimeoutIsOrphan(false), mHostnameUnresolved(false)
 #ifdef CWDEBUG
 		, mDebugIsHeadOrGetMethod(false), mDebugHumanReadable(false)
 #endif
@@ -437,6 +441,7 @@ class BufferedCurlEasyRequest : public CurlEasyRequest {
 	std::string mReason;								// The "reason" from the same header line.
 	U32 mRequestTransferedBytes;
 	size_t mTotalRawBytes;								// Raw body data (still, possibly, compressed) received from the server so far.
+	int mUploadFinished;								// 0: not added, 1: added, 2: upload finished.
 	AIBufferedCurlEasyRequestEvents* mBufferEventsTarget;
 
   public:
@@ -485,6 +490,27 @@ class BufferedCurlEasyRequest : public CurlEasyRequest {
 
 	// Return true if any data was received.
 	bool received_data(void) const { return mTotalRawBytes > 0; }
+
+	// Called when this request caused AIPerService::mCapabilityType[mCapabilityType].mAddedEasyHandles to be incremented.
+	void incremented_service_added_counter(void) { llassert(!mUploadFinished); mUploadFinished = 1; }
+
+	// Called when this request is removed from the multi handle.
+	void reset_upload_finished(void) { mUploadFinished = 0; }
+
+	// Called when upload finished was detected.
+	void upload_finished(PerService_wat const& per_service_w)
+	{
+	  if (mUploadFinished == 1 &&
+		  (!mIsEventPoll || per_service_w->counted_event_polls() < 2)) // Only count the first event poll.
+	  {
+		mUploadFinished = 2;
+		per_service_w->upload_finished(mCapabilityType);
+	  }
+	}
+	void upload_finished(void) { if (mUploadFinished == 1) { upload_finished(PerService_wat(*mPerServicePtr)); } }
+
+	// Return true if upload finished was detected for a request that was counted as added.
+	bool is_upload_finished(void) const { return mUploadFinished == 2; }
 
 #ifdef CWDEBUG
 	// Connection accounting for debug purposes.
@@ -561,7 +587,7 @@ class CurlMultiHandle : public boost::noncopyable {
 // curl_multi_setopt may only be passed a long,
 inline CURLMcode CurlMultiHandle::setopt(CURLMoption option, long parameter)
 {
-  llassert(option == CURLMOPT_MAXCONNECTS || option == CURLMOPT_PIPELINING);
+  llassert(option == CURLMOPT_MAXCONNECTS || option == CURLMOPT_MAX_HOST_CONNECTIONS || option == CURLMOPT_PIPELINING);
   return check_multi_code(curl_multi_setopt(mMultiHandle, option, parameter));
 }
 

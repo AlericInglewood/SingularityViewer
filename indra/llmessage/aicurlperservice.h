@@ -51,6 +51,9 @@
 #include <boost/intrusive_ptr.hpp>
 #include "aithreadsafe.h"
 #include "aiaverage.h"
+#ifdef CWDEBUG
+#include <sys/select.h>		// fd_set
+#endif
 
 class AICurlEasyRequest;
 class AIPerService;
@@ -141,7 +144,6 @@ class AIPerService {
 	static U16 const ctf_success = 8;
 	static U16 const ctf_progress_mask = 0x70;
 	static U16 const ctf_progress_shift = 4;
-	static U16 const ctf_grey = 0x80;
 
 	struct CapabilityType {
 	  typedef std::deque<AICurlPrivate::BufferedCurlEasyRequestPtr> queued_request_type;
@@ -155,7 +157,8 @@ class AIPerService {
 	  											// ctf_full : Set to true when the queue is popped and then still isn't empty;
 												// ctf_starvation: Set to true when the queue was about to be popped but was already empty.
 												// ctf_success: Set to true when a curl request finished successfully.
-	  U32 mDownloading;							// The number of active easy handles with this service for which data was received.
+	  U16 mDownloading;							// The number of active easy handles with this service for which data was received.
+	  U16 mUploaded;							// The number of active easy handles with this service that finished uploading (slightly fuzzy, only used for the HTTP console).
 	  U16 mMaxUnfinishedRequests;				// The maximum number of accepted requests for this service and (approved) capability type, that didn't finish yet.
 	  U16 mMaxAddedEasyHandles;					// The maximum number of allowed concurrent active requests to the service of this capability type.
 
@@ -184,6 +187,7 @@ class AIPerService {
 	int mEstablishedConnections;				// Number of connected sockets to this service.
 
 	U32 mUsedCT;								// Bit mask with one bit per capability type. A '1' means the capability was in use since the last resetUsedCT().
+	U32 mUsedCTpersist;							// Same as mUsedCT but is never reset.
 	U32 mCTInUse;								// Bit mask with one bit per capability type. A '1' means the capability is in use right now.
 
 	// Approved non-HTTP pipeline requests until that are not in the command queue yet.
@@ -204,7 +208,8 @@ class AIPerService {
 	  {
 		mCTInUse |= bit;
 		mUsedCT |= bit;
-		if (mUsedCT != bit)					// and more than one CT use this service.
+		mUsedCTpersist |= bit;
+		if (mUsedCTpersist != bit)			// and more than one CT use this service.
 		{
 		  redivide_easy_handle_slots();
 		}
@@ -216,7 +221,7 @@ class AIPerService {
 	  if ((mCTInUse & bit) != 0)			// If this CT went from used to unused
 	  {
 		mCTInUse &= ~bit;
-		if (mCTInUse && mUsedCT != bit)		// and more than one CT use this service, and at least one is in use.
+		if (mCTInUse && mUsedCTpersist != bit)	// and more than one CT use this service, and at least one is in use.
 		{
 		  redivide_easy_handle_slots();
 		}
@@ -233,9 +238,10 @@ class AIPerService {
 	bool is_inuse(AICapabilityType capability_type) const { return (mCTInUse & CT2mask(capability_type)); }
 
 	static void resetUsed(void) { ResetUsed reset_used; copy_forEach(reset_used); }
-	U32 is_used(void) const { return mUsedCT; }						// Non-zero if this service was used for any capability type.
+	U32 is_used(void) const { return mUsedCT; }						// Non-zero if this service was used for any capability type since the HTTP console was (re)opened.
 	U32 is_inuse(void) const { return mCTInUse; }					// Non-zero if this service is in use for any capability type.
 
+	bool is_non_http_pipeline(void) const { return (mUsedCTpersist & (CT2mask(cap_inventory)|CT2mask(cap_other))); }
 	bool http_pipelining_detected(void) const { return mPipeliningDetected; }
 	bool is_http_pipeline(void) const { return mPipelineSupport; }
 	bool is_blacklisted(void) const { return mIsBlackListed; }
@@ -302,12 +308,14 @@ class AIPerService {
   public:
 	void added_to_command_queue(AICapabilityType capability_type) { if (!mPipelineSupport && is_approved(capability_type)) sApprovedNonHTTPPipelineRequests++; ++mCapabilityType[capability_type].mQueuedCommands; mark_inuse(capability_type); }
 	void removed_from_command_queue(AICapabilityType capability_type) { if (!mPipelineSupport && is_approved(capability_type)) --sApprovedNonHTTPPipelineRequests; --mCapabilityType[capability_type].mQueuedCommands; }
-	void added_to_multi_handle(AICapabilityType capability_type, bool event_poll);		// Called when an easy handle for this service has been added to the multi handle.
+	bool added_to_multi_handle(AICapabilityType capability_type, bool event_poll);		// Called when an easy handle for this service has been added to the multi handle.
 	void removed_from_multi_handle(AICapabilityType capability_type, bool event_poll,
-								   bool downloaded_something, bool success);			// Called when an easy handle for this service is removed again from the multi handle.
+								   bool downloaded_something, bool upload_finished, bool success);			// Called when an easy handle for this service is removed again from the multi handle.
 	void download_started(AICapabilityType capability_type) { ++mCapabilityType[capability_type].mDownloading; }
+	void upload_finished(AICapabilityType capability_type) { ++mCapabilityType[capability_type].mUploaded; }
 	bool throttled(AICapabilityType capability_type) const;		// Returns true if the maximum number of allowed requests for this service/capability type have been added to the multi handle.
 	bool nothing_added(AICapabilityType capability_type) const { return mCapabilityType[capability_type].mAddedEasyHandles == 0; }
+	int counted_event_polls(void) const { return mEventPolls; }
 
 	bool queue(AICurlEasyRequest const& easy_request, AICapabilityType capability_type, bool force_queuing = true);	// Add easy_request to the queue if queue is empty or force_queuing.
 	bool cancel(AICurlEasyRequest const& easy_request, AICapabilityType capability_type);							// Remove easy_request from the queue (if it's there).
@@ -341,6 +349,27 @@ class AIPerService {
 		void honored(void);
 		void not_honored(void);
 	};
+
+#ifdef CWDEBUG
+	typedef std::map<void*, AIPerServicePtr> conn_map_type;
+	typedef std::map<void*, void*> conn_to_data_type;
+
+	static conn_map_type s_conn_map;
+	conn_to_data_type m_conn_to_data;
+
+	static void update_conn(AIPerServicePtr const& per_service, void* conn, int s);
+	static void destroy_conn(void* conn);
+	void update_curl_conn(void* conn, int s);
+
+	void get_fd_list(std::vector<std::pair<int, int> >& vec) const;
+
+	static fd_set s_read_fd_set;
+	static fd_set s_write_fd_set;
+	static void current_fdsets(fd_set* read_fd_set, fd_set* write_fd_set);
+
+	static bool is_watched_read(int fd) { return FD_ISSET(fd, &s_read_fd_set); }
+	static bool is_watched_write(int fd) { return FD_ISSET(fd, &s_write_fd_set); }
+#endif
 
 	// The two following functions are static and have the AIPerService object passed
 	// as first argument as an AIPerServicePtr because that avoids the need of having

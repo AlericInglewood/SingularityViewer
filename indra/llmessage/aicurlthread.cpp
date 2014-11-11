@@ -849,6 +849,7 @@ void CurlSocketInfo::set_action(int action)
 	  {
 		// If CURL_POLL_OUT is removed and CURLINFO_PRETRANSFER_TIME is already set, then we have nothing more to send apparently.
 		mTimeout->upload_finished();		// Update timeout administration.
+		curl_easy_request_w->upload_finished();
 	  }
 	}
   }
@@ -1438,6 +1439,7 @@ void AICurlThread::run(void)
   {
 	AICurlMultiHandle_wat multi_handle_w(AICurlMultiHandle::getInstance());
 	multi_handle_w->set_pipeline_options();
+	multi_handle_w->upload_finished_poll(true);	// Kick-start the timer.
 	while(mRunning)
 	{
 	  // If mRunning is true then we can only get here if mWakeUpFd != CURL_SOCKET_BAD.
@@ -1545,6 +1547,7 @@ void AICurlThread::run(void)
 		++same_count;
 	  }
 #endif
+	  AIPerService::current_fdsets(read_fd_set, write_fd_set);
 #endif
 	  ready = select(nfds, read_fd_set, write_fd_set, NULL, &timeout);
 	  mWakeUpFlagMutex.unlock();
@@ -1691,12 +1694,15 @@ MultiHandle::MultiHandle(void) : mTimeout(-1), mReadPollSet(NULL), mWritePollSet
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_TIMERFUNCTION, &MultiHandle::timer_callback));
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_TIMERDATA, this));
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_PIPELINING, 1L));
+  check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_PIPELINE_POLICY_FUNCTION, &MultiHandle::pipeline_policy_callback));
 }
 
 void MultiHandle::set_pipeline_options(void)
 {
   long max_pipeline_length = CurlMaxPipelinedRequestsPerService;
   check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_MAX_PIPELINE_LENGTH, max_pipeline_length));
+  long max_host_connections = CurlConcurrentConnectionsPerService;
+  check_multi_code(curl_multi_setopt(mMultiHandle, CURLMOPT_MAX_HOST_CONNECTIONS, max_host_connections));
 }
 
 void MultiHandle::bl_update(std::string const& site_str, bool add)
@@ -1787,6 +1793,21 @@ int MultiHandle::socket_callback(CURL* easy, curl_socket_t s, int action, void* 
 #ifdef CWDEBUG
   ThreadSafeBufferedCurlEasyRequest* lockobj = NULL;
   curl_easy_getinfo(easy, CURLINFO_PRIVATE, &lockobj);
+  if (action == 1234567)
+  {
+	Dout(dc::warning, "RECEIVED HACK socket_callback(" << easy << ", " << s << ", " << action << ", " << userp << ", conn = " << socketp << ")!");
+	llassert(lockobj == userp);
+	if (lockobj && s >= -1)
+	{
+	  AIPerService::update_conn(AICurlEasyRequest_wat(*lockobj)->get_service_ptr(), socketp, s);
+	}
+	else
+	{
+	  llassert(s == -2);
+	  AIPerService::destroy_conn(socketp);
+	}
+	return 0;
+  }
   DoutEntering(dc::curl, "MultiHandle::socket_callback((CURL*)" << (void*)easy << ", " << s <<
 	  ", " << action_str(action) << ", " << (void*)userp << ", " << (void*)socketp << ") [CURLINFO_PRIVATE = " << (void*)lockobj << "]");
 #endif
@@ -1896,7 +1917,10 @@ bool MultiHandle::add_easy_request(AICurlEasyRequest const& easy_request, bool f
 	  curl_easy_request_w->set_timeout_opts();
 	  if (curl_easy_request_w->add_handle_to_multi(curl_easy_request_w, mMultiHandle) == CURLM_OK)
 	  {
-		per_service_w->added_to_multi_handle(capability_type, event_poll);	// (About to be) added to mAddedEasyRequests.
+		if (per_service_w->added_to_multi_handle(capability_type, event_poll))	// (About to be) added to mAddedEasyRequests.
+		{
+		  curl_easy_request_w->incremented_service_added_counter();
+		}
 		throttled = false;						// Fall through...
 	  }
 	}
@@ -1932,6 +1956,7 @@ CURLMcode MultiHandle::remove_easy_request(AICurlEasyRequest const& easy_request
 {
   AICurlEasyRequest_wat easy_request_w(*easy_request);
   addedEasyRequests_type::iterator iter = mAddedEasyRequests.find(easy_request);
+  llassert(iter != mAddedEasyRequests.end());
   if (iter == mAddedEasyRequests.end())
   {
 	// The request could be queued.
@@ -1960,12 +1985,14 @@ CURLMcode MultiHandle::remove_easy_request(addedEasyRequests_type::iterator cons
   {
 	AICurlEasyRequest_wat curl_easy_request_w(**iter);
 	bool downloaded_something = curl_easy_request_w->received_data();
+	bool is_upload_finished = curl_easy_request_w->is_upload_finished();
 	bool success = curl_easy_request_w->success();
 	res = curl_easy_request_w->remove_handle_from_multi(curl_easy_request_w, mMultiHandle);
 	capability_type = curl_easy_request_w->capability_type();
 	event_poll = curl_easy_request_w->is_event_poll();
 	per_service = curl_easy_request_w->getPerServicePtr();
-	PerService_wat(*per_service)->removed_from_multi_handle(capability_type, event_poll, downloaded_something, success);		// (About to be) removed from mAddedEasyRequests.
+	PerService_wat(*per_service)->removed_from_multi_handle(capability_type, event_poll, downloaded_something, is_upload_finished, success);		// (About to be) removed from mAddedEasyRequests.
+	curl_easy_request_w->reset_upload_finished();
 #ifdef SHOW_ASSERT
 	curl_easy_request_w->mRemovedPerCommand = as_per_command;
 #endif
@@ -1986,14 +2013,38 @@ CURLMcode MultiHandle::remove_easy_request(addedEasyRequests_type::iterator cons
   return res;
 }
 
+void MultiHandle::upload_finished_poll(bool create)
+{
+  if (create)
+  {
+	mUploadFinishedPollTimer.create(1000, boost::bind(&MultiHandle::upload_finished_poll, this, true));
+  }
+  for (addedEasyRequests_type::iterator iter = mAddedEasyRequests.begin(); iter != mAddedEasyRequests.end(); ++iter)
+  {
+	AICurlEasyRequest_wat curl_easy_request_w(**iter);
+	if (!curl_easy_request_w->is_upload_finished())
+	{
+	  double  pretransfer_time;
+	  curl_easy_request_w->getinfo(CURLINFO_PRETRANSFER_TIME, &pretransfer_time);
+	  if (pretransfer_time > 0.0)	// This value is set directly after uploading everything.
+	  {
+		curl_easy_request_w->httptimeout()->upload_finished();
+		curl_easy_request_w->upload_finished();
+	  }
+	}
+  }
+}
+
 void MultiHandle::check_msg_queue(void)
 {
   CURLMsg const* msg;
   int msgs_left;
+  bool msgs_done = false;
   while ((msg = info_read(&msgs_left)))
   {
 	if (msg->msg == CURLMSG_DONE)
 	{
+	  msgs_done = true;
 	  CURL* easy = msg->easy_handle;
 	  ThreadSafeBufferedCurlEasyRequest* ptr;
 	  CURLcode rese = curl_easy_getinfo(easy, CURLINFO_PRIVATE, &ptr);
@@ -2019,6 +2070,11 @@ void MultiHandle::check_msg_queue(void)
 	  }
 	  // Destruction of easy_request at this point, causes the CurlEasyRequest to be deleted.
 	}
+  }
+  if (msgs_done)
+  {
+	// Do an extra poll every time a request finished.
+	upload_finished_poll(false);
   }
 }
 
@@ -2085,6 +2141,53 @@ void MultiHandle::finish_easy_request(AICurlEasyRequest const& easy_request, CUR
 #endif
   // Signal that this easy handle finished.
   curl_easy_request_w->done(curl_easy_request_w, result);
+}
+
+//static
+void MultiHandle::pipeline_policy_callback(char const* hostname, int port, curl_pipeline_policy* policy, void* userp)
+{
+  Dout(dc::curl, "Calling MultiHandle::pipeline_policy_callback(" << hostname << ":" << port << ")");
+  std::ostringstream canonical_servicename;
+  for (char const* p = hostname; *p; ++p)
+  {
+	char c = *p;
+#if APR_CHARSET_EBCDIC
+#error Not implemented
+#else
+	if (c >= 'A' && c <= 'Z')
+	  c += ('a' - 'A');
+#endif
+	canonical_servicename << c;
+  }
+  // The canoncial servicenames do not have :80 appended.
+  if (port != 80)
+  {
+	canonical_servicename << ':' << port;
+  }
+  PerService_wat per_service_w(*AIPerService::instance(canonical_servicename.str()));
+  if (per_service_w->is_blacklisted() ||
+	  // Force non-http pipelining for services that WE don't trust to do http pipelining.
+	  per_service_w->is_non_http_pipeline() ||
+	  (per_service_w->http_pipelining_detected() && !per_service_w->is_http_pipeline()))
+  {
+	policy->flags |= CURL_BLACKLISTED;
+	Dout(dc::curl, "Enforcing disabling of HTTP pipelining for " << hostname);
+  }
+  if (per_service_w->http_pipelining_detected() && per_service_w->is_http_pipeline())
+  {
+#ifdef CWDEBUG
+	if (!(policy->flags & CURL_SUPPORTS_PIPELINING))
+	{
+	  Dout(dc::curl|continued_cf, "Turning on HTTP pipelining for " << hostname);
+	  if ((policy->flags & CURL_BLACKLISTED))
+		Dout(dc::continued, ", which - however- is blacklisted.");
+	  Dout(dc::finish, "");
+	}
+#endif
+	policy->flags |= CURL_SUPPORTS_PIPELINING;
+	Dout(dc::curl, "Service \"" << canonical_servicename.str() << "\" is known - policy flags set to " << policy->flags);
+	policy->max_host_connections = 2;
+  }
 }
 
 } // namespace curlthread
@@ -2344,8 +2447,10 @@ void BufferedCurlEasyRequest::update_body_bandwidth(void)
   size_t raw_bytes = total_raw_bytes - mTotalRawBytes;
   if (mTotalRawBytes == 0 && total_raw_bytes > 0)
   {
-	// Update service/capability type administration for the HTTP Debug Console.
 	PerService_wat per_service_w(*mPerServicePtr);
+	// In case we missed detection before.
+	upload_finished(per_service_w);
+	// Update service/capability type administration for the HTTP Debug Console.
 	per_service_w->download_started(mCapabilityType);
   }
   mTotalRawBytes = total_raw_bytes;
@@ -2379,6 +2484,12 @@ size_t BufferedCurlEasyRequest::curlReadCallback(char* data, size_t size, size_t
   {
 	// Transfer timed out. Return CURL_READFUNC_ABORT which will abort with error CURLE_ABORTED_BY_CALLBACK.
 	return CURL_READFUNC_ABORT;
+  }
+  // We sent data, so this hostname has certainly resolved.
+  if (self_w->mHostnameUnresolved)
+  {
+	self_w->mHostnameUnresolved = false;	// Only call hostname_resolved() one time.
+	AIHTTPTimeoutPolicy::hostname_resolved(self_w->getLowercaseHostname());
   }
   return bytes;					// Return the amount actually read (might be lowered by readAfter()).
 }
@@ -2509,6 +2620,7 @@ int BufferedCurlEasyRequest::curlProgressCallback(void* user_data, double dltota
 	{
 	  AICurlEasyRequest_wat self_w(*lockobj);
 	  self_w->httptimeout()->upload_finished();
+	  self_w->upload_finished();
 	}
   }
 
@@ -2523,6 +2635,8 @@ int debug_callback(CURL* handle, curl_infotype infotype, char* buf, size_t size,
   {
 	request->mDebugIsHeadOrGetMethod = true;
   }
+  bool conn_closed = false;
+  int connectionnr = 0;
   if (infotype == CURLINFO_TEXT)
   {
 	if (!strncmp(buf, "Connected to", 12))				// Connected to foo.net (1.1.1.1) port 80 (#553)\n
@@ -2535,7 +2649,6 @@ int debug_callback(CURL* handle, curl_infotype infotype, char* buf, size_t size,
 	  }
 	  ++n;
 	  llassert(std::isdigit(buf[n]));
-	  int connectionnr = 0;
 	  do
 	  {
 		connectionnr *= 10;
@@ -2556,7 +2669,6 @@ int debug_callback(CURL* handle, curl_infotype infotype, char* buf, size_t size,
 		++n;
 		llassert(n < size);
 	  }
-	  int connectionnr = 0;
 	  do
 	  {
 		connectionnr *= 10;
@@ -2567,13 +2679,15 @@ int debug_callback(CURL* handle, curl_infotype infotype, char* buf, size_t size,
 	  while (std::isdigit(buf[n]));
 	  llassert(buf[n] == '\n');
 	  // A connection was closed.
-	  request->connection_closed(connectionnr);
+	  conn_closed = true;
 	}
   }
 
 #ifdef DEBUG_CURLIO
   if (!debug_curl_print_debug(handle))
   {
+	if (conn_closed)
+	  request->connection_closed(connectionnr);
 	return 0;
   }
 #endif
@@ -2665,6 +2779,8 @@ int debug_callback(CURL* handle, curl_infotype infotype, char* buf, size_t size,
 	LibcwDoutStream << size << " bytes";
   LibcwDoutScopeEnd;
   libcw_do.pop_marker();
+  if (conn_closed)
+	request->connection_closed(connectionnr);
   return 0;
 }
 #endif // CWDEBUG
@@ -2844,6 +2960,7 @@ bool handleCurlConcurrentConnectionsPerService(LLSD const& newvalue)
   {
 	int increment = new_concurrent_connections - CurlConcurrentConnectionsPerService;
 	CurlConcurrentConnectionsPerService = new_concurrent_connections;
+	command_queue_wat(command_queue)->commands.push_back(cmd_refresh_pipeline_options);
 	AIPerService::adjust_max_added_easy_handles(increment, false);
 	llinfos << "CurlConcurrentConnectionsPerService set to " << CurlConcurrentConnectionsPerService << llendl;
   }

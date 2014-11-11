@@ -36,7 +36,7 @@
 // AICurlTimer timer;
 // ...
 // // In curl thread (after successful construction is guaranteed).
-// timer.create(5.5, boost::bind(&the_callback, <optional params>));	// Call the_callback(<optional params>) in 5.5 seconds.
+// timer.create(5500, boost::bind(&the_callback, <optional params>));	// Call the_callback(<optional params>) in 5.5 seconds.
 //
 // The callback function is always called by the curl thread.
 //
