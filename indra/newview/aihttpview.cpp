@@ -219,12 +219,12 @@ void AIGLHTTPHeaderBar::draw(void)
   height -= sLineHeight;
   start = h_offset;
   text = "Service (host:port)";
+  LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, LLColor4::green, LLFontGL::LEFT, LLFontGL::TOP);
+  start += LLFontGL::getFontMonospace()->getWidth(text);
   // This must match AICapabilityType!
   static char const* caption[number_of_capability_types] = {
 	" | Textures", " | Inventory", " | Mesh", " | Other"
   };
-  LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, LLColor4::green, LLFontGL::LEFT, LLFontGL::TOP);
-  start += LLFontGL::getFontMonospace()->getWidth(text);
   for (int col = ct_col; col < ct_col + number_of_capability_types; ++col)
   {
 	start = mHTTPView->updateColumn(col, start);
