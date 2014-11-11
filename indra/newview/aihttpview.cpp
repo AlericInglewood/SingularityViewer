@@ -66,7 +66,12 @@ class AIServiceBar : public LLView
 	/*virtual*/ LLRect getRequiredRect(void);
 };
 
+#ifdef CWDEBUG
+int const fd_col = 0;
+int const ct_col = fd_col + 1;
+#else
 int const ct_col = 0;
+#endif
 int const mc_col = ct_col + number_of_capability_types;		// Maximum connections column.
 int const bw_col = mc_col + 1;								// Bandwidth column.
 
@@ -78,6 +83,16 @@ void AIServiceBar::draw()
   LLFontGL::getFontMonospace()->renderUTF8(mName, 0, start, height, text_color, LLFontGL::LEFT, LLFontGL::TOP);
   start += LLFontGL::getFontMonospace()->getWidth(mName);
   std::string text;
+#ifdef CWDEBUG
+  if (mHTTPView->show_fds)
+  {
+	start = mHTTPView->updateColumn(fd_col, start);
+	text = " |";
+	LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, text_color, LLFontGL::LEFT, LLFontGL::TOP);
+	start += LLFontGL::getFontMonospace()->getWidth(text);
+  }
+  std::vector<std::pair<int, int> > needed_fds;
+#endif
   AIPerService::CapabilityType* cts;
   U32 is_used;
   U32 is_inuse;
@@ -96,7 +111,43 @@ void AIServiceBar::draw()
 	max_total_added_easy_handles = per_service_r->mPipeliningDetected ? per_service_r->mMaxTotalAddedEasyHandles : 1;
 	bandwidth = per_service_r->bandwidth().truncateData(AIHTTPView::getTime_40ms());
 	cts = &per_service_r->mCapabilityType[0];	// Not thread-safe, but we're only reading from it and only using the results to show in a debug console.
+#ifdef CWDEBUG
+	if (mHTTPView->show_fds)
+	{
+	  per_service_r->get_fd_list(needed_fds);
+	}
+#endif
   }
+#ifdef CWDEBUG
+  if (mHTTPView->show_fds)
+  {
+	for (std::vector<std::pair<int, int> >::iterator iter = needed_fds.begin(); iter != needed_fds.end(); ++iter)
+	{
+	  text = llformat(" %d:", iter->first);
+	  LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, text_color, LLFontGL::LEFT, LLFontGL::TOP);
+	  start += LLFontGL::getFontMonospace()->getWidth(text);
+	  int needed = iter->second;
+	  int watched = (AIPerService::is_watched_write(iter->first) ? CURL_POLL_OUT : CURL_POLL_NONE) |
+					(AIPerService::is_watched_read(iter->first) ? CURL_POLL_IN : CURL_POLL_NONE);
+	  int either = watched | needed;
+	  if ((either & CURL_POLL_OUT))
+		text = "w";
+	  else
+		text = "-";
+	  LLColor4 color;
+	  color = (needed & ~watched & CURL_POLL_OUT) ? LLColor4::red : text_color;
+	  LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, color, LLFontGL::LEFT, LLFontGL::TOP);
+	  start += LLFontGL::getFontMonospace()->getWidth(text);
+	  if ((either & CURL_POLL_IN))
+		text = "r";
+	  else
+		text = "-";
+	  color = (needed & ~watched & CURL_POLL_IN) ? LLColor4::red : text_color;
+	  LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, color, LLFontGL::LEFT, LLFontGL::TOP);
+	  start += LLFontGL::getFontMonospace()->getWidth(text);
+	}
+  }
+#endif
   for (int col = ct_col; col < ct_col + number_of_capability_types; ++col)
   {
 	AICapabilityType capability_type = static_cast<AICapabilityType>(col - ct_col);
@@ -221,6 +272,15 @@ void AIGLHTTPHeaderBar::draw(void)
   text = "Service (host:port)";
   LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, LLColor4::green, LLFontGL::LEFT, LLFontGL::TOP);
   start += LLFontGL::getFontMonospace()->getWidth(text);
+#ifdef CWDEBUG
+  start = mHTTPView->updateColumn(fd_col, start);
+  if (mHTTPView->show_fds)
+  {
+	text = " | fd";
+	LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, LLColor4::green, LLFontGL::LEFT, LLFontGL::TOP);
+	start += LLFontGL::getFontMonospace()->getWidth(text);
+  }
+#endif
   // This must match AICapabilityType!
   static char const* caption[number_of_capability_types] = {
 	" | Textures", " | Inventory", " | Mesh", " | Other"
@@ -270,6 +330,9 @@ LLRect AIGLHTTPHeaderBar::getRequiredRect()
 
 AIHTTPView::AIHTTPView(AIHTTPView::Params const& p) :
 	LLContainerView(p), mGLHTTPHeaderBar(NULL), mWidth(200)
+#ifdef CWDEBUG
+	, show_fds(false)
+#endif
 {
   setVisible(FALSE);
   setRectAlpha(0.5);
@@ -306,6 +369,9 @@ void AIHTTPView::setVisible(BOOL visible)
 	if (visible && visible != getVisible())
 		AIPerService::resetUsed();
 	LLContainerView::setVisible(visible);
+#ifdef CWDEBUG
+	show_fds = !AIPerService::s_conn_map.empty();
+#endif
 }
 
 U64 AIHTTPView::sTime_40ms;

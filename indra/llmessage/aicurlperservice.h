@@ -51,6 +51,9 @@
 #include <boost/intrusive_ptr.hpp>
 #include "aithreadsafe.h"
 #include "aiaverage.h"
+#ifdef CWDEBUG
+#include <sys/select.h>		// fd_set
+#endif
 
 class AICurlEasyRequest;
 class AIPerService;
@@ -346,6 +349,27 @@ class AIPerService {
 		void honored(void);
 		void not_honored(void);
 	};
+
+#ifdef CWDEBUG
+	typedef std::map<void*, AIPerServicePtr> conn_map_type;
+	typedef std::map<void*, void*> conn_to_data_type;
+
+	static conn_map_type s_conn_map;
+	conn_to_data_type m_conn_to_data;
+
+	static void update_conn(AIPerServicePtr const& per_service, void* conn, int s);
+	static void destroy_conn(void* conn);
+	void update_curl_conn(void* conn, int s);
+
+	void get_fd_list(std::vector<std::pair<int, int> >& vec) const;
+
+	static fd_set s_read_fd_set;
+	static fd_set s_write_fd_set;
+	static void current_fdsets(fd_set* read_fd_set, fd_set* write_fd_set);
+
+	static bool is_watched_read(int fd) { return FD_ISSET(fd, &s_read_fd_set); }
+	static bool is_watched_write(int fd) { return FD_ISSET(fd, &s_write_fd_set); }
+#endif
 
 	// The two following functions are static and have the AIPerService object passed
 	// as first argument as an AIPerServicePtr because that avoids the need of having

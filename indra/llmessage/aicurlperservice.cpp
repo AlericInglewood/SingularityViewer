@@ -43,6 +43,9 @@
 #include "aicurlperservice.h"
 #include "aicurlthread.h"
 #include "llcontrol.h"
+#ifdef CWDEBUG
+#include <curl/curl.h>	// curl_socket_t
+#endif
 
 AIPerService::threadsafe_instance_map_type AIPerService::sInstanceMap;
 LLAtomicU32 AIPerService::sApprovedNonHTTPPipelineRequests;
@@ -736,3 +739,140 @@ void AIPerService::set_http_pipeline(bool enable)
   }
   mPipeliningDetected = true;
 }
+
+#ifdef CWDEBUG
+extern "C" {
+
+typedef void (*curl_llist_dtor)(void *, void *);
+
+struct curl_llist_element {
+  void *ptr;
+
+  struct curl_llist_element *prev;
+  struct curl_llist_element *next;
+};
+
+struct curl_llist {
+  struct curl_llist_element *head;
+  struct curl_llist_element *tail;
+
+  curl_llist_dtor dtor;
+
+  size_t size;
+};
+
+struct connectdata {
+  long connection_id; /* Contains a unique number to make it easier to
+                         track the connections in the log output */
+  curl_socket_t sock[2]; /* two sockets, the second is used for the data
+                            transfer when doing FTP */
+  struct curl_llist *send_pipe; /* List of handles waiting to
+                                   send on this pipeline */
+  struct curl_llist *recv_pipe; /* List of handles waiting to read
+                                   their responses on this pipeline */
+};
+
+} // extern "C"
+
+//static
+AIPerService::conn_map_type AIPerService::s_conn_map;
+
+//static
+void AIPerService::update_conn(AIPerServicePtr const& per_service, void* conn, int s)
+{
+  llassert(s >= -1);
+  conn_map_type::iterator iter = s_conn_map.find(conn);
+  if (iter == s_conn_map.end())
+  {
+	s_conn_map[conn] = per_service;
+	PerService_wat per_service_w(*per_service);
+	per_service_w->update_curl_conn(conn, -1);
+	if (s >= 0)
+	{
+	  per_service_w->update_curl_conn(conn, s);
+	}
+  }
+  else
+  {
+	llassert(s >= 0);
+	llassert(per_service == iter->second);
+	PerService_wat per_service_w(*per_service);
+	per_service_w->update_curl_conn(conn, s);
+  }
+}
+
+//static
+void AIPerService::destroy_conn(void* conn)
+{
+  conn_map_type::iterator iter = s_conn_map.find(conn);
+  llassert(iter != s_conn_map.end());
+  PerService_wat(*iter->second)->update_curl_conn(conn, -2);
+  s_conn_map.erase(iter);
+}
+
+struct ConnData {
+	ConnData(void) : mFd(-1) { }
+	int mFd;
+};
+
+// This is a horrible hack - and needs a specially hacked libcurl
+// that abuses the socket callback to inform us of connection updates.
+// If s == -1 : A new conn was created, connection in progress.
+// If s >= 0  : A connection is established on socket s.
+// If s == -2 : The conn is destructed.
+void AIPerService::update_curl_conn(void* userp, int s)
+{
+  struct connectdata *conn = static_cast<struct connectdata *>(userp);
+  if (s == -1)
+  {
+	llassert(m_conn_to_data.find(userp) == m_conn_to_data.end());
+	m_conn_to_data[userp] = new ConnData;
+  }
+  else
+  {
+	conn_to_data_type::iterator iter = m_conn_to_data.find(userp);
+	llassert(iter != m_conn_to_data.end());
+	ConnData* data = static_cast<ConnData*>(iter->second);
+	if (s == -2)
+	{
+	  delete data;
+	  m_conn_to_data.erase(iter);
+	  return;
+	}
+	data->mFd = s;
+  }
+}
+
+void AIPerService::get_fd_list(std::vector<std::pair<int, int> >& vec) const
+{
+  for (conn_to_data_type::const_iterator iter = m_conn_to_data.begin(); iter != m_conn_to_data.end(); ++iter)
+  {
+	struct connectdata *conn = static_cast<struct connectdata *>(iter->first);
+	ConnData* data = static_cast<ConnData*>(iter->second);
+	int action = CURL_POLL_NONE;
+	if (conn->send_pipe->head)
+	  action |= CURL_POLL_OUT;
+	if (conn->recv_pipe->head)
+	  action |= CURL_POLL_IN;
+    vec.push_back(std::make_pair(data->mFd, action));
+  }
+}
+
+//static
+fd_set AIPerService::s_read_fd_set;
+fd_set AIPerService::s_write_fd_set;
+
+//static
+void AIPerService::current_fdsets(fd_set* read_fd_set, fd_set* write_fd_set)
+{
+  if (read_fd_set)
+	memcpy(&s_read_fd_set, read_fd_set, sizeof(s_read_fd_set));
+  else
+	memset(&s_read_fd_set, 0, sizeof(s_read_fd_set));
+  if (write_fd_set)
+	memcpy(&s_write_fd_set, write_fd_set, sizeof(s_write_fd_set));
+  else
+	memset(&s_write_fd_set, 0, sizeof(s_write_fd_set));
+}
+
+#endif

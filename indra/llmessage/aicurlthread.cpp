@@ -1547,6 +1547,7 @@ void AICurlThread::run(void)
 		++same_count;
 	  }
 #endif
+	  AIPerService::current_fdsets(read_fd_set, write_fd_set);
 #endif
 	  ready = select(nfds, read_fd_set, write_fd_set, NULL, &timeout);
 	  mWakeUpFlagMutex.unlock();
@@ -1792,6 +1793,21 @@ int MultiHandle::socket_callback(CURL* easy, curl_socket_t s, int action, void* 
 #ifdef CWDEBUG
   ThreadSafeBufferedCurlEasyRequest* lockobj = NULL;
   curl_easy_getinfo(easy, CURLINFO_PRIVATE, &lockobj);
+  if (action == 1234567)
+  {
+	Dout(dc::warning, "RECEIVED HACK socket_callback(" << easy << ", " << s << ", " << action << ", " << userp << ", conn = " << socketp << ")!");
+	llassert(lockobj == userp);
+	if (lockobj && s >= -1)
+	{
+	  AIPerService::update_conn(AICurlEasyRequest_wat(*lockobj)->get_service_ptr(), socketp, s);
+	}
+	else
+	{
+	  llassert(s == -2);
+	  AIPerService::destroy_conn(socketp);
+	}
+	return 0;
+  }
   DoutEntering(dc::curl, "MultiHandle::socket_callback((CURL*)" << (void*)easy << ", " << s <<
 	  ", " << action_str(action) << ", " << (void*)userp << ", " << (void*)socketp << ") [CURLINFO_PRIVATE = " << (void*)lockobj << "]");
 #endif
