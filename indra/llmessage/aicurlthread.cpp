@@ -2589,6 +2589,8 @@ int debug_callback(CURL* handle, curl_infotype infotype, char* buf, size_t size,
   {
 	request->mDebugIsHeadOrGetMethod = true;
   }
+  bool conn_closed = false;
+  int connectionnr = 0;
   if (infotype == CURLINFO_TEXT)
   {
 	if (!strncmp(buf, "Connected to", 12))				// Connected to foo.net (1.1.1.1) port 80 (#553)\n
@@ -2601,7 +2603,6 @@ int debug_callback(CURL* handle, curl_infotype infotype, char* buf, size_t size,
 	  }
 	  ++n;
 	  llassert(std::isdigit(buf[n]));
-	  int connectionnr = 0;
 	  do
 	  {
 		connectionnr *= 10;
@@ -2622,7 +2623,6 @@ int debug_callback(CURL* handle, curl_infotype infotype, char* buf, size_t size,
 		++n;
 		llassert(n < size);
 	  }
-	  int connectionnr = 0;
 	  do
 	  {
 		connectionnr *= 10;
@@ -2633,13 +2633,15 @@ int debug_callback(CURL* handle, curl_infotype infotype, char* buf, size_t size,
 	  while (std::isdigit(buf[n]));
 	  llassert(buf[n] == '\n');
 	  // A connection was closed.
-	  request->connection_closed(connectionnr);
+	  conn_closed = true;
 	}
   }
 
 #ifdef DEBUG_CURLIO
   if (!debug_curl_print_debug(handle))
   {
+	if (conn_closed)
+	  request->connection_closed(connectionnr);
 	return 0;
   }
 #endif
@@ -2731,6 +2733,8 @@ int debug_callback(CURL* handle, curl_infotype infotype, char* buf, size_t size,
 	LibcwDoutStream << size << " bytes";
   LibcwDoutScopeEnd;
   libcw_do.pop_marker();
+  if (conn_closed)
+	request->connection_closed(connectionnr);
   return 0;
 }
 #endif // CWDEBUG

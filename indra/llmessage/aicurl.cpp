@@ -1412,7 +1412,7 @@ void BufferedCurlEasyRequest::connection_closed(int connectionnr)
   std::map<int, AIPerServicePtr>::iterator iter = sConnections.find(connectionnr);
   if (iter == sConnections.end())
   {
-	Dout(dc::curlio, (void*)get_lockobj() << "Closing connection that never connected (#" << connectionnr << ").");
+	Dout(dc::curlio, (void*)get_lockobj() << " Closing connection that never connected (#" << connectionnr << ").");
 	return;
   }
   PerService_rat per_service_r(*iter->second);
