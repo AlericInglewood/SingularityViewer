@@ -1439,6 +1439,7 @@ void AICurlThread::run(void)
   {
 	AICurlMultiHandle_wat multi_handle_w(AICurlMultiHandle::getInstance());
 	multi_handle_w->set_pipeline_options();
+	multi_handle_w->upload_finished_poll(true);	// Kick-start the timer.
 	while(mRunning)
 	{
 	  // If mRunning is true then we can only get here if mWakeUpFd != CURL_SOCKET_BAD.
@@ -1996,14 +1997,38 @@ CURLMcode MultiHandle::remove_easy_request(addedEasyRequests_type::iterator cons
   return res;
 }
 
+void MultiHandle::upload_finished_poll(bool create)
+{
+  if (create)
+  {
+	mUploadFinishedPollTimer.create(1000, boost::bind(&MultiHandle::upload_finished_poll, this, true));
+  }
+  for (addedEasyRequests_type::iterator iter = mAddedEasyRequests.begin(); iter != mAddedEasyRequests.end(); ++iter)
+  {
+	AICurlEasyRequest_wat curl_easy_request_w(**iter);
+	if (!curl_easy_request_w->is_upload_finished())
+	{
+	  double  pretransfer_time;
+	  curl_easy_request_w->getinfo(CURLINFO_PRETRANSFER_TIME, &pretransfer_time);
+	  if (pretransfer_time > 0.0)	// This value is set directly after uploading everything.
+	  {
+		curl_easy_request_w->httptimeout()->upload_finished();
+		curl_easy_request_w->upload_finished();
+	  }
+	}
+  }
+}
+
 void MultiHandle::check_msg_queue(void)
 {
   CURLMsg const* msg;
   int msgs_left;
+  bool msgs_done = false;
   while ((msg = info_read(&msgs_left)))
   {
 	if (msg->msg == CURLMSG_DONE)
 	{
+	  msgs_done = true;
 	  CURL* easy = msg->easy_handle;
 	  ThreadSafeBufferedCurlEasyRequest* ptr;
 	  CURLcode rese = curl_easy_getinfo(easy, CURLINFO_PRIVATE, &ptr);
@@ -2029,6 +2054,11 @@ void MultiHandle::check_msg_queue(void)
 	  }
 	  // Destruction of easy_request at this point, causes the CurlEasyRequest to be deleted.
 	}
+  }
+  if (msgs_done)
+  {
+	// Do an extra poll every time a request finished.
+	upload_finished_poll(false);
   }
 }
 
