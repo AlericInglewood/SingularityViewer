@@ -287,7 +287,7 @@ void LLHTTPClient::get(std::string const& url, LLSD const& query, ResponderPtr r
 // class LLHTTPClient::ResponderBase
 //
 
-LLHTTPClient::ResponderBase::ResponderBase(void) : mReferenceCount(0), mCode(CURLE_FAILED_INIT), mFinished(false)
+LLHTTPClient::ResponderBase::ResponderBase(void) : mReferenceCount(0), mCode(CURLE_FAILED_INIT), mFinished(false), mIsPipelining(false)
 {
 	DoutEntering(dc::curl, "AICurlInterface::Responder() with this = " << (void*)this);
 	AICurlInterface::Stats::ResponderBase_count++;

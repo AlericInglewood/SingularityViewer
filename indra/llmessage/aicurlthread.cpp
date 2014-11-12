@@ -2332,7 +2332,7 @@ void BufferedCurlEasyRequest::processOutput(void)
 		// Rewrite error to something understandable.
 		responseReason = llformat("Connection to \"%s\" stalled: download speed dropped below %u bytes/s for %u seconds (up till that point, %s received a total of %lu bytes). "
 			"To change these values, go to Advanced --> Debug Settings and change CurlTimeoutLowSpeedLimit and CurlTimeoutLowSpeedTime respectively.",
-			mResponder->getURL().c_str(), mResponder->getHTTPTimeoutPolicy().getLowSpeedLimit(), mResponder->getHTTPTimeoutPolicy().getLowSpeedTime(),
+			mResponder->getURL().c_str(), mResponder->HTTPTimeoutPolicy().getLowSpeedLimit(), mResponder->HTTPTimeoutPolicy().getLowSpeedTime(),
 			mResponder->getName(), mTotalRawBytes);
 	}
 	setopt(CURLOPT_FRESH_CONNECT, TRUE);

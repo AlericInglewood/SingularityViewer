@@ -275,7 +275,7 @@ bool LLURLRequest::configure(AICurlEasyRequest_wat const& curlEasyRequest_w)
 			// Don't verify host name if this is not an authentication request,
 			// so urls with scrubbed host names will work (improves DNS performance).
 			curlEasyRequest_w->setopt(CURLOPT_SSL_VERIFYHOST, (gNoVerifySSLCert || !mIsAuth) ? 0L : 2L);
-			curlEasyRequest_w->finalizeRequest(mURL, mResponder->getHTTPTimeoutPolicy(), this);
+			curlEasyRequest_w->finalizeRequest(mURL, mResponder, this);
 		}
 	}
 	return rv;

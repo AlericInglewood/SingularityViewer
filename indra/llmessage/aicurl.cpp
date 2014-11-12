@@ -59,6 +59,8 @@
 #include "aicurleasyrequeststatemachine.h"
 #include "aicurlperservice.h"
 
+extern AIHTTPTimeoutPolicy HTTP_pipelining_timeout;
+
 //==================================================================================
 // Debug Settings
 //
@@ -1121,9 +1123,9 @@ void CurlEasyRequest::applyDefaultOptions(void)
   );
 }
 
-void CurlEasyRequest::finalizeRequest(std::string const& url, AIHTTPTimeoutPolicy const& policy, AICurlEasyRequestStateMachine* state_machine)
+void CurlEasyRequest::finalizeRequest(std::string const& url, LLHTTPClient::ResponderPtr& responder, AICurlEasyRequestStateMachine* state_machine)
 {
-  DoutCurlEntering("CurlEasyRequest::finalizeRequest(\"" << url << "\", " << policy.name() << ", " << (void*)state_machine << ")");
+  DoutCurlEntering("CurlEasyRequest::finalizeRequest(\"" << url << "\", " << responder->HTTPTimeoutPolicy().name() << ", " << (void*)state_machine << ")");
   llassert(!mTimeoutPolicy);		// May only call finalizeRequest once!
   mResult = CURLE_FAILED_INIT;		// General error code; the final result code is stored here by MultiHandle::check_msg_queue when msg is CURLMSG_DONE.
   mIsHttps = strncmp(url.c_str(), "https:", 6) == 0;
@@ -1146,8 +1148,15 @@ void CurlEasyRequest::finalizeRequest(std::string const& url, AIHTTPTimeoutPolic
   setoptString(CURLOPT_URL, url);
   llassert(!mPerServicePtr);
   mLowercaseServicename = AIPerService::extract_canonical_servicename(url);
-  mTimeoutPolicy = &policy;
-  state_machine->setTotalDelayTimeout(policy.getTotalDelay());
+  // Set mPerServicePtr and change mTimeoutPolicy if it can do pipelining.
+  bool is_pipelining;
+  {
+	PerService_rat per_service_r(*getPerServicePtr());
+	is_pipelining= per_service_r->is_http_pipeline() && !per_service_r->is_blacklisted();
+  }
+  responder->setPipelining(is_pipelining);
+  mTimeoutPolicy = &responder->HTTPTimeoutPolicy();
+  state_machine->setTotalDelayTimeout(mTimeoutPolicy->getTotalDelay());
   // The following line is a bit tricky: we store a pointer to the object without increasing its reference count.
   // Of course we could increment the reference count, but that doesn't help much: if then this pointer would
   // get "lost" we'd have a memory leak. Either way we must make sure that it is impossible that this pointer
@@ -1172,7 +1181,7 @@ void CurlEasyRequest::set_timeout_opts(void)
 {
   // This sets mHostnameUnresolved (if the hostname might need a DNS lookup).
   U16 connect_timeout = mTimeoutPolicy->getConnectTimeout(getLowercaseHostname(), mHostnameUnresolved);
-  if (mIsHttps && connect_timeout < 30)
+  if (mIsHttps && connect_timeout < 30 && mTimeoutPolicy != &HTTP_pipelining_timeout)
   {
 	DoutCurl("Incrementing CURLOPT_CONNECTTIMEOUT of \"" << mTimeoutPolicy->name() << "\" from " << connect_timeout << " to 30 seconds.");
 	connect_timeout = 30;
