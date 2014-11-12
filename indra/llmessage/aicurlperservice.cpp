@@ -91,6 +91,7 @@ AIPerService::AIPerService(void) :
 		mEventPolls(0),
 		mEstablishedConnections(0),
 		mUsedCT(0),
+		mUsedCTpersist(0),
 		mCTInUse(0)
 {
 }
