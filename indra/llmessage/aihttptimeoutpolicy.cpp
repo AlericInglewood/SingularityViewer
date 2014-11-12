@@ -758,6 +758,14 @@ AIHTTPTimeoutPolicyBase reply_60s(AIHTTPTimeoutPolicyBase::getDebugSettingsCurlT
 	replyOp60s
 	);
 
+// Construct a timeout policy suited for HTTP pipelining.
+Transaction transactionOp65s(65);
+Reply replyOp15s_transactionOp65s(15, transactionOp65s);
+Speed speedOp10s_replyOp15s_transactionOp65s(10, 12500, replyOp15s_transactionOp65s);
+AIHTTPTimeoutPolicyBase lowspeed_10s_reply_15s_transfer_65s(AIHTTPTimeoutPolicyBase::getDebugSettingsCurlTimeout(),
+	speedOp10s_replyOp15s_transactionOp65s
+	);
+
 // End of policy definitions.
 //=======================================================================================================
 
@@ -943,6 +951,7 @@ P2(groupMemberDataResponder,					transfer_300s);
 P2(groupProposalBallotResponder,				transfer_300s);
 P(homeLocationResponder);
 P2(HTTPGetResponder,							reply_15s);
+P2(HTTP_pipelining,								lowspeed_10s_reply_15s_transfer_65s);
 P(iamHere);
 P(iamHereVoice);
 P2(inventoryModelFetchDescendentsResponder,		transfer_300s);

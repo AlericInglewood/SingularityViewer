@@ -51,6 +51,7 @@ class Injector;
 class AIEngine;
 
 extern AIHTTPTimeoutPolicy responderIgnore_timeout;
+extern AIHTTPTimeoutPolicy HTTP_pipelining_timeout;
 typedef struct _xmlrpc_request* XMLRPC_REQUEST;
 typedef struct _xmlrpc_value* XMLRPC_VALUE;
 extern AIEngine gMainThreadEngine;
@@ -184,10 +185,16 @@ public:
 		// Set when the transaction finished (with or without errors).
 		bool mFinished;
 
+		// Set when the service for this responder can do pipelining.
+		bool mIsPipelining;
+
 	public:
 		// Called to set the URL of the current request for this Responder,
 		// used only when printing debug output regarding activity of the Responder.
 		void setURL(std::string const& url);
+
+		// Called as soon as the service that this responder will use is known.
+		void setPipelining(bool pipelining) { mIsPipelining = pipelining; }
 
 		// Accessors.
 		std::string const& getURL(void) const { return mURL; }
@@ -288,12 +295,15 @@ public:
 		virtual AICapabilityType capability_type(void) const { return cap_other; }
 
 		// Timeout policy to use.
-		virtual AIHTTPTimeoutPolicy const& getHTTPTimeoutPolicy(void) const;
+		AIHTTPTimeoutPolicy const& HTTPTimeoutPolicy(void) const { return mIsPipelining ? const_cast<AIHTTPTimeoutPolicy const&>(HTTP_pipelining_timeout) : getHTTPTimeoutPolicy(); }
 
 		// The name of the derived responder object. For debugging purposes.
 		virtual char const* getName(void) const = 0;
 
 	protected:
+		// Non-HTTP pipelining timeout policy to use.
+		virtual AIHTTPTimeoutPolicy const& getHTTPTimeoutPolicy(void) const;
+
 		// Derived classes can override this to get the HTML headers that were received, when the message is completed.
 		// Only actually called for classes that implement a needsHeaders() that returns true.
 		virtual void completedHeaders(void)

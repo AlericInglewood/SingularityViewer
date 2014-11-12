@@ -288,7 +288,7 @@ class CurlEasyRequest : public CurlEasyHandle {
 
 	// Prepare the request for adding it to a multi session, or calling perform.
 	// This actually adds the headers that were collected with addHeader.
-	void finalizeRequest(std::string const& url, AIHTTPTimeoutPolicy const& policy, AICurlEasyRequestStateMachine* state_machine);
+	void finalizeRequest(std::string const& url, LLHTTPClient::ResponderPtr& responder, AICurlEasyRequestStateMachine* state_machine);
 
 	// Last second initialization. Called from MultiHandle::add_easy_request.
 	void set_timeout_opts(void);
