@@ -310,9 +310,9 @@
           <key>linux64</key>
           <map>
             <key>md5sum</key>
-            <string>10ab8236b8513a672dd389748511d485</string>
+            <string>f1ba9208c54f04036a1b035d3083b0bd</string>
             <key>url</key>
-            <uri>https://github.com/AlericInglewood/curl/releases/download/singu_20141105/curl-7.39.0-pipeline-fixes-linux64-20141105.tar.bz2</uri>
+			<uri>https://github.com/AlericInglewood/curl/releases/download/singu_20141114/curl-7.39.0-pipeline-fixes-linux64-20141114.tar.bz2</uri>
           </map>
           <key>windows</key>
           <map>
