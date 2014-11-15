@@ -1499,11 +1499,13 @@ void AICurlThread::run(void)
 	  bool libcurl_timeout = timeout_ms == 0 || (timeout_ms > 0 && !AICurlTimer::expiresBefore(timeout_ms));
 	  // If no curl timeout is set, sleep at most 4 seconds.
 	  if (LL_UNLIKELY(timeout_ms < 0))
-		timeout_ms = 4000;
-	  // Check if some AICurlTimer expires first.
-	  if (AICurlTimer::expiresBefore(timeout_ms))
 	  {
-		timeout_ms = AICurlTimer::nextExpiration();
+		timeout_ms = 4000;
+		// Check if some AICurlTimer expires first.
+		if (AICurlTimer::expiresBefore(timeout_ms))
+		{
+		  timeout_ms = AICurlTimer::nextExpiration();
+		}
 	  }
 	  // If we have to continue immediately, then just set a zero timeout, but only for 100 calls on a row;
 	  // after that start sleeping 1ms and later even 10ms (this should never happen).

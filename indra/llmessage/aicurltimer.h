@@ -38,11 +38,14 @@
 
 class AICurlTimer
 {
-  protected:
+  public:
 	typedef boost::signals2::signal<void (void)> signal_type;
 	typedef long deltams_type;
 
   private:
+	class AIRunningCurlTimer;
+	typedef std::multiset<AIRunningCurlTimer> timer_list_type;
+
 	// Use separate struct for this object because it is non-copyable.
 	struct Signal {
 		signal_type mSignal;
@@ -67,6 +70,15 @@ class AICurlTimer
 			  mCallback = new Signal;
 			  mCallback->mSignal.connect(slot);
 			}
+		// Initialize the final object in-place (called from Handle::init).
+		void init(Signal* callback) const
+			{
+			  // We may only call init() once.
+			  llassert(!mCallback);
+			  mCallback = callback;
+			}
+		// Extract the callback.
+		Signal* move(void) const { Signal* ret = mCallback; mCallback = NULL; return ret; }
 
 		// Order AICurlTimer::sTimerList so that the timer that expires first is up front.
 		friend bool operator<(AIRunningCurlTimer const& ft1, AIRunningCurlTimer const& ft2) { return ft1.mExpire < ft2.mExpire; }
@@ -83,7 +95,6 @@ class AICurlTimer
 #endif
 	};
 
-	typedef std::multiset<AIRunningCurlTimer> timer_list_type;
 	static timer_list_type sTimerList;			// List with all running timers.
 	static U64 sNextExpiration;					// Cache of smallest value in sTimerList.
 
@@ -110,6 +121,13 @@ class AICurlTimer
 			  mRunningTimer->init(slot);
 			}
 
+		// Actual initialization used by AICurlTimer::refresh.
+		void init(timer_list_type::iterator const& running_timer, Signal* callback)
+			{
+			  mRunningTimer = running_timer;
+			  mRunningTimer->init(callback);
+			}
+
 	  private:
 		// No assignment operator.
 	  	Handle& operator=(Handle const&) { return *this; }
@@ -132,6 +150,7 @@ class AICurlTimer
 	~AICurlTimer() { cancel(); }
 
 	void create(deltams_type expiration, signal_type::slot_type const& slot);
+	void refresh(deltams_type expiration);
 	void cancel(void);
 
 	bool isRunning(void) const { return mHandle.mRunningTimer != sTimerList.end(); }
