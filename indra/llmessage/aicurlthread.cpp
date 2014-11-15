@@ -2452,6 +2452,7 @@ size_t BufferedCurlEasyRequest::curlWriteCallback(char* data, size_t size, size_
 	// Transfer timed out. Return 0 which will abort with error CURLE_WRITE_ERROR.
 	return 0;
   }
+  self_w->set_bad_connection_timer(CurlPipelineMaxBodyStall, lockobj);
   return bytes;
 }
 

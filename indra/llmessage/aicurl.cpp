@@ -58,6 +58,7 @@
 #include "aihttptimeoutpolicy.h"
 #include "aicurleasyrequeststatemachine.h"
 #include "aicurlperservice.h"
+#include "aicurlthread.h"
 
 extern AIHTTPTimeoutPolicy HTTP_pipelining_timeout;
 
@@ -990,6 +991,7 @@ CurlEasyRequest::~CurlEasyRequest()
   {
 	 AIPerService::release(mPerServicePtr);
   }
+  mBadConnectionTimer.cancel();
   // This wasn't freed yet if the request never finished.
   curl_slist_free_all(mHeaders);
 }
@@ -1303,6 +1305,14 @@ bool CurlEasyRequest::removeFromPerServiceQueue(AICurlEasyRequest const& easy_re
 std::string CurlEasyRequest::getLowercaseHostname(void) const
 {
   return mLowercaseServicename.substr(0, mLowercaseServicename.find_last_of(':'));
+}
+
+//static
+void CurlEasyRequest::bad_connection(ThreadSafeBufferedCurlEasyRequest* lockobj)
+{
+  DoutEntering(dc::curl, "CurlEasyRequest::bad_connection(" << (void*)lockobj << ")");
+  AICurlMultiHandle_wat multi_handle_w(AICurlMultiHandle::getInstance());
+  multi_handle_w->remove_easy_request(AICurlEasyRequest(lockobj), false);
 }
 
 //-----------------------------------------------------------------------------
