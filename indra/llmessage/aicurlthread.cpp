@@ -2729,7 +2729,10 @@ int debug_callback(CURL* handle, curl_infotype infotype, char* buf, size_t size,
   if (infotype == CURLINFO_TEXT)
 	LibcwDoutStream.write(buf, size);
   else if (infotype == CURLINFO_HEADER_IN || infotype == CURLINFO_HEADER_OUT)
+  {
 	LibcwDoutStream << libcwd::buf2str(buf, size);
+	llassert(size > 0);
+  }
   else if (infotype == CURLINFO_DATA_IN)
   {
 	LibcwDoutStream << size << " bytes";
