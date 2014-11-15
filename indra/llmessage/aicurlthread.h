@@ -110,7 +110,7 @@ class MultiHandle : public CurlMultiHandle
 	int getTimeout(void) const { return mTimeout; }
 
 	// We slept delta_ms instead of mTimeout ms. Update mTimeout to be the remaining time.
-	void update_timeout(long delta_ms) { mTimeout -= delta_ms; }
+	void update_timeout(long delta_ms) { if (mTimeout >= 0) { llassert(mTimeout >= delta_ms); mTimeout -= delta_ms; } }
 
 	// This is called before sleeping, after calling (one or more times) socket_action.
 	void check_msg_queue(void);
@@ -133,6 +133,11 @@ class MultiHandle : public CurlMultiHandle
 };
 
 } // namespace curlthread
+
+extern U32 CurlPipelineConcurrentConnections;
+extern U32 CurlMaxPipelineLength;
+extern U32 CurlPipelineMaxBodyStall;
+
 } // namespace AICurlPrivate
 
 // Thread safe, noncopyable curl multi handle.

@@ -823,7 +823,6 @@ struct ConnData {
 // If s == -2 : The conn is destructed.
 void AIPerService::update_curl_conn(void* userp, int s)
 {
-  struct connectdata *conn = static_cast<struct connectdata *>(userp);
   if (s == -1)
   {
 	llassert(m_conn_to_data.find(userp) == m_conn_to_data.end());

@@ -5229,16 +5229,49 @@ This should be as low as possible, but too low may break functionality</string>
       <key>Value</key>
       <integer>8</integer>
     </map>
-    <key>CurlMaxPipelinedRequestsPerService</key>
+    <key>CurlPipelineConcurrentConnections</key>
     <map>
       <key>Comment</key>
-      <string>Maximum number of curl requests per host:port service that are in the HTTP pipeline. If you set this too high then your download speed will degrade (possibly come to a complete halt). It is high recommended to keep this at 8. This value is unused on grids that do not support HTTP pipelining; in that case see CurlConcurrentConnectionsPerService.</string>
+      <string>Maximum number of simultaneous curl connections per host that supports pipelining. This value is unused on grids that do not support HTTP pipelining; in that case see CurlConcurrentConnectionsPerService.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>4</integer>
+    </map>
+    <key>CurlMaxPipelineLength</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum number of curl requests in single HTTP pipeline connection. This value is unused on grids that do not support HTTP pipelining.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
       <string>U32</string>
       <key>Value</key>
       <integer>8</integer>
+    </map>
+    <key>CurlMaxPipelinedRequestsPerService</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum number of curl requests per host:port service that are in the HTTP pipeline. This value is unused on grids that do not support HTTP pipelining; in that case see CurlConcurrentConnectionsPerService.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>16</integer>
+    </map>
+    <key>CurlPipelineMaxBodyStall</key>
+    <map>
+      <key>Comment</key>
+      <string>The maximum time, in milliseconds, that we wait between received packets with body data before considering the connection dead and killing it.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <real>1000</real>
     </map>
     <key>CurlTimeoutDNSLookup</key>
     <map>

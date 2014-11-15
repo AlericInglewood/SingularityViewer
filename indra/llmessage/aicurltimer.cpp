@@ -70,6 +70,25 @@ void AICurlTimer::create(deltams_type expiration, signal_type::slot_type const& 
 	sNextExpiration = sTimerList.begin()->expiration();
 }
 
+void AICurlTimer::refresh(deltams_type expiration)
+{
+	// If not running, ignore this call.
+	if (mHandle.mRunningTimer != sTimerList.end())
+	{
+	  // Keep a copy of mHandle.mRunningTimer and the signal pointer.
+	  timer_list_type::iterator position = mHandle.mRunningTimer;
+	  // Reset mSignal in the old running timer so that it won't get deleted, and keep a copy.
+	  Signal* callback = mHandle.mRunningTimer->move();
+	  // Erase the old timer, advancing position to point to the next element.
+	  sTimerList.erase(position++);
+	  // Create a new AIRunningCurlTimer object with an updated expiration
+	  // and using the same callback. Insert it using position as hint.
+	  mHandle.init(sTimerList.insert(position, AIRunningCurlTimer(expiration, this)), callback);
+	  // Update sNextExpiration.
+	  sNextExpiration = sTimerList.begin()->expiration();
+	}
+}
+
 void AICurlTimer::cancel(void)
 {
     if (mHandle.mRunningTimer != sTimerList.end())

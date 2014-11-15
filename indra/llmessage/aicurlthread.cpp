@@ -211,6 +211,13 @@ int ioctlsocket(int fd, int, unsigned long* nonblocking_enable)
 
 namespace AICurlPrivate {
 
+// Cached value CurlPipelineConcurrentConnections.
+U32 CurlPipelineConcurrentConnections;
+// Cached value CurlMaxPipelineLength.
+U32 CurlMaxPipelineLength;
+// Cached value of CurlPipelineMaxBodyStall.
+U32 CurlPipelineMaxBodyStall;
+
 enum command_st {
   cmd_none,
   cmd_add,
@@ -712,6 +719,7 @@ bool MergeIterator::next(curl_socket_t& fd_out, int& ev_bitmask_out)
 	fd_out = rfd;
 	ev_bitmask_out = CURL_CSELECT_IN | CURL_CSELECT_OUT;
 	mReadPollSet->next();
+	mWritePollSet->next();
   }
   else if (wfd == CURL_SOCKET_BAD || (rfd != CURL_SOCKET_BAD && rfd < wfd))	// Use and increment smaller one, unless it's CURL_SOCKET_BAD.
   {
@@ -1498,11 +1506,13 @@ void AICurlThread::run(void)
 	  bool libcurl_timeout = timeout_ms == 0 || (timeout_ms > 0 && !AICurlTimer::expiresBefore(timeout_ms));
 	  // If no curl timeout is set, sleep at most 4 seconds.
 	  if (LL_UNLIKELY(timeout_ms < 0))
-		timeout_ms = 4000;
-	  // Check if some AICurlTimer expires first.
-	  if (AICurlTimer::expiresBefore(timeout_ms))
 	  {
-		timeout_ms = AICurlTimer::nextExpiration();
+		timeout_ms = 4000;
+		// Check if some AICurlTimer expires first.
+		if (AICurlTimer::expiresBefore(timeout_ms))
+		{
+		  timeout_ms = AICurlTimer::nextExpiration();
+		}
 	  }
 	  // If we have to continue immediately, then just set a zero timeout, but only for 100 calls on a row;
 	  // after that start sleeping 1ms and later even 10ms (this should never happen).
@@ -1930,7 +1940,7 @@ bool MultiHandle::add_easy_request(AICurlEasyRequest const& easy_request, bool f
 #ifdef SHOW_ASSERT
 	std::pair<addedEasyRequests_type::iterator, bool> res =
 #endif
-		mAddedEasyRequests.insert(easy_request);
+	mAddedEasyRequests.insert(easy_request);
 	llassert(res.second);						// May not have been added before.
 	sTotalAddedEasyHandles++;
 	llassert(sTotalAddedEasyHandles == mAddedEasyRequests.size());
@@ -2186,7 +2196,13 @@ void MultiHandle::pipeline_policy_callback(char const* hostname, int port, curl_
 #endif
 	policy->flags |= CURL_SUPPORTS_PIPELINING;
 	Dout(dc::curl, "Service \"" << canonical_servicename.str() << "\" is known - policy flags set to " << policy->flags);
-	policy->max_host_connections = 2;
+  }
+  if ((policy->flags & CURL_SUPPORTS_PIPELINING))
+  {
+	policy->max_host_connections = CurlPipelineConcurrentConnections;
+	policy->max_pipeline_length = CurlMaxPipelineLength;
+	Dout(dc::curl, "Service \"" << canonical_servicename.str() << "\" is pipelining - policy set to max_host_connections:" <<
+		policy->max_host_connections << ", max_pipeline_length:" << policy->max_pipeline_length);
   }
 }
 
@@ -2436,6 +2452,7 @@ size_t BufferedCurlEasyRequest::curlWriteCallback(char* data, size_t size, size_
 	// Transfer timed out. Return 0 which will abort with error CURLE_WRITE_ERROR.
 	return 0;
   }
+  self_w->set_bad_connection_timer(CurlPipelineMaxBodyStall, lockobj);
   return bytes;
 }
 
@@ -2729,7 +2746,10 @@ int debug_callback(CURL* handle, curl_infotype infotype, char* buf, size_t size,
   if (infotype == CURLINFO_TEXT)
 	LibcwDoutStream.write(buf, size);
   else if (infotype == CURLINFO_HEADER_IN || infotype == CURLINFO_HEADER_OUT)
+  {
 	LibcwDoutStream << libcwd::buf2str(buf, size);
+	llassert(size > 0);
+  }
   else if (infotype == CURLINFO_DATA_IN)
   {
 	LibcwDoutStream << size << " bytes";
@@ -2914,6 +2934,10 @@ namespace AICurlInterface {
 
 LLControlGroup* sConfigGroup;
 
+static U32 const minCurlPipelineConcurrentConnections = 1;
+static U32 const minCurlMaxPipelineLength = 1;
+static U32 const minCurlPipelineMaxBodyStall = 100;		// Don't allow accidental connect/close flooding.
+
 void startCurlThread(LLControlGroup* control_group)
 {
   using namespace AICurlPrivate;
@@ -2926,6 +2950,9 @@ void startCurlThread(LLControlGroup* control_group)
   curl_max_total_concurrent_connections = sConfigGroup->getU32("CurlMaxTotalConcurrentConnections");
   CurlConcurrentConnectionsPerService = (U16)sConfigGroup->getU32("CurlConcurrentConnectionsPerService");
   CurlMaxPipelinedRequestsPerService = (U16)sConfigGroup->getU32("CurlMaxPipelinedRequestsPerService");
+  CurlPipelineConcurrentConnections = llmax(minCurlPipelineConcurrentConnections, sConfigGroup->getU32("CurlPipelineConcurrentConnections"));
+  CurlMaxPipelineLength= llmax(minCurlMaxPipelineLength, sConfigGroup->getU32("CurlMaxPipelineLength"));
+  CurlPipelineMaxBodyStall = llmax(minCurlPipelineMaxBodyStall, sConfigGroup->getU32("CurlPipelineMaxBodyStall"));
   gNoVerifySSLCert = sConfigGroup->getBOOL("NoVerifySSLCert");
   AIPerService::setMaxUnfinishedRequests(curl_max_total_concurrent_connections);
   AIPerService::setHTTPThrottleBandwidth(sConfigGroup->getF32("HTTPThrottleBandwidth"));
@@ -2985,6 +3012,33 @@ bool handleCurlMaxPipelinedRequestsPerService(LLSD const& newvalue)
 	AIPerService::adjust_max_added_easy_handles(increment, true);
 	llinfos << "CurlMaxPipelinedRequestsPerService set to " << CurlMaxPipelinedRequestsPerService << llendl;
   }
+  return true;
+}
+
+bool handleCurlPipelineConcurrentConnections(LLSD const& newvalue)
+{
+  using namespace AICurlPrivate;
+  CurlPipelineConcurrentConnections = newvalue.asInteger();
+  CurlPipelineConcurrentConnections = llmax(minCurlPipelineConcurrentConnections, CurlPipelineConcurrentConnections);
+  llinfos << "CurlPipelineConcurrentConnections set to " << CurlPipelineConcurrentConnections << llendl;
+  return true;
+}
+
+bool handleCurlMaxPipelineLength(LLSD const& newvalue)
+{
+  using namespace AICurlPrivate;
+  CurlMaxPipelineLength = newvalue.asInteger();
+  CurlMaxPipelineLength = llmax(minCurlMaxPipelineLength, CurlMaxPipelineLength);
+  llinfos << "CurlMaxPipelineLength set to " << CurlMaxPipelineLength << llendl;
+  return true;
+}
+
+bool handleCurlPipelineMaxBodyStall(LLSD const& newvalue)
+{
+  using namespace AICurlPrivate;
+  CurlPipelineMaxBodyStall = newvalue.asInteger();
+  CurlPipelineMaxBodyStall = llmax(minCurlPipelineMaxBodyStall, CurlPipelineMaxBodyStall);
+  llinfos << "CurlPipelineMaxBodyStall set to " << CurlPipelineMaxBodyStall << llendl;
   return true;
 }
 

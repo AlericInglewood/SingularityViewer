@@ -37,6 +37,7 @@
 #include "aicurlperservice.h"
 #include "aihttptimeout.h"
 #include "llhttpclient.h"
+#include "aicurltimer.h"
 
 class AIHTTPHeaders;
 class AICurlEasyRequestStateMachine;
@@ -300,6 +301,7 @@ class CurlEasyRequest : public CurlEasyHandle {
 	// Called by MultiHandle::finish_easy_request() when the curl easy handle is done.
 	void done(AICurlEasyRequest_wat& curl_easy_request_w, CURLcode result)
 	{
+	  mBadConnectionTimer.cancel();
 	  if (mTimeout)
 	  {
 		// Update timeout administration.
@@ -330,6 +332,8 @@ class CurlEasyRequest : public CurlEasyHandle {
 	bool mTimeoutIsOrphan;						// Set to true when mTimeout is not (yet) associated with a CurlSocketInfo.
 	bool mIsHttps;								// Set if the url starts with "https:".
 	bool mHostnameUnresolved;					// Set to true if the hostname of this request might not have been (DNS) resolved yet.
+	AICurlTimer mBadConnectionTimer;			// This is used to detect if the server stops sending body data after it already sent something before.
+
 #ifdef CWDEBUG
   public:
 	bool mDebugIsHeadOrGetMethod;
@@ -351,6 +355,16 @@ class CurlEasyRequest : public CurlEasyHandle {
 	// Accessors for mPerServicePtr.
 	AIPerServicePtr const& get_service_ptr(void) const { return mPerServicePtr; }
 	AIPerServicePtr& get_service_ptr(void) { return mPerServicePtr; }
+	// Callback for mBadConnectionTimer.
+	static void bad_connection(ThreadSafeBufferedCurlEasyRequest* lockobj);
+	// (Re)set the mBadConnectionTimer.
+	void set_bad_connection_timer(AICurlTimer::deltams_type expiration, ThreadSafeBufferedCurlEasyRequest* lockobj)
+	{
+	  if (mBadConnectionTimer.isRunning())
+		mBadConnectionTimer.refresh(expiration);
+	  else
+		mBadConnectionTimer.create(expiration, boost::bind(&CurlEasyRequest::bad_connection, lockobj));
+	}
 
   protected:
 	// This class may only be created as base class of BufferedCurlEasyRequest.
