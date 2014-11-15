@@ -133,6 +133,11 @@ class MultiHandle : public CurlMultiHandle
 };
 
 } // namespace curlthread
+
+extern U32 CurlPipelineConcurrentConnections;
+extern U32 CurlMaxPipelineLength;
+extern U32 CurlPipelineMaxBodyStall;
+
 } // namespace AICurlPrivate
 
 // Thread safe, noncopyable curl multi handle.

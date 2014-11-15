@@ -211,6 +211,13 @@ int ioctlsocket(int fd, int, unsigned long* nonblocking_enable)
 
 namespace AICurlPrivate {
 
+// Cached value CurlPipelineConcurrentConnections.
+U32 CurlPipelineConcurrentConnections;
+// Cached value CurlMaxPipelineLength.
+U32 CurlMaxPipelineLength;
+// Cached value of CurlPipelineMaxBodyStall.
+U32 CurlPipelineMaxBodyStall;
+
 enum command_st {
   cmd_none,
   cmd_add,
@@ -2189,7 +2196,13 @@ void MultiHandle::pipeline_policy_callback(char const* hostname, int port, curl_
 #endif
 	policy->flags |= CURL_SUPPORTS_PIPELINING;
 	Dout(dc::curl, "Service \"" << canonical_servicename.str() << "\" is known - policy flags set to " << policy->flags);
-	policy->max_host_connections = 2;
+  }
+  if ((policy->flags & CURL_SUPPORTS_PIPELINING))
+  {
+	policy->max_host_connections = CurlPipelineConcurrentConnections;
+	policy->max_pipeline_length = CurlMaxPipelineLength;
+	Dout(dc::curl, "Service \"" << canonical_servicename.str() << "\" is pipelining - policy set to max_host_connections:" <<
+		policy->max_host_connections << ", max_pipeline_length:" << policy->max_pipeline_length);
   }
 }
 
@@ -2920,6 +2933,10 @@ namespace AICurlInterface {
 
 LLControlGroup* sConfigGroup;
 
+static U32 const minCurlPipelineConcurrentConnections = 1;
+static U32 const minCurlMaxPipelineLength = 1;
+static U32 const minCurlPipelineMaxBodyStall = 100;		// Don't allow accidental connect/close flooding.
+
 void startCurlThread(LLControlGroup* control_group)
 {
   using namespace AICurlPrivate;
@@ -2932,6 +2949,9 @@ void startCurlThread(LLControlGroup* control_group)
   curl_max_total_concurrent_connections = sConfigGroup->getU32("CurlMaxTotalConcurrentConnections");
   CurlConcurrentConnectionsPerService = (U16)sConfigGroup->getU32("CurlConcurrentConnectionsPerService");
   CurlMaxPipelinedRequestsPerService = (U16)sConfigGroup->getU32("CurlMaxPipelinedRequestsPerService");
+  CurlPipelineConcurrentConnections = llmax(minCurlPipelineConcurrentConnections, sConfigGroup->getU32("CurlPipelineConcurrentConnections"));
+  CurlMaxPipelineLength= llmax(minCurlMaxPipelineLength, sConfigGroup->getU32("CurlMaxPipelineLength"));
+  CurlPipelineMaxBodyStall = llmax(minCurlPipelineMaxBodyStall, sConfigGroup->getU32("CurlPipelineMaxBodyStall"));
   gNoVerifySSLCert = sConfigGroup->getBOOL("NoVerifySSLCert");
   AIPerService::setMaxUnfinishedRequests(curl_max_total_concurrent_connections);
   AIPerService::setHTTPThrottleBandwidth(sConfigGroup->getF32("HTTPThrottleBandwidth"));
@@ -2991,6 +3011,33 @@ bool handleCurlMaxPipelinedRequestsPerService(LLSD const& newvalue)
 	AIPerService::adjust_max_added_easy_handles(increment, true);
 	llinfos << "CurlMaxPipelinedRequestsPerService set to " << CurlMaxPipelinedRequestsPerService << llendl;
   }
+  return true;
+}
+
+bool handleCurlPipelineConcurrentConnections(LLSD const& newvalue)
+{
+  using namespace AICurlPrivate;
+  CurlPipelineConcurrentConnections = newvalue.asInteger();
+  CurlPipelineConcurrentConnections = llmax(minCurlPipelineConcurrentConnections, CurlPipelineConcurrentConnections);
+  llinfos << "CurlPipelineConcurrentConnections set to " << CurlPipelineConcurrentConnections << llendl;
+  return true;
+}
+
+bool handleCurlMaxPipelineLength(LLSD const& newvalue)
+{
+  using namespace AICurlPrivate;
+  CurlMaxPipelineLength = newvalue.asInteger();
+  CurlMaxPipelineLength = llmax(minCurlMaxPipelineLength, CurlMaxPipelineLength);
+  llinfos << "CurlMaxPipelineLength set to " << CurlMaxPipelineLength << llendl;
+  return true;
+}
+
+bool handleCurlPipelineMaxBodyStall(LLSD const& newvalue)
+{
+  using namespace AICurlPrivate;
+  CurlPipelineMaxBodyStall = newvalue.asInteger();
+  CurlPipelineMaxBodyStall = llmax(minCurlPipelineMaxBodyStall, CurlPipelineMaxBodyStall);
+  llinfos << "CurlPipelineMaxBodyStall set to " << CurlPipelineMaxBodyStall << llendl;
   return true;
 }
 
