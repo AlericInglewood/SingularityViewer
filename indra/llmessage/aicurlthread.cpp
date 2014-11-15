@@ -1930,7 +1930,7 @@ bool MultiHandle::add_easy_request(AICurlEasyRequest const& easy_request, bool f
 #ifdef SHOW_ASSERT
 	std::pair<addedEasyRequests_type::iterator, bool> res =
 #endif
-		mAddedEasyRequests.insert(easy_request);
+	mAddedEasyRequests.insert(easy_request);
 	llassert(res.second);						// May not have been added before.
 	sTotalAddedEasyHandles++;
 	llassert(sTotalAddedEasyHandles == mAddedEasyRequests.size());
