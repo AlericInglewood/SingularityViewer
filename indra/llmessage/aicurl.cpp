@@ -1276,6 +1276,12 @@ void CurlEasyRequest::bad_file_descriptor(AICurlEasyRequest_wat& curl_easy_reque
 	mHandleEventsTarget->bad_file_descriptor(curl_easy_request_w);
 }
 
+void CurlEasyRequest::force_timeout(AICurlEasyRequest_wat& curl_easy_request_w)
+{
+  if (mHandleEventsTarget)
+	mHandleEventsTarget->force_timeout(curl_easy_request_w);
+}
+
 #ifdef SHOW_ASSERT
 void CurlEasyRequest::queued_for_removal(AICurlEasyRequest_wat& curl_easy_request_w)
 {
@@ -1311,8 +1317,13 @@ std::string CurlEasyRequest::getLowercaseHostname(void) const
 void CurlEasyRequest::bad_connection(ThreadSafeBufferedCurlEasyRequest* lockobj)
 {
   DoutEntering(dc::curl, "CurlEasyRequest::bad_connection(" << (void*)lockobj << ")");
-  AICurlMultiHandle_wat multi_handle_w(AICurlMultiHandle::getInstance());
-  multi_handle_w->remove_easy_request(AICurlEasyRequest(lockobj), false);
+  AICurlEasyRequest_wat curl_easy_request_w(*lockobj);
+  // It took too long before we received more (body) data. Terminate this easy handle prematurely
+  // (before receiving everything), that will cause libcurl (with the pipeline fixes that is) to
+  // terminate the whole connection, any requests still in the pipeline will be automatically
+  // retried on another connection by libcurl, but this one won't-- hence we need to generate
+  // an internal error that will cause a retry.
+  curl_easy_request_w->force_timeout(curl_easy_request_w);
 }
 
 //-----------------------------------------------------------------------------

@@ -84,6 +84,9 @@ class AICurlEasyRequestStateMachine : public AIStateMachine, public AICurlEasyHa
 	// Called when the curl thread detected that the socket of this handle has become unusable.
 	/*virtual*/ void bad_file_descriptor(AICurlEasyRequest_wat&);
 
+	// Called when the curl thread detected that no data is received anymore for CurlPipelineMaxBodyStall ms.
+	/*virtual*/ void force_timeout(AICurlEasyRequest_wat&);
+
 #ifdef SHOW_ASSERT
 	// Called when a command was added to remove this easy handle.
 	/*virtual*/ void queued_for_removal(AICurlEasyRequest_wat&);

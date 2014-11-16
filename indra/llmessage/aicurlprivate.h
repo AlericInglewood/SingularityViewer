@@ -400,6 +400,7 @@ class CurlEasyRequest : public CurlEasyHandle {
 	/*virtual*/ void removed_from_multi_handle(AICurlEasyRequest_wat& curl_easy_request_w);
   public:
 	/*virtual*/ void bad_file_descriptor(AICurlEasyRequest_wat& curl_easy_request_w);
+	/*virtual*/ void force_timeout(AICurlEasyRequest_wat& curl_easy_request_w);
 #ifdef SHOW_ASSERT
 	/*virtual*/ void queued_for_removal(AICurlEasyRequest_wat& curl_easy_request_w);
 #endif
