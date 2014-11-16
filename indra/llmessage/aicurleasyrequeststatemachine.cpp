@@ -100,6 +100,12 @@ void AICurlEasyRequestStateMachine::bad_file_descriptor(AICurlEasyRequest_wat&)
   }
 }
 
+// CURL-THREAD
+void AICurlEasyRequestStateMachine::force_timeout(AICurlEasyRequest_wat&)
+{
+  advance_state(AICurlEasyRequestStateMachine_timedOut);
+}
+
 #ifdef SHOW_ASSERT
 // CURL-THREAD
 void AICurlEasyRequestStateMachine::queued_for_removal(AICurlEasyRequest_wat&)
