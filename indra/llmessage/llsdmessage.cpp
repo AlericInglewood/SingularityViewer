@@ -157,7 +157,7 @@ LLSDMessage::ResponderAdapter::ResponderAdapter(LLHTTPClient::ResponderWithResul
 
 std::string LLSDMessage::ResponderAdapter::getTimeoutPolicyName(void) const
 {
-  return mResponder->getHTTPTimeoutPolicy().name();
+  return mResponder->HTTPTimeoutPolicy().name();
 }
 
 bool LLSDMessage::ResponderAdapter::listener(const LLSD& payload, bool success)

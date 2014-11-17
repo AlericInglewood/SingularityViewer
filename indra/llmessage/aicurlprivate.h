@@ -37,6 +37,7 @@
 #include "aicurlperservice.h"
 #include "aihttptimeout.h"
 #include "llhttpclient.h"
+#include "aicurltimer.h"
 
 class AIHTTPHeaders;
 class AICurlEasyRequestStateMachine;
@@ -55,6 +56,7 @@ bool curlThreadIsRunning(void);
 void wakeUpCurlThread(void);
 void stopCurlThread(void);
 void clearCommandQueue(void);
+void removePipeliningBlacklist(std::string const& site);
 
 #define DECLARE_SETOPT(param_type) \
 	  CURLcode setopt(CURLoption option, param_type parameter)
@@ -136,6 +138,13 @@ class CurlEasyHandle : public boost::noncopyable, protected AICurlEasyHandleEven
 	// Returns false when this request should be queued by the curl thread when too much bandwidth is being used.
 	bool approved(void) const { return mApproved; }
 
+	// Called if this request uses a HEAD or GET method.
+	void setHeadOrGet(void) { mHeaderOrGet = true; }
+
+	// Returns false if we can certainly not determine support for HTTP pipelining from the returned headers.
+	// This is because HTTP pipelining is only supported for HEAD or GET methods (see http://curl.haxx.se/dev/readme-pipelining.html).
+	bool isHeadOrGet(void) const { return mHeaderOrGet; }
+
 	// Called when a request is queued for removal. In that case a race between the actual removal
 	// and revoking of the callbacks is harmless (and happens for the raw non-statemachine version).
 	void remove_queued(void) { mQueuedForRemoval = true; }
@@ -153,6 +162,7 @@ class CurlEasyHandle : public boost::noncopyable, protected AICurlEasyHandleEven
 	AIPostFieldPtr mPostField;		// This keeps the POSTFIELD data alive for as long as the easy handle exists.
 	bool mQueuedForRemoval;			// Set if the easy handle is (probably) added to the multi handle, but is queued for removal.
 	LLPointer<AIPerService::Approvement> mApproved;		// When not set then the curl thread should check bandwidth usage and queue this request if too much is being used.
+	bool mHeaderOrGet;				// Set if the request method is HEAD or GET.
 #ifdef DEBUG_CURLIO
 	bool mDebug;
 #endif
@@ -279,7 +289,7 @@ class CurlEasyRequest : public CurlEasyHandle {
 
 	// Prepare the request for adding it to a multi session, or calling perform.
 	// This actually adds the headers that were collected with addHeader.
-	void finalizeRequest(std::string const& url, AIHTTPTimeoutPolicy const& policy, AICurlEasyRequestStateMachine* state_machine);
+	void finalizeRequest(std::string const& url, LLHTTPClient::ResponderPtr& responder, AICurlEasyRequestStateMachine* state_machine);
 
 	// Last second initialization. Called from MultiHandle::add_easy_request.
 	void set_timeout_opts(void);
@@ -291,6 +301,7 @@ class CurlEasyRequest : public CurlEasyHandle {
 	// Called by MultiHandle::finish_easy_request() when the curl easy handle is done.
 	void done(AICurlEasyRequest_wat& curl_easy_request_w, CURLcode result)
 	{
+	  mBadConnectionTimer.cancel();
 	  if (mTimeout)
 	  {
 		// Update timeout administration.
@@ -320,6 +331,9 @@ class CurlEasyRequest : public CurlEasyHandle {
 	LLPointer<curlthread::HTTPTimeout> mTimeout;// Timeout administration object associated with last created CurlSocketInfo.
 	bool mTimeoutIsOrphan;						// Set to true when mTimeout is not (yet) associated with a CurlSocketInfo.
 	bool mIsHttps;								// Set if the url starts with "https:".
+	bool mHostnameUnresolved;					// Set to true if the hostname of this request might not have been (DNS) resolved yet.
+	AICurlTimer mBadConnectionTimer;			// This is used to detect if the server stops sending body data after it already sent something before.
+
 #ifdef CWDEBUG
   public:
 	bool mDebugIsHeadOrGetMethod;
@@ -338,11 +352,24 @@ class CurlEasyRequest : public CurlEasyHandle {
 	LLPointer<curlthread::HTTPTimeout>& httptimeout(void) { if (!mTimeout) { create_timeout_object(); mTimeoutIsOrphan = true; } return mTimeout; }
 	// Return true if no data has been received on the latest socket (if any) for too long.
 	bool has_stalled(void) { return mTimeout && mTimeout->has_stalled(); }
+	// Accessors for mPerServicePtr.
+	AIPerServicePtr const& get_service_ptr(void) const { return mPerServicePtr; }
+	AIPerServicePtr& get_service_ptr(void) { return mPerServicePtr; }
+	// Callback for mBadConnectionTimer.
+	static void bad_connection(ThreadSafeBufferedCurlEasyRequest* lockobj);
+	// (Re)set the mBadConnectionTimer.
+	void set_bad_connection_timer(AICurlTimer::deltams_type expiration, ThreadSafeBufferedCurlEasyRequest* lockobj)
+	{
+	  if (mBadConnectionTimer.isRunning())
+		mBadConnectionTimer.refresh(expiration);
+	  else
+		mBadConnectionTimer.create(expiration, boost::bind(&CurlEasyRequest::bad_connection, lockobj));
+	}
 
   protected:
 	// This class may only be created as base class of BufferedCurlEasyRequest.
 	// Throws AICurlNoEasyHandle.
-	CurlEasyRequest(void) : mHeaders(NULL), mHandleEventsTarget(NULL), mContentLength(0), mResult(CURLE_FAILED_INIT), mTimeoutPolicy(NULL), mTimeoutIsOrphan(false)
+	CurlEasyRequest(void) : mHeaders(NULL), mHandleEventsTarget(NULL), mContentLength(0), mResult(CURLE_FAILED_INIT), mTimeoutPolicy(NULL), mTimeoutIsOrphan(false), mHostnameUnresolved(false)
 #ifdef CWDEBUG
 		, mDebugIsHeadOrGetMethod(false), mDebugHumanReadable(false)
 #endif
@@ -373,6 +400,7 @@ class CurlEasyRequest : public CurlEasyHandle {
 	/*virtual*/ void removed_from_multi_handle(AICurlEasyRequest_wat& curl_easy_request_w);
   public:
 	/*virtual*/ void bad_file_descriptor(AICurlEasyRequest_wat& curl_easy_request_w);
+	/*virtual*/ void force_timeout(AICurlEasyRequest_wat& curl_easy_request_w);
 #ifdef SHOW_ASSERT
 	/*virtual*/ void queued_for_removal(AICurlEasyRequest_wat& curl_easy_request_w);
 #endif
@@ -422,11 +450,13 @@ class BufferedCurlEasyRequest : public CurlEasyRequest {
 	LLHTTPClient::ResponderPtr mResponder;
 	AICapabilityType mCapabilityType;
 	bool mIsEventPoll;
+	bool mReceivedKeepAlive;							// Set when a 'Keep-Alive:' header is received.
 	//U32 mBodyLimit;									// From the old LLURLRequestDetail::mBodyLimit, but never used.
 	U32 mStatus;										// HTTP status, decoded from the first header line.
 	std::string mReason;								// The "reason" from the same header line.
 	U32 mRequestTransferedBytes;
 	size_t mTotalRawBytes;								// Raw body data (still, possibly, compressed) received from the server so far.
+	int mUploadFinished;								// 0: not added, 1: added, 2: upload finished.
 	AIBufferedCurlEasyRequestEvents* mBufferEventsTarget;
 
   public:
@@ -475,6 +505,27 @@ class BufferedCurlEasyRequest : public CurlEasyRequest {
 
 	// Return true if any data was received.
 	bool received_data(void) const { return mTotalRawBytes > 0; }
+
+	// Called when this request caused AIPerService::mCapabilityType[mCapabilityType].mAddedEasyHandles to be incremented.
+	void incremented_service_added_counter(void) { llassert(!mUploadFinished); mUploadFinished = 1; }
+
+	// Called when this request is removed from the multi handle.
+	void reset_upload_finished(void) { mUploadFinished = 0; }
+
+	// Called when upload finished was detected.
+	void upload_finished(PerService_wat const& per_service_w)
+	{
+	  if (mUploadFinished == 1 &&
+		  (!mIsEventPoll || per_service_w->counted_event_polls() < 2)) // Only count the first event poll.
+	  {
+		mUploadFinished = 2;
+		per_service_w->upload_finished(mCapabilityType);
+	  }
+	}
+	void upload_finished(void) { if (mUploadFinished == 1) { upload_finished(PerService_wat(*mPerServicePtr)); } }
+
+	// Return true if upload finished was detected for a request that was counted as added.
+	bool is_upload_finished(void) const { return mUploadFinished == 2; }
 
 #ifdef CWDEBUG
 	// Connection accounting for debug purposes.
@@ -551,7 +602,7 @@ class CurlMultiHandle : public boost::noncopyable {
 // curl_multi_setopt may only be passed a long,
 inline CURLMcode CurlMultiHandle::setopt(CURLMoption option, long parameter)
 {
-  llassert(option == CURLMOPT_MAXCONNECTS || option == CURLMOPT_PIPELINING);
+  llassert(option == CURLMOPT_MAXCONNECTS || option == CURLMOPT_MAX_HOST_CONNECTIONS || option == CURLMOPT_PIPELINING);
   return check_multi_code(curl_multi_setopt(mMultiHandle, option, parameter));
 }
 

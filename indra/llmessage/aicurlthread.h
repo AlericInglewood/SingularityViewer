@@ -26,12 +26,16 @@
  *
  *   28/04/2012
  *   Initial version, written by Aleric Inglewood @ SL
+ *
+ *   20/10/2014
+ *   Added HTTP pipeline support.
  */
 
 #ifndef AICURLTHREAD_H
 #define AICURLTHREAD_H
 
 #include "aicurl.h"
+#include "aicurltimer.h"
 #include <vector>
 
 #undef AICurlPrivate
@@ -60,6 +64,12 @@ class MultiHandle : public CurlMultiHandle
 	MultiHandle(void);
 	~MultiHandle();
 
+	// Set or update dynamic pipeline options.
+	void set_pipeline_options(void);
+
+	// Update pipelining site blacklist.
+	void bl_update(std::string const& site, bool add);
+
 	// Add/remove an easy handle to/from a multi session.
 	bool add_easy_request(AICurlEasyRequest const& easy_request, bool from_queue);
 	CURLMcode remove_easy_request(AICurlEasyRequest const& easy_request, bool as_per_command = false);
@@ -73,11 +83,16 @@ class MultiHandle : public CurlMultiHandle
 	// Read multi stack informationals.
 	CURLMsg const* info_read(int* msgs_in_queue) const;
 
+	// Called once per second to poll for requests that finished uploading.
+	void upload_finished_poll(bool create);
+
   private:
 	typedef std::set<AICurlEasyRequest, AICurlEasyRequestCompare> addedEasyRequests_type;
 	addedEasyRequests_type mAddedEasyRequests;	// All easy requests currently added to the multi handle.
 	long mTimeout;								// The last timeout in ms as set by the callback CURLMOPT_TIMERFUNCTION.
-	static LLAtomicU32 sTotalAdded;				// The (sum of the) size of mAddedEasyRequests (of every MultiHandle, but there is only one).
+	static LLAtomicU32 sTotalAddedEasyHandles;	// The (sum of the) size of mAddedEasyRequests (of every MultiHandle, but there is only one).
+	std::vector<char*> m_pipelining_site_bl;	// The site blacklist that was last passed to CURLMOPT_PIPELINING_SITE_BL (including trailing NULL), or empty when NULL was passed.
+	AICurlTimer mUploadFinishedPollTimer;		// Timer object to call upload_finished_poll every second.
 
   private:
 	// Store result and trigger events for easy request.
@@ -88,13 +103,14 @@ class MultiHandle : public CurlMultiHandle
 
     static int socket_callback(CURL* easy, curl_socket_t s, int action, void* userp, void* socketp);
     static int timer_callback(CURLM* multi, long timeout_ms, void* userp);
+    static void pipeline_policy_callback(char const* hostname, int port, curl_pipeline_policy* policy, void* userp);
 
   public:
 	// Returns how long to wait for socket action before calling socket_action(CURL_SOCKET_TIMEOUT, 0), in ms.
 	int getTimeout(void) const { return mTimeout; }
 
 	// We slept delta_ms instead of mTimeout ms. Update mTimeout to be the remaining time.
-	void update_timeout(long delta_ms) { mTimeout -= delta_ms; }
+	void update_timeout(long delta_ms) { if (mTimeout >= 0) { llassert(mTimeout >= delta_ms); mTimeout -= delta_ms; } }
 
 	// This is called before sleeping, after calling (one or more times) socket_action.
 	void check_msg_queue(void);
@@ -103,10 +119,10 @@ class MultiHandle : public CurlMultiHandle
 	void handle_stalls(void);
 
 	// Return the total number of added curl requests.
-	static U32 total_added_size(void) { return sTotalAdded; }
+	static U32 total_added_size(void) { return sTotalAddedEasyHandles; }
 
 	// Return true if we reached the global maximum number of connections.
-	static bool added_maximum(void) { return sTotalAdded >= curl_max_total_concurrent_connections; }
+	static bool added_maximum(void);
 
   public:
 	//-----------------------------------------------------------------------------
@@ -117,6 +133,11 @@ class MultiHandle : public CurlMultiHandle
 };
 
 } // namespace curlthread
+
+extern U32 CurlPipelineConcurrentConnections;
+extern U32 CurlMaxPipelineLength;
+extern U32 CurlPipelineMaxBodyStall;
+
 } // namespace AICurlPrivate
 
 // Thread safe, noncopyable curl multi handle.

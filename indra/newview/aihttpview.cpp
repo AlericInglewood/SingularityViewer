@@ -36,6 +36,7 @@
 #include "llviewerstats.h"
 #include "llfontgl.h"
 #include "aihttptimeout.h"
+#include "hippogridmanager.h"
 
 AIHTTPView* gHttpView = NULL;
 static S32 sLineHeight;
@@ -65,8 +66,14 @@ class AIServiceBar : public LLView
 	/*virtual*/ LLRect getRequiredRect(void);
 };
 
-int const mc_col = number_of_capability_types;				// Maximum connections column.
-int const bw_col = number_of_capability_types + 1;			// Bandwidth column.
+#ifdef CWDEBUG
+int const fd_col = 0;
+int const ct_col = fd_col + 1;
+#else
+int const ct_col = 0;
+#endif
+int const mc_col = ct_col + number_of_capability_types;		// Maximum connections column.
+int const bw_col = mc_col + 1;								// Bandwidth column.
 
 void AIServiceBar::draw()
 {
@@ -76,28 +83,74 @@ void AIServiceBar::draw()
   LLFontGL::getFontMonospace()->renderUTF8(mName, 0, start, height, text_color, LLFontGL::LEFT, LLFontGL::TOP);
   start += LLFontGL::getFontMonospace()->getWidth(mName);
   std::string text;
+#ifdef CWDEBUG
+  if (mHTTPView->show_fds)
+  {
+	start = mHTTPView->updateColumn(fd_col, start);
+	text = " |";
+	LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, text_color, LLFontGL::LEFT, LLFontGL::TOP);
+	start += LLFontGL::getFontMonospace()->getWidth(text);
+  }
+  std::vector<std::pair<int, int> > needed_fds;
+#endif
   AIPerService::CapabilityType* cts;
   U32 is_used;
   U32 is_inuse;
-  int total_added;
+  int total_added_easy_handles;
   int event_polls;
   int established_connections;
-  int concurrent_connections;
+  int max_total_added_easy_handles;
   size_t bandwidth;
   {
 	PerService_rat per_service_r(*mPerService);
 	is_used = per_service_r->is_used();
 	is_inuse = per_service_r->is_inuse();
-	total_added = per_service_r->mTotalAdded;
+	total_added_easy_handles = per_service_r->mTotalAddedEasyHandles;
 	event_polls = per_service_r->mEventPolls;
 	established_connections = per_service_r->mEstablishedConnections;
-	concurrent_connections = per_service_r->mConcurrentConnections;
+	max_total_added_easy_handles = per_service_r->mPipeliningDetected ? per_service_r->mMaxTotalAddedEasyHandles : 1;
 	bandwidth = per_service_r->bandwidth().truncateData(AIHTTPView::getTime_40ms());
-	cts = per_service_r->mCapabilityType;	// Not thread-safe, but we're only reading from it and only using the results to show in a debug console.
+	cts = &per_service_r->mCapabilityType[0];	// Not thread-safe, but we're only reading from it and only using the results to show in a debug console.
+#ifdef CWDEBUG
+	if (mHTTPView->show_fds)
+	{
+	  per_service_r->get_fd_list(needed_fds);
+	}
+#endif
   }
-  for (int col = 0; col < number_of_capability_types; ++col)
+#ifdef CWDEBUG
+  if (mHTTPView->show_fds)
   {
-	AICapabilityType capability_type = static_cast<AICapabilityType>(col);
+	for (std::vector<std::pair<int, int> >::iterator iter = needed_fds.begin(); iter != needed_fds.end(); ++iter)
+	{
+	  text = llformat(" %d:", iter->first);
+	  LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, text_color, LLFontGL::LEFT, LLFontGL::TOP);
+	  start += LLFontGL::getFontMonospace()->getWidth(text);
+	  int needed = iter->second;
+	  int watched = (AIPerService::is_watched_write(iter->first) ? CURL_POLL_OUT : CURL_POLL_NONE) |
+					(AIPerService::is_watched_read(iter->first) ? CURL_POLL_IN : CURL_POLL_NONE);
+	  int either = watched | needed;
+	  if ((either & CURL_POLL_OUT))
+		text = "w";
+	  else
+		text = "-";
+	  LLColor4 color;
+	  color = (needed & ~watched & CURL_POLL_OUT) ? LLColor4::red : text_color;
+	  LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, color, LLFontGL::LEFT, LLFontGL::TOP);
+	  start += LLFontGL::getFontMonospace()->getWidth(text);
+	  if ((either & CURL_POLL_IN))
+		text = "r";
+	  else
+		text = "-";
+	  color = (needed & ~watched & CURL_POLL_IN) ? LLColor4::red : text_color;
+	  LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, color, LLFontGL::LEFT, LLFontGL::TOP);
+	  start += LLFontGL::getFontMonospace()->getWidth(text);
+	}
+  }
+#endif
+  for (int col = ct_col; col < ct_col + number_of_capability_types; ++col)
+  {
+	AICapabilityType capability_type = static_cast<AICapabilityType>(col - ct_col);
 	AIPerService::CapabilityType& ct(cts[capability_type]);
 	start = mHTTPView->updateColumn(col, start);
 	U32 mask = AIPerService::CT2mask(capability_type);
@@ -107,42 +160,30 @@ void AIServiceBar::draw()
 	}
 	else
 	{
-	  if (col < 2)
+	  if (col < ct_col + 2)
 	  {
-		text = llformat(" | %hu-%hd-%lu,{%hu/%hu,%u}/%u",
+		text = llformat(" | %hu-%hd-%lu,{%hu-%hu-%hu/%hu}/%u",
 			ct.mApprovedRequests, ct.mQueuedCommands, ct.mQueuedRequests.size(),
-			ct.mAdded, ct.mConcurrentConnections, ct.mDownloading,
-			ct.mMaxPipelinedRequests);
+			ct.mAddedEasyHandles - ct.mUploaded, ct.mUploaded - ct.mDownloading, ct.mDownloading, ct.mMaxAddedEasyHandles,
+			ct.mMaxUnfinishedRequests);
 	  }
 	  else
 	  {
-		text = llformat(" | --%hd-%lu,{%hu/%hu,%u}",
+		text = llformat(" | --%hd-%lu,{%hu-%hu-%hu/%hu}",
 			ct.mQueuedCommands, ct.mQueuedRequests.size(),
-			ct.mAdded, ct.mConcurrentConnections, ct.mDownloading);
+			ct.mAddedEasyHandles - ct.mUploaded, ct.mUploaded - ct.mDownloading, ct.mDownloading, ct.mMaxAddedEasyHandles);
 	  }
 	  if (capability_type == cap_texture || capability_type == cap_mesh)
 	  {
-		if (!(is_inuse & mask))
+		int progress_counter = (ct.mFlags & AIPerService::ctf_progress_mask) >> AIPerService::ctf_progress_shift;
+		if ((ct.mFlags & AIPerService::ctf_success))
 		{
-		  ct.mFlags |= AIPerService::ctf_grey;
+		  ct.mFlags &= ~(AIPerService::ctf_success|AIPerService::ctf_progress_mask);
+		  progress_counter = (progress_counter + 1) % 8;
+		  ct.mFlags |= progress_counter << AIPerService::ctf_progress_shift;
 		}
-		else
-		{
-		  bool show = true;
-		  int progress_counter = (ct.mFlags & AIPerService::ctf_progress_mask) >> AIPerService::ctf_progress_shift;
-		  if ((ct.mFlags & AIPerService::ctf_success))
-		  {
-			show = !(ct.mFlags & AIPerService::ctf_grey);
-			ct.mFlags &= ~(AIPerService::ctf_success|AIPerService::ctf_grey|AIPerService::ctf_progress_mask);
-			progress_counter = (progress_counter + 1) % 8;
-			ct.mFlags |= progress_counter << AIPerService::ctf_progress_shift;
-		  }
-		  if (show)
-		  {
-			static char const* progress_utf8[8] = { " \xe2\xac\x93", " \xe2\xac\x95", " \xe2\x97\xa7", " \xe2\x97\xa9", " \xe2\xac\x92", " \xe2\xac\x94", " \xe2\x97\xa8", " \xe2\x97\xaa" };
-			text += progress_utf8[progress_counter];
-		  }
-		}
+		static char const* progress_utf8[8] = { " \xe2\xac\x93", " \xe2\xac\x95", " \xe2\x97\xa7", " \xe2\x97\xa9", " \xe2\xac\x92", " \xe2\xac\x94", " \xe2\x97\xa8", " \xe2\x97\xaa" };
+		text += progress_utf8[progress_counter];
 	  }
 	}
 	LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, ((is_inuse & mask) == 0) ? LLColor4::grey2 : text_color, LLFontGL::LEFT, LLFontGL::TOP);
@@ -150,9 +191,9 @@ void AIServiceBar::draw()
   }
   start = mHTTPView->updateColumn(mc_col, start);
 #ifdef CWDEBUG
-  text = llformat(" | %d,%d,%d/%d", total_added, event_polls, established_connections, concurrent_connections);
+  text = llformat(" | %d,%d/%d[%d]", total_added_easy_handles, event_polls, max_total_added_easy_handles, established_connections);
 #else
-  text = llformat(" | %d/%d", total_added, concurrent_connections);
+  text = llformat(" | %d/%d", total_added_easy_handles, max_total_added_easy_handles);
 #endif
   LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, text_color, LLFontGL::LEFT, LLFontGL::TOP);
   start += LLFontGL::getFontMonospace()->getWidth(text);
@@ -214,7 +255,7 @@ void AIGLHTTPHeaderBar::draw(void)
 
   // First header line.
   F32 height = v_offset + sLineHeight * number_of_header_lines;
-  text = "HTTP console -- [approved]-commandQ-curlQ,{added/max,downloading}[/max][ completed]";
+  text = "HTTP console -- [approved]-commandQ-curlQ,{added-uploaded-downloading/max}[/max][ completed]";
   LLFontGL::getFontMonospace()->renderUTF8(text, 0, h_offset, height, text_color, LLFontGL::LEFT, LLFontGL::TOP);
   text = " | Added/Max";
   U32 start = mHTTPView->updateColumn(mc_col, 100);
@@ -229,16 +270,25 @@ void AIGLHTTPHeaderBar::draw(void)
   height -= sLineHeight;
   start = h_offset;
   text = "Service (host:port)";
+  LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, LLColor4::green, LLFontGL::LEFT, LLFontGL::TOP);
+  start += LLFontGL::getFontMonospace()->getWidth(text);
+#ifdef CWDEBUG
+  start = mHTTPView->updateColumn(fd_col, start);
+  if (mHTTPView->show_fds)
+  {
+	text = " | fd";
+	LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, LLColor4::green, LLFontGL::LEFT, LLFontGL::TOP);
+	start += LLFontGL::getFontMonospace()->getWidth(text);
+  }
+#endif
   // This must match AICapabilityType!
   static char const* caption[number_of_capability_types] = {
 	" | Textures", " | Inventory", " | Mesh", " | Other"
   };
-  LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, LLColor4::green, LLFontGL::LEFT, LLFontGL::TOP);
-  start += LLFontGL::getFontMonospace()->getWidth(text);
-  for (int col = 0; col < number_of_capability_types; ++col)
+  for (int col = ct_col; col < ct_col + number_of_capability_types; ++col)
   {
 	start = mHTTPView->updateColumn(col, start);
-	text = caption[col];
+	text = caption[col - ct_col];
 	LLFontGL::getFontMonospace()->renderUTF8(text, 0, start, height, LLColor4::green, LLFontGL::LEFT, LLFontGL::TOP);
 	start += LLFontGL::getFontMonospace()->getWidth(text);
   }
@@ -280,6 +330,9 @@ LLRect AIGLHTTPHeaderBar::getRequiredRect()
 
 AIHTTPView::AIHTTPView(AIHTTPView::Params const& p) :
 	LLContainerView(p), mGLHTTPHeaderBar(NULL), mWidth(200)
+#ifdef CWDEBUG
+	, show_fds(false)
+#endif
 {
   setVisible(FALSE);
   setRectAlpha(0.5);
@@ -316,6 +369,9 @@ void AIHTTPView::setVisible(BOOL visible)
 	if (visible && visible != getVisible())
 		AIPerService::resetUsed();
 	LLContainerView::setVisible(visible);
+#ifdef CWDEBUG
+	show_fds = !AIPerService::s_conn_map.empty();
+#endif
 }
 
 U64 AIHTTPView::sTime_40ms;

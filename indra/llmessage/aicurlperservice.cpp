@@ -34,15 +34,23 @@
  *   09/04/2013
  *   Renamed everything "host" to "service" and use "hostname:port" as key
  *   instead of just "hostname".
+ *
+ *   20/10/2014
+ *   Added HTTP pipeline support.
  */
 
 #include "sys.h"
 #include "aicurlperservice.h"
 #include "aicurlthread.h"
 #include "llcontrol.h"
+#ifdef CWDEBUG
+#include <curl/curl.h>	// curl_socket_t
+#endif
 
 AIPerService::threadsafe_instance_map_type AIPerService::sInstanceMap;
-AIThreadSafeSimpleDC<AIPerService::TotalQueued> AIPerService::sTotalQueued;
+LLAtomicU32 AIPerService::sApprovedNonHTTPPipelineRequests;
+AIThreadSafeSimpleDC<AIPerService::TotalNonHTTPPipelineQueued> AIPerService::sTotalNonHTTPPipelineQueued;
+LLAtomicU32 AIPerService::sAddedConnections;
 
 #undef AICurlPrivate
 
@@ -50,6 +58,8 @@ namespace AICurlPrivate {
 
 // Cached value of CurlConcurrentConnectionsPerService.
 U16 CurlConcurrentConnectionsPerService;
+// Cached value of CurlMaxPipelinedRequestsPerService.
+U16 CurlMaxPipelinedRequestsPerService;
 
 // Friend functions of RefCountedThreadSafePerService
 
@@ -71,13 +81,17 @@ void intrusive_ptr_release(RefCountedThreadSafePerService* per_service)
 using namespace AICurlPrivate;
 
 AIPerService::AIPerService(void) :
+		mPipeliningDetected(false),
+		mPipelineSupport(true),
+		mIsBlackListed(false),
 		mHTTPBandwidth(25),	// 25 = 1000 ms / 40 ms.
-		mConcurrentConnections(CurlConcurrentConnectionsPerService),
+		mMaxTotalAddedEasyHandles(CurlMaxPipelinedRequestsPerService),
 		mApprovedRequests(0),
-		mTotalAdded(0),
+		mTotalAddedEasyHandles(0),
 		mEventPolls(0),
 		mEstablishedConnections(0),
 		mUsedCT(0),
+		mUsedCTpersist(0),
 		mCTInUse(0)
 {
 }
@@ -85,11 +99,12 @@ AIPerService::AIPerService(void) :
 AIPerService::CapabilityType::CapabilityType(void) :
   		mApprovedRequests(0),
 		mQueuedCommands(0),
-		mAdded(0),
+		mAddedEasyHandles(0),
 		mFlags(0),
 		mDownloading(0),
-		mMaxPipelinedRequests(CurlConcurrentConnectionsPerService),
-		mConcurrentConnections(CurlConcurrentConnectionsPerService)
+		mUploaded(0),
+		mMaxUnfinishedRequests(CurlMaxPipelinedRequestsPerService),
+		mMaxAddedEasyHandles(CurlMaxPipelinedRequestsPerService)
 {
 }
 
@@ -256,22 +271,29 @@ void AIPerService::release(AIPerServicePtr& instance)
 	  // Some other thread added this service in the meantime.
 	  return;
 	}
-#ifdef SHOW_ASSERT
+	bool is_blacklisted;
 	{
-	  // The reference in the map is the last one; that means there can't be any curl easy requests queued for this service.
 	  PerService_rat per_service_r(*instance);
+	  is_blacklisted = per_service_r->is_blacklisted();
+#ifdef SHOW_ASSERT
+	  // The reference in the map is the last one; that means there can't be any curl easy requests queued for this service.
 	  for (int i = 0; i < number_of_capability_types; ++i)
 	  {
 	  	llassert(per_service_r->mCapabilityType[i].mQueuedRequests.empty());
 	  }
-	}
 #endif
+	}
 	// Find the service and erase it from the map.
 	iterator const end = instance_map_w->end();
 	for(iterator iter = instance_map_w->begin(); iter != end; ++iter)
 	{
 	  if (instance == iter->second)
 	  {
+		if (is_blacklisted)
+		{
+		  Dout(dc::curlio, "Removing \"" << iter->first << "\" from pipelining blacklist because the AIPerService is destructed.");
+		  removePipeliningBlacklist(iter->first);
+		}
 		instance_map_w->erase(iter);
 		instance.reset();
 		return;
@@ -283,7 +305,7 @@ void AIPerService::release(AIPerServicePtr& instance)
   instance.reset();
 }
 
-void AIPerService::redivide_connections(void)
+void AIPerService::redivide_easy_handle_slots(void)
 {
   // Priority order.
   static AICapabilityType order[number_of_capability_types] = { cap_inventory, cap_texture, cap_mesh, cap_other };
@@ -299,21 +321,32 @@ void AIPerService::redivide_connections(void)
 	}
 	else
 	{
-	  // Give every other type (that is not in use) one connection, so they can be used (at which point they'll get more).
-	  mCapabilityType[order[i]].mConcurrentConnections = 1;
+	  // Give every other type (that is not in use) one-ish easy handles, so they can be used (at which point they'll get more).
+	  // Note that this is overhead - theoretically allowing us to go over the maximum that is set with the respective debug settings.
+	  mCapabilityType[order[i]].mMaxAddedEasyHandles = llmax(mMaxTotalAddedEasyHandles / 8, 1);
+	  if (order[i] == cap_other)
+	  {
+		// Add one extra for the long poll.
+	    mCapabilityType[order[i]].mMaxAddedEasyHandles += 1;
+	  }
 	}
   }
-  // Keep one connection in reserve for currently unused capability types (that have been used before).
+  // Can happen when called from AIPerService::set_http_pipeline.
+  if (number_of_capability_types_in_use == 0)
+  {
+	return;
+  }
+  // Keep one easy handle slot in reserve for currently unused capability types (that have been used before).
   int reserve = (mUsedCT != mCTInUse) ? 1 : 0;
-  // Distribute (mConcurrentConnections - reserve) over number_of_capability_types_in_use.
-  U16 max_connections_per_CT = (mConcurrentConnections - reserve) / number_of_capability_types_in_use + 1;
-  // The first count CTs get max_connections_per_CT connections.
-  int count = (mConcurrentConnections - reserve) % number_of_capability_types_in_use;
+  // Distribute (mMaxAddedEasyHandles - reserve) over number_of_capability_types_in_use.
+  U16 max_slots_per_CT = (mMaxTotalAddedEasyHandles - reserve) / number_of_capability_types_in_use + 1;
+  // The first count CTs get max_slots_per_CT easy handle slots.
+  int count = (mMaxTotalAddedEasyHandles - reserve) % number_of_capability_types_in_use;
   for(int i = 1, j = 0;; --i)
   {
 	while (j < count)
 	{
-	  mCapabilityType[used_order[j++]].mConcurrentConnections = max_connections_per_CT;
+	  mCapabilityType[used_order[j++]].mMaxAddedEasyHandles = max_slots_per_CT;
 	}
 	if (i == 0)
 	{
@@ -322,41 +355,41 @@ void AIPerService::redivide_connections(void)
 	// Finish the loop till all used CTs are assigned.
 	count = number_of_capability_types_in_use;
 	// Never assign 0 as maximum.
-	if (max_connections_per_CT > 1)
+	if (max_slots_per_CT > 1)
 	{
-	  // The remaining CTs get one connection less so that the sum of all assigned connections is mConcurrentConnections - reserve.
-	  --max_connections_per_CT;
+	  // The remaining CTs get one easy handle slot less so that the sum of all assigned slots is mMaxAddedEasyHandles - reserve.
+	  --max_slots_per_CT;
 	}
   }
 }
 
 bool AIPerService::throttled(AICapabilityType capability_type) const
 {
-  return mTotalAdded >= mConcurrentConnections ||
-		 mCapabilityType[capability_type].mAdded >= mCapabilityType[capability_type].mConcurrentConnections;
+  return mTotalAddedEasyHandles >= (mPipeliningDetected ? mMaxTotalAddedEasyHandles : 1) ||
+		 mCapabilityType[capability_type].mAddedEasyHandles >= mCapabilityType[capability_type].mMaxAddedEasyHandles;
 }
 
-void AIPerService::added_to_multi_handle(AICapabilityType capability_type, bool event_poll)
+bool AIPerService::added_to_multi_handle(AICapabilityType capability_type, bool event_poll)
 {
   if (event_poll)
   {
 	llassert(capability_type == cap_other);
 	// We want to mark this service as unused when only long polls have been added, because they
-	// are not counted towards the maximum number of connection for this service and therefore
-	// should not cause another capability type to get less connections.
-	// For example, if - like on opensim - Textures and Other capability types use the same
-	// service then it is nonsense to reserve 4 connections Other and only give 4 connections
+	// are not counted towards the maximum number of easy handle slots for this service and therefore
+	// should not cause another capability type to get less easy handle slots.
+	// For example, if - like on opensim, without pipelining - Textures and Other capability types use
+	// the same service then it is nonsense to reserve 4 connections for Other and only give 4 connections
 	// to Textures, only because there is a long poll connection (or any number of long poll
 	// connections). What we want is to see: 0-0-0,{0/7,0} for textures when Other is ONLY in
 	// use for the Event Poll.
 	//
 	// This translates to that, since we're adding an event_poll and are about to remove it from
-	// either the command queue OR the request queue, that when mAdded == 1 at the end of this function
+	// either the command queue OR the request queue, that when mAddedEasyHandles == 1 at the end of this function
 	// (and the rest of the pipeline is empty) we want to mark this capability type as unused.
 	//
-	// If mEventPolls > 0 at this point then mAdded will not be incremented.
-	// If mEventPolls == 0 then mAdded will be incremented and thus should be 0 now.
-	// In other words, if the number of mAdded requests is equal to the number of (counted)
+	// If mEventPolls > 0 at this point then mAddedEasyHandles will not be incremented.
+	// If mEventPolls == 0 then mAddedEasyHandles will be incremented and thus should be 0 now.
+	// In other words, if the number of mAddedEasyHandles requests is equal to the number of (counted)
 	// mEventPoll requests right now, then that will still be the case after we added another
 	// event poll request (the transition from used to unused only being necessary because
 	// event poll requests in the pipe line ARE counted; not because that is necessary but
@@ -366,40 +399,52 @@ void AIPerService::added_to_multi_handle(AICapabilityType capability_type, bool 
 	// the command queue, or the request queue, so that pipelined_requests() will return 1 more than
 	// the actual count.
 	U16 counted_event_polls = (mEventPolls == 0) ? 0 : 1;
-	if (mCapabilityType[capability_type].mAdded == counted_event_polls &&
-		mCapabilityType[capability_type].pipelined_requests() == counted_event_polls + 1)
+	if (mCapabilityType[capability_type].mAddedEasyHandles == counted_event_polls &&
+		mCapabilityType[capability_type].unfinished_requests() == counted_event_polls + 1)
 	{
 	  mark_unused(capability_type);
 	}
 	if (++mEventPolls > 1)
 	{
 	  // This only happens on megaregions. Do not count the additional long poll connections against the maximum handles for this service.
-	  return;
+	  return false;
 	}
   }
-  ++mCapabilityType[capability_type].mAdded;
-  ++mTotalAdded;
+  ++mCapabilityType[capability_type].mAddedEasyHandles;
+  if (mTotalAddedEasyHandles++ == 0 || !mPipelineSupport)
+  {
+	sAddedConnections++;
+  }
+  return true;
 }
 
-void AIPerService::removed_from_multi_handle(AICapabilityType capability_type, bool event_poll, bool downloaded_something, bool success)
+void AIPerService::removed_from_multi_handle(AICapabilityType capability_type, bool event_poll, bool downloaded_something, bool upload_finished, bool success)
 {
   CapabilityType& ct(mCapabilityType[capability_type]);
-  llassert(mTotalAdded > 0 && ct.mAdded > 0 && (!event_poll || mEventPolls));
+  llassert(mTotalAddedEasyHandles > 0 && ct.mAddedEasyHandles > 0 && (!event_poll || mEventPolls));
   if (!event_poll || --mEventPolls == 0)
   {
-	--ct.mAdded;
-	--mTotalAdded;
+	--ct.mAddedEasyHandles;
+	if (--mTotalAddedEasyHandles == 0 || !mPipelineSupport)
+	{
+	  --sAddedConnections;
+	}
   }
   if (downloaded_something)
   {
 	llassert(ct.mDownloading > 0);
 	--ct.mDownloading;
   }
+  if (upload_finished)
+  {
+	llassert_always(ct.mUploaded > 0);
+	--ct.mUploaded;
+  }
   // If the number of added request handles is equal to the number of counted event poll handles,
-  // in other words, when there are only long poll connections left, then mark the capability type
+  // in other words, when there are only long poll handles left, then mark the capability type
   // as unused.
   U16 counted_event_polls = (capability_type != cap_other || mEventPolls == 0) ? 0 : 1;
-  if (ct.mAdded == counted_event_polls && ct.pipelined_requests() == counted_event_polls)
+  if (ct.mAddedEasyHandles == counted_event_polls && ct.unfinished_requests() == counted_event_polls)
   {
 	mark_unused(capability_type);
   }
@@ -417,9 +462,9 @@ bool AIPerService::queue(AICurlEasyRequest const& easy_request, AICapabilityType
   if (needs_queuing)
   {
 	queued_requests.push_back(easy_request.get_ptr());
-	if (is_approved(capability_type))
+	if (!mPipelineSupport && is_approved(capability_type))
 	{
-	  TotalQueued_wat(sTotalQueued)->approved++;
+	  TotalNonHTTPPipelineQueued_wat(sTotalNonHTTPPipelineQueued)->approved++;
 	}
   }
   return needs_queuing;
@@ -446,11 +491,11 @@ bool AIPerService::cancel(AICurlEasyRequest const& easy_request, AICapabilityTyp
 	prev = cur;
   }
   mCapabilityType[capability_type].mQueuedRequests.pop_back();		// if this is safe.
-  if (is_approved(capability_type))
+  if (!mPipelineSupport && is_approved(capability_type))
   {
-	TotalQueued_wat total_queued_w(sTotalQueued);
-	llassert(total_queued_w->approved > 0);
-	total_queued_w->approved--;
+	TotalNonHTTPPipelineQueued_wat total_non_http_pipeline_queued_w(sTotalNonHTTPPipelineQueued);
+	llassert(total_non_http_pipeline_queued_w->approved > 0);
+	total_non_http_pipeline_queued_w->approved--;
   }
   return true;
 }
@@ -475,24 +520,24 @@ void AIPerService::add_queued_to(curlthread::MultiHandle* multi_handle, bool onl
 	  success_this_pass = false;
 	}
 	CapabilityType& ct(mCapabilityType[i]);
-	if (!pass != !ct.mAdded)						// Does mAdded match what we're looking for (first mAdded == 0, then mAdded != 0)?
+	if (!pass != !ct.mAddedEasyHandles)						// Does mAddedEasyHandles match what we're looking for (first mAddedEasyHandles == 0, then mAddedEasyHandles != 0)?
 	{
 	  continue;
 	}
-	if (multi_handle->added_maximum())
+	if (!mPipelineSupport && curlthread::MultiHandle::added_maximum())
 	{
 	  // We hit the maximum number of global connections. Abort every attempt to add anything.
 	  only_this_service = true;
 	  break;
 	}
-	if (mTotalAdded >= mConcurrentConnections)
+	if (mTotalAddedEasyHandles >= mMaxTotalAddedEasyHandles)
 	{
-	  // We hit the maximum number of connections for this service. Abort any attempt to add anything to this service.
+	  // We hit the maximum number of easy handles for this service. Abort any attempt to add anything to this service.
 	  break;
 	}
-	if (ct.mAdded >= ct.mConcurrentConnections)
+	if (ct.mAddedEasyHandles >= ct.mMaxAddedEasyHandles)
 	{
-	  // We hit the maximum number of connections for this capability type. Try the next one.
+	  // We hit the maximum number of easy handles for this capability type. Try the next one.
 	  continue;
 	}
 	U32 mask = CT2mask((AICapabilityType)i);
@@ -522,11 +567,11 @@ void AIPerService::add_queued_to(curlthread::MultiHandle* multi_handle, bool onl
 	  success |= mask;
 	  success_this_pass = true;
 	  // Update approved count.
-	  if (is_approved((AICapabilityType)i))
+	  if (!mPipelineSupport && is_approved((AICapabilityType)i))
 	  {
-		TotalQueued_wat total_queued_w(sTotalQueued);
-		llassert(total_queued_w->approved > 0);
-		total_queued_w->approved--;
+		TotalNonHTTPPipelineQueued_wat total_non_http_pipeline_queued_w(sTotalNonHTTPPipelineQueued);
+		llassert(total_non_http_pipeline_queued_w->approved > 0);
+		total_non_http_pipeline_queued_w->approved--;
 	  }
 	}
   }
@@ -553,26 +598,27 @@ void AIPerService::add_queued_to(curlthread::MultiHandle* multi_handle, bool onl
 	}
   }
 
-  // Update the flags of sTotalQueued.
+  // Update the flags of sTotalNonHTTPPipelineQueued.
+  if (!mPipelineSupport)
   {
-	TotalQueued_wat total_queued_w(sTotalQueued);
-	if (total_queued_w->approved == 0)
+	TotalNonHTTPPipelineQueued_wat total_non_http_pipeline_queued_w(sTotalNonHTTPPipelineQueued);
+	if (total_non_http_pipeline_queued_w->approved == 0)
 	{
 	  if ((success & approved_mask))
 	  {
 		// We obtained an approved request from the queue, and after that there were no more requests in any (approved) queue.
-		total_queued_w->empty = true;
+		total_non_http_pipeline_queued_w->empty = true;
 	  }
 	  else
 	  {
 		// Every queue of every approved CT is empty!
-		total_queued_w->starvation = true;
+		total_non_http_pipeline_queued_w->starvation = true;
 	  }
 	}
 	else if ((success & approved_mask))
 	{
 	  // We obtained an approved request from the queue, and even after that there was at least one more request in some (approved) queue.
-	  total_queued_w->full = true;
+	  total_non_http_pipeline_queued_w->full = true;
 	}
   }
  
@@ -603,37 +649,39 @@ void AIPerService::purge(void)
   {
 	Dout(dc::curl, "Purging queues of service \"" << service->first << "\".");
 	PerService_wat per_service_w(*service->second);
-	TotalQueued_wat total_queued_w(sTotalQueued);
+	TotalNonHTTPPipelineQueued_wat total_non_http_pipeline_queued_w(sTotalNonHTTPPipelineQueued);
 	for (int i = 0; i < number_of_capability_types; ++i)
 	{
 	  size_t s = per_service_w->mCapabilityType[i].mQueuedRequests.size();
 	  per_service_w->mCapabilityType[i].mQueuedRequests.clear();
-	  if (is_approved((AICapabilityType)i))
+	  if (!per_service_w->mPipelineSupport && is_approved((AICapabilityType)i))
 	  {
-		llassert(total_queued_w->approved >= (S32)s);
-		total_queued_w->approved -= s;
+		llassert(total_non_http_pipeline_queued_w->approved >= (S32)s);
+		total_non_http_pipeline_queued_w->approved -= s;
 	  }
 	}
   }
 }
 
 //static
-void AIPerService::adjust_concurrent_connections(int increment)
+void AIPerService::adjust_max_added_easy_handles(int increment, bool for_pipeline_support)
 {
   instance_map_wat instance_map_w(sInstanceMap);
   for (AIPerService::iterator iter = instance_map_w->begin(); iter != instance_map_w->end(); ++iter)
   {
 	PerService_wat per_service_w(*iter->second);
-	U16 old_concurrent_connections = per_service_w->mConcurrentConnections;
-	int new_concurrent_connections = llclamp(old_concurrent_connections + increment, 1, (int)CurlConcurrentConnectionsPerService);
-	per_service_w->mConcurrentConnections = (U16)new_concurrent_connections;
-	increment = per_service_w->mConcurrentConnections - old_concurrent_connections;
+	if (per_service_w->mPipelineSupport != for_pipeline_support)
+	  continue;
+	U16 old_max_added_easy_handles = per_service_w->mMaxTotalAddedEasyHandles;
+	int new_max_added_easy_handles = llclamp(old_max_added_easy_handles + increment, 1, (int)(per_service_w->mPipelineSupport ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService));
+	per_service_w->mMaxTotalAddedEasyHandles = (U16)new_max_added_easy_handles;
+	increment = per_service_w->mMaxTotalAddedEasyHandles - old_max_added_easy_handles;
 	for (int i = 0; i < number_of_capability_types; ++i)
 	{
-	  per_service_w->mCapabilityType[i].mMaxPipelinedRequests = llmax(per_service_w->mCapabilityType[i].mMaxPipelinedRequests + increment, 0);
-	  int new_concurrent_connections_per_capability_type =
-		  llclamp((new_concurrent_connections * per_service_w->mCapabilityType[i].mConcurrentConnections + old_concurrent_connections / 2) / old_concurrent_connections, 1, new_concurrent_connections);
-	  per_service_w->mCapabilityType[i].mConcurrentConnections = (U16)new_concurrent_connections_per_capability_type;
+	  per_service_w->mCapabilityType[i].mMaxUnfinishedRequests = llmax(per_service_w->mCapabilityType[i].mMaxUnfinishedRequests + increment, 0);
+	  int new_max_added_easy_handles_per_capability_type =
+		  llclamp((new_max_added_easy_handles * per_service_w->mCapabilityType[i].mMaxAddedEasyHandles + old_max_added_easy_handles / 2) / old_max_added_easy_handles, 1, new_max_added_easy_handles);
+	  per_service_w->mCapabilityType[i].mMaxAddedEasyHandles = (U16)new_max_added_easy_handles_per_capability_type;
 	}
   }
 }
@@ -652,6 +700,10 @@ void AIPerService::Approvement::honored(void)
 	llassert(per_service_w->mCapabilityType[mCapabilityType].mApprovedRequests > 0 && per_service_w->mApprovedRequests > 0);
 	per_service_w->mCapabilityType[mCapabilityType].mApprovedRequests--;
 	per_service_w->mApprovedRequests--;
+	if (!per_service_w->is_http_pipeline())
+	{
+	  --sApprovedNonHTTPPipelineRequests;
+	}
   }
 }
 
@@ -661,3 +713,166 @@ void AIPerService::Approvement::not_honored(void)
   llwarns << "Approvement for has not been honored." << llendl;
 }
 
+void AIPerService::set_http_pipeline(bool enable)
+{
+  DoutEntering(dc::curlio, "AIPerService::set_http_pipeline(" << enable << ") [" << (void*)this << "]");
+  if (mPipelineSupport != enable)
+  {
+	Dout(dc::curlio, "Pipeline support changed from " << mPipelineSupport << " to " << enable);
+	llassert(!mPipeliningDetected);		// Would be kinda weird if the detection changed its mind.
+	mPipelineSupport = enable;
+	int const sign = enable ? -1 : 1;
+	sApprovedNonHTTPPipelineRequests += sign * mApprovedRequests;
+	TotalNonHTTPPipelineQueued_wat total_non_http_pipeline_queued_w(sTotalNonHTTPPipelineQueued);
+	for (int i = 0; i < number_of_capability_types; ++i)
+	{
+	  AICapabilityType capability_type = (AICapabilityType)i;
+	  if (is_approved(capability_type))
+	  {
+		sApprovedNonHTTPPipelineRequests += sign * mCapabilityType[capability_type].mQueuedCommands;
+		total_non_http_pipeline_queued_w->approved += sign * mCapabilityType[capability_type].mQueuedRequests.size();
+	  }
+	  mCapabilityType[i].mMaxUnfinishedRequests = enable ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService;
+	}
+	sAddedConnections += sign * (mTotalAddedEasyHandles ? mTotalAddedEasyHandles - 1 : 0);
+	mMaxTotalAddedEasyHandles = enable ? CurlMaxPipelinedRequestsPerService : CurlConcurrentConnectionsPerService;
+	redivide_easy_handle_slots();
+  }
+  mPipeliningDetected = true;
+}
+
+#ifdef CWDEBUG
+extern "C" {
+
+typedef void (*curl_llist_dtor)(void *, void *);
+
+struct curl_llist_element {
+  void *ptr;
+
+  struct curl_llist_element *prev;
+  struct curl_llist_element *next;
+};
+
+struct curl_llist {
+  struct curl_llist_element *head;
+  struct curl_llist_element *tail;
+
+  curl_llist_dtor dtor;
+
+  size_t size;
+};
+
+struct connectdata {
+  long connection_id; /* Contains a unique number to make it easier to
+                         track the connections in the log output */
+  curl_socket_t sock[2]; /* two sockets, the second is used for the data
+                            transfer when doing FTP */
+  struct curl_llist *send_pipe; /* List of handles waiting to
+                                   send on this pipeline */
+  struct curl_llist *recv_pipe; /* List of handles waiting to read
+                                   their responses on this pipeline */
+};
+
+} // extern "C"
+
+//static
+AIPerService::conn_map_type AIPerService::s_conn_map;
+
+//static
+void AIPerService::update_conn(AIPerServicePtr const& per_service, void* conn, int s)
+{
+  llassert(s >= -1);
+  conn_map_type::iterator iter = s_conn_map.find(conn);
+  if (iter == s_conn_map.end())
+  {
+	s_conn_map[conn] = per_service;
+	PerService_wat per_service_w(*per_service);
+	per_service_w->update_curl_conn(conn, -1);
+	if (s >= 0)
+	{
+	  per_service_w->update_curl_conn(conn, s);
+	}
+  }
+  else
+  {
+	llassert(s >= 0);
+	llassert(per_service == iter->second);
+	PerService_wat per_service_w(*per_service);
+	per_service_w->update_curl_conn(conn, s);
+  }
+}
+
+//static
+void AIPerService::destroy_conn(void* conn)
+{
+  conn_map_type::iterator iter = s_conn_map.find(conn);
+  llassert(iter != s_conn_map.end());
+  PerService_wat(*iter->second)->update_curl_conn(conn, -2);
+  s_conn_map.erase(iter);
+}
+
+struct ConnData {
+	ConnData(void) : mFd(-1) { }
+	int mFd;
+};
+
+// This is a horrible hack - and needs a specially hacked libcurl
+// that abuses the socket callback to inform us of connection updates.
+// If s == -1 : A new conn was created, connection in progress.
+// If s >= 0  : A connection is established on socket s.
+// If s == -2 : The conn is destructed.
+void AIPerService::update_curl_conn(void* userp, int s)
+{
+  if (s == -1)
+  {
+	llassert(m_conn_to_data.find(userp) == m_conn_to_data.end());
+	m_conn_to_data[userp] = new ConnData;
+  }
+  else
+  {
+	conn_to_data_type::iterator iter = m_conn_to_data.find(userp);
+	llassert(iter != m_conn_to_data.end());
+	ConnData* data = static_cast<ConnData*>(iter->second);
+	if (s == -2)
+	{
+	  delete data;
+	  m_conn_to_data.erase(iter);
+	  return;
+	}
+	data->mFd = s;
+  }
+}
+
+void AIPerService::get_fd_list(std::vector<std::pair<int, int> >& vec) const
+{
+  for (conn_to_data_type::const_iterator iter = m_conn_to_data.begin(); iter != m_conn_to_data.end(); ++iter)
+  {
+	struct connectdata *conn = static_cast<struct connectdata *>(iter->first);
+	ConnData* data = static_cast<ConnData*>(iter->second);
+	int action = CURL_POLL_NONE;
+	if (conn->send_pipe->head)
+	  action |= CURL_POLL_OUT;
+	if (conn->recv_pipe->head)
+	  action |= CURL_POLL_IN;
+    vec.push_back(std::make_pair(data->mFd, action));
+  }
+}
+
+//static
+fd_set AIPerService::s_read_fd_set;
+fd_set AIPerService::s_write_fd_set;
+
+//static
+void AIPerService::current_fdsets(fd_set* read_fd_set, fd_set* write_fd_set)
+{
+  if (read_fd_set)
+	memcpy(&s_read_fd_set, read_fd_set, sizeof(s_read_fd_set));
+  else
+	memset(&s_read_fd_set, 0, sizeof(s_read_fd_set));
+  if (write_fd_set)
+	memcpy(&s_write_fd_set, write_fd_set, sizeof(s_write_fd_set));
+  else
+	memset(&s_write_fd_set, 0, sizeof(s_write_fd_set));
+}
+
+#endif

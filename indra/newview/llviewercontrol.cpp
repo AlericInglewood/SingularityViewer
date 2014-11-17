@@ -808,6 +808,10 @@ void settings_setup_listeners()
 
 	gSavedSettings.getControl("CurlMaxTotalConcurrentConnections")->getSignal()->connect(boost::bind(&AICurlInterface::handleCurlMaxTotalConcurrentConnections, _2));
 	gSavedSettings.getControl("CurlConcurrentConnectionsPerService")->getSignal()->connect(boost::bind(&AICurlInterface::handleCurlConcurrentConnectionsPerService, _2));
+	gSavedSettings.getControl("CurlMaxPipelinedRequestsPerService")->getSignal()->connect(boost::bind(&AICurlInterface::handleCurlMaxPipelinedRequestsPerService, _2));
+	gSavedSettings.getControl("CurlPipelineConcurrentConnections")->getSignal()->connect(boost::bind(&AICurlInterface::handleCurlPipelineConcurrentConnections, _2));
+	gSavedSettings.getControl("CurlMaxPipelineLength")->getSignal()->connect(boost::bind(&AICurlInterface::handleCurlMaxPipelineLength, _2));
+	gSavedSettings.getControl("CurlPipelineMaxBodyStall")->getSignal()->connect(boost::bind(&AICurlInterface::handleCurlPipelineMaxBodyStall, _2));
 	gSavedSettings.getControl("NoVerifySSLCert")->getSignal()->connect(boost::bind(&AICurlInterface::handleNoVerifySSLCert, _2));
 
 	gSavedSettings.getControl("CurlTimeoutDNSLookup")->getValidateSignal()->connect(boost::bind(&validateCurlTimeoutDNSLookup, _2));

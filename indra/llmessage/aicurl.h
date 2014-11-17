@@ -157,6 +157,10 @@ struct Stats {
 // Called to handle changes in Debug Settings.
 bool handleCurlMaxTotalConcurrentConnections(LLSD const& newvalue);
 bool handleCurlConcurrentConnectionsPerService(LLSD const& newvalue);
+bool handleCurlMaxPipelinedRequestsPerService(LLSD const& newvalue);
+bool handleCurlPipelineConcurrentConnections(LLSD const& newvalue);
+bool handleCurlMaxPipelineLength(LLSD const& newvalue);
+bool handleCurlPipelineMaxBodyStall(LLSD const& newvalue);
 bool handleNoVerifySSLCert(LLSD const& newvalue);
 
 // Called once at start of application (from newview/llappviewer.cpp by main thread (before threads are created)),
@@ -234,6 +238,7 @@ struct AICurlEasyHandleEvents {
 	virtual void finished(AICurlEasyRequest_wat& curl_easy_request_w) = 0;
 	virtual void removed_from_multi_handle(AICurlEasyRequest_wat& curl_easy_request_w) = 0;
 	virtual void bad_file_descriptor(AICurlEasyRequest_wat& curl_easy_request_w) = 0;
+	virtual void force_timeout(AICurlEasyRequest_wat& curl_easy_request_w) = 0;
 #ifdef SHOW_ASSERT
 	virtual void queued_for_removal(AICurlEasyRequest_wat& curl_easy_request_w) = 0;
 #endif

@@ -17,6 +17,7 @@
 #include "llviewercontrol.h"
 #include "llweb.h"
 #include "aialert.h"
+#include "aicurlthread.h"
 
 // ********************************************************************
 // Global Variables

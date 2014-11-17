@@ -58,6 +58,9 @@
 #include "aihttptimeoutpolicy.h"
 #include "aicurleasyrequeststatemachine.h"
 #include "aicurlperservice.h"
+#include "aicurlthread.h"
+
+extern AIHTTPTimeoutPolicy HTTP_pipelining_timeout;
 
 //==================================================================================
 // Debug Settings
@@ -562,7 +565,7 @@ void CurlEasyHandle::handle_easy_error(CURLcode code)
 }
 
 // Throws AICurlNoEasyHandle.
-CurlEasyHandle::CurlEasyHandle(void) : mActiveMultiHandle(NULL), mErrorBuffer(NULL), mQueuedForRemoval(false)
+CurlEasyHandle::CurlEasyHandle(void) : mActiveMultiHandle(NULL), mErrorBuffer(NULL), mQueuedForRemoval(false), mHeaderOrGet(false)
 #ifdef DEBUG_CURLIO
 	, mDebug(false)
 #endif
@@ -988,6 +991,7 @@ CurlEasyRequest::~CurlEasyRequest()
   {
 	 AIPerService::release(mPerServicePtr);
   }
+  mBadConnectionTimer.cancel();
   // This wasn't freed yet if the request never finished.
   curl_slist_free_all(mHeaders);
 }
@@ -1121,9 +1125,9 @@ void CurlEasyRequest::applyDefaultOptions(void)
   );
 }
 
-void CurlEasyRequest::finalizeRequest(std::string const& url, AIHTTPTimeoutPolicy const& policy, AICurlEasyRequestStateMachine* state_machine)
+void CurlEasyRequest::finalizeRequest(std::string const& url, LLHTTPClient::ResponderPtr& responder, AICurlEasyRequestStateMachine* state_machine)
 {
-  DoutCurlEntering("CurlEasyRequest::finalizeRequest(\"" << url << "\", " << policy.name() << ", " << (void*)state_machine << ")");
+  DoutCurlEntering("CurlEasyRequest::finalizeRequest(\"" << url << "\", " << responder->HTTPTimeoutPolicy().name() << ", " << (void*)state_machine << ")");
   llassert(!mTimeoutPolicy);		// May only call finalizeRequest once!
   mResult = CURLE_FAILED_INIT;		// General error code; the final result code is stored here by MultiHandle::check_msg_queue when msg is CURLMSG_DONE.
   mIsHttps = strncmp(url.c_str(), "https:", 6) == 0;
@@ -1146,8 +1150,15 @@ void CurlEasyRequest::finalizeRequest(std::string const& url, AIHTTPTimeoutPolic
   setoptString(CURLOPT_URL, url);
   llassert(!mPerServicePtr);
   mLowercaseServicename = AIPerService::extract_canonical_servicename(url);
-  mTimeoutPolicy = &policy;
-  state_machine->setTotalDelayTimeout(policy.getTotalDelay());
+  // Set mPerServicePtr and change mTimeoutPolicy if it can do pipelining.
+  bool is_pipelining;
+  {
+	PerService_rat per_service_r(*getPerServicePtr());
+	is_pipelining= per_service_r->is_http_pipeline() && !per_service_r->is_blacklisted();
+  }
+  responder->setPipelining(is_pipelining);
+  mTimeoutPolicy = &responder->HTTPTimeoutPolicy();
+  state_machine->setTotalDelayTimeout(mTimeoutPolicy->getTotalDelay());
   // The following line is a bit tricky: we store a pointer to the object without increasing its reference count.
   // Of course we could increment the reference count, but that doesn't help much: if then this pointer would
   // get "lost" we'd have a memory leak. Either way we must make sure that it is impossible that this pointer
@@ -1165,14 +1176,14 @@ void CurlEasyRequest::finalizeRequest(std::string const& url, AIHTTPTimeoutPolic
   setopt(CURLOPT_PRIVATE, get_lockobj());
 }
 
-// AIFIXME: Doing this only when it is actually being added assures that the first curl easy handle that is
-// // being added for a particular host will be the one getting extra 'DNS lookup' connect time.
-// // However, if another curl easy handle for the same host is added immediately after, it will
-// // get less connect time, while it still (also) has to wait for this DNS lookup.
+// Doing this only when it is actually being added assures that the first curl easy handles that are
+// being added for a particular host will be the one getting extra 'DNS lookup' connect time,
+// until we connected so that we know that the hostname was resolved.
 void CurlEasyRequest::set_timeout_opts(void)
 {
-  U16 connect_timeout = mTimeoutPolicy->getConnectTimeout(getLowercaseHostname());
-  if (mIsHttps && connect_timeout < 30)
+  // This sets mHostnameUnresolved (if the hostname might need a DNS lookup).
+  U16 connect_timeout = mTimeoutPolicy->getConnectTimeout(getLowercaseHostname(), mHostnameUnresolved);
+  if (mIsHttps && connect_timeout < 30 && mTimeoutPolicy != &HTTP_pipelining_timeout)
   {
 	DoutCurl("Incrementing CURLOPT_CONNECTTIMEOUT of \"" << mTimeoutPolicy->name() << "\" from " << connect_timeout << " to 30 seconds.");
 	connect_timeout = 30;
@@ -1265,6 +1276,12 @@ void CurlEasyRequest::bad_file_descriptor(AICurlEasyRequest_wat& curl_easy_reque
 	mHandleEventsTarget->bad_file_descriptor(curl_easy_request_w);
 }
 
+void CurlEasyRequest::force_timeout(AICurlEasyRequest_wat& curl_easy_request_w)
+{
+  if (mHandleEventsTarget)
+	mHandleEventsTarget->force_timeout(curl_easy_request_w);
+}
+
 #ifdef SHOW_ASSERT
 void CurlEasyRequest::queued_for_removal(AICurlEasyRequest_wat& curl_easy_request_w)
 {
@@ -1296,6 +1313,19 @@ std::string CurlEasyRequest::getLowercaseHostname(void) const
   return mLowercaseServicename.substr(0, mLowercaseServicename.find_last_of(':'));
 }
 
+//static
+void CurlEasyRequest::bad_connection(ThreadSafeBufferedCurlEasyRequest* lockobj)
+{
+  DoutEntering(dc::curl, "CurlEasyRequest::bad_connection(" << (void*)lockobj << ")");
+  AICurlEasyRequest_wat curl_easy_request_w(*lockobj);
+  // It took too long before we received more (body) data. Terminate this easy handle prematurely
+  // (before receiving everything), that will cause libcurl (with the pipeline fixes that is) to
+  // terminate the whole connection, any requests still in the pipeline will be automatically
+  // retried on another connection by libcurl, but this one won't-- hence we need to generate
+  // an internal error that will cause a retry.
+  curl_easy_request_w->force_timeout(curl_easy_request_w);
+}
+
 //-----------------------------------------------------------------------------
 // BufferedCurlEasyRequest
 
@@ -1308,7 +1338,7 @@ bool BufferedCurlEasyRequest::sShuttingDown = false;
 AIAverage BufferedCurlEasyRequest::sHTTPBandwidth(25);
 
 BufferedCurlEasyRequest::BufferedCurlEasyRequest() :
-	mRequestTransferedBytes(0), mTotalRawBytes(0), mStatus(HTTP_INTERNAL_ERROR_OTHER), mBufferEventsTarget(NULL), mCapabilityType(number_of_capability_types)
+	mRequestTransferedBytes(0), mTotalRawBytes(0), mUploadFinished(0), mStatus(HTTP_INTERNAL_ERROR_OTHER), mBufferEventsTarget(NULL), mCapabilityType(number_of_capability_types)
 {
   AICurlInterface::Stats::BufferedCurlEasyRequest_count++;
 }
@@ -1340,6 +1370,7 @@ BufferedCurlEasyRequest::~BufferedCurlEasyRequest()
 	}
   }
   --AICurlInterface::Stats::BufferedCurlEasyRequest_count;
+  llassert(mUploadFinished == 0);
 }
 
 void BufferedCurlEasyRequest::aborted(U32 http_status, std::string const& reason)
@@ -1356,29 +1387,67 @@ void BufferedCurlEasyRequest::aborted(U32 http_status, std::string const& reason
 }
 
 #ifdef CWDEBUG
-static AIPerServicePtr sConnections[64];
+struct FindServiceNames
+{
+  std::string mName1;
+  std::string mName2;
+  AIPerServicePtr const& mPerService1;
+  AIPerServicePtr const& mPerService2;
+
+  FindServiceNames(AIPerServicePtr const& ptr1, AIPerServicePtr const& ptr2) :
+	mName1("<unknown service>"), mName2("<unknown service>"), mPerService1(ptr1), mPerService2(ptr2) { }
+
+  void operator()(AIPerService::instance_map_type::value_type const& service)
+  {
+    if (service.second == mPerService1)
+	  mName1 = service.first;
+    if (service.second == mPerService2)
+	  mName2 = service.first;
+  }
+};
+
+static std::map<int, AIPerServicePtr> sConnections;
 
 void BufferedCurlEasyRequest::connection_established(int connectionnr)
 {
-  PerService_rat per_service_r(*mPerServicePtr);
-  int n = per_service_r->connection_established();
-  llassert(sConnections[connectionnr] == NULL);		// Only one service can use a connection at a time.
-  llassert_always(connectionnr < 64);
-  sConnections[connectionnr] = mPerServicePtr;
-  Dout(dc::curlio, (void*)get_lockobj() << " Connection established (#" << connectionnr << "). Now " << n << " connections [" << (void*)&*per_service_r << "].");
-  llassert(sConnections[connectionnr] != NULL);
+  std::map<int, AIPerServicePtr>::iterator iter = sConnections.find(connectionnr);
+  if (iter == sConnections.end())		// Not a re-used connection?
+  {
+	PerService_rat per_service_r(*mPerServicePtr);
+	int n = per_service_r->connection_established();
+	llassert(mPerServicePtr);
+	sConnections[connectionnr] = mPerServicePtr;
+	Dout(dc::curlio, (void*)get_lockobj() << " Connection established (#" << connectionnr << "). Now " << n << " connections [" << (void*)&*per_service_r << "].");
+  }
+  else if (mPerServicePtr != iter->second)
+  {
+	int old_connectionnr = -1;
+	for (std::map<int, AIPerServicePtr>::iterator iter2 = sConnections.begin(); iter2 != sConnections.end(); ++iter2)
+	{
+	  if (iter2->second == mPerServicePtr)
+	  {
+		old_connectionnr = iter2->first;
+		break;
+	  }
+	}
+	llassert(old_connectionnr != -1);
+	FindServiceNames functor(mPerServicePtr, iter->second);
+	AIPerService::copy_forEach(functor);
+	Dout(dc::curlio, (void*)get_lockobj() << "Ignoring forwarding of connection #" << old_connectionnr << " (" << functor.mName1 << ") to #" << connectionnr << " (" << functor.mName2 << ").");
+  }
 }
 
 void BufferedCurlEasyRequest::connection_closed(int connectionnr)
 {
-  if (sConnections[connectionnr] == NULL)
+  std::map<int, AIPerServicePtr>::iterator iter = sConnections.find(connectionnr);
+  if (iter == sConnections.end())
   {
-	Dout(dc::curlio, "Closing connection that never connected (#" << connectionnr << ").");
+	Dout(dc::curlio, (void*)get_lockobj() << " Closing connection that never connected (#" << connectionnr << ").");
 	return;
   }
-  PerService_rat per_service_r(*sConnections[connectionnr]);
+  PerService_rat per_service_r(*iter->second);
   int n = per_service_r->connection_closed();
-  sConnections[connectionnr] = NULL;
+  sConnections.erase(iter);
   Dout(dc::curlio, (void*)get_lockobj() << " Connection closed (#" << connectionnr << "); " << n << " connections remaining [" << (void*)&*per_service_r << "].");
 }
 #endif

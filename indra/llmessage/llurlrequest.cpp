@@ -80,9 +80,14 @@ LLURLRequest::LLURLRequest(LLURLRequest::ERequestAction action, std::string cons
     mAction(action), mURL(url), mKeepAlive(keepalive), mIsAuth(is_auth), mNoCompression(!compression),
 	mBody(body), mResponder(responder), mHeaders(headers), mResponderNameCache(std::string("LLURLRequest:") + std::string(responder ? responder->getName() : "<uninitialized>"))
 {
-	if (approved)
+	if (approved || action == LLHTTPClient::HTTP_HEAD || action == LLHTTPClient::HTTP_GET)
 	{
-		AICurlEasyRequest_wat(*mCurlEasyRequest)->setApproved(approved);
+		AICurlEasyRequest_wat curl_easy_request_w(*mCurlEasyRequest);
+		curl_easy_request_w->setApproved(approved);		// The default is false, so this only needs to be called when approved == true.
+		if (action == LLHTTPClient::HTTP_HEAD || action == LLHTTPClient::HTTP_GET)
+		{
+			curl_easy_request_w->setHeadOrGet();
+		}
 	}
 }
 
@@ -270,7 +275,7 @@ bool LLURLRequest::configure(AICurlEasyRequest_wat const& curlEasyRequest_w)
 			// Don't verify host name if this is not an authentication request,
 			// so urls with scrubbed host names will work (improves DNS performance).
 			curlEasyRequest_w->setopt(CURLOPT_SSL_VERIFYHOST, (gNoVerifySSLCert || !mIsAuth) ? 0L : 2L);
-			curlEasyRequest_w->finalizeRequest(mURL, mResponder->getHTTPTimeoutPolicy(), this);
+			curlEasyRequest_w->finalizeRequest(mURL, mResponder, this);
 		}
 	}
 	return rv;
