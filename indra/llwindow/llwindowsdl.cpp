@@ -1785,7 +1785,13 @@ void LLWindowSDL::gatherInput()
             mKeyVirtualKey = event.key.keysym.unicode;
             mKeyModifiers = event.key.keysym.mod;
 
-            gKeyboard->handleKeyDown(event.key.keysym.sym, event.key.keysym.mod);
+			if (gKeyboard->handleKeyDown(event.key.keysym.sym, event.key.keysym.mod) &&
+				(event.key.keysym.mod & (KMOD_LCTRL|KMOD_RCTRL|KMOD_LALT|KMOD_RALT)))
+			{
+			  // If a control or alt modifier is pressed and the key was handled,
+			  // then don't treat it as a normal (unicode) key too.
+			  event.key.keysym.unicode = 0;
+			}
             // part of the fix for SL-13243
             if (SDLCheckGrabbyKeys(event.key.keysym.sym, TRUE) != 0)
                 SDLReallyCaptureInput(TRUE);
