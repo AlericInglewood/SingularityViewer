@@ -1966,7 +1966,7 @@ CURLMcode MultiHandle::remove_easy_request(AICurlEasyRequest const& easy_request
 {
   AICurlEasyRequest_wat easy_request_w(*easy_request);
   addedEasyRequests_type::iterator iter = mAddedEasyRequests.find(easy_request);
-  llassert(iter != mAddedEasyRequests.end());
+  llassert(iter != mAddedEasyRequests.end() || easy_request_w->forced_timeout());
   if (iter == mAddedEasyRequests.end())
   {
 	// The request could be queued.
@@ -2059,26 +2059,30 @@ void MultiHandle::check_msg_queue(void)
 	  ThreadSafeBufferedCurlEasyRequest* ptr;
 	  CURLcode rese = curl_easy_getinfo(easy, CURLINFO_PRIVATE, &ptr);
 	  llassert_always(rese == CURLE_OK);
-	  AICurlEasyRequest easy_request(ptr);
-	  llassert(*AICurlEasyRequest_wat(*easy_request) == easy);
-	  // Store result and trigger events for the easy request.
-	  finish_easy_request(easy_request, msg->data.result);
-	  // This invalidates msg, but not easy_request.
-	  CURLMcode res = remove_easy_request(easy_request);
-	  // This should hold, I think, because the handles are obviously ok and
-	  // the only error we could get is when remove_easy_request() was already
-	  // called before (by this thread); but if that was the case then the easy
-	  // handle should not have been be returned by info_read()...
-	  llassert(res == CURLM_OK);
-	  // Nevertheless, if it was already removed then just ignore it.
-	  if (res == CURLM_OK)
+	  // This should never be NULL because it is only set to NULL right
+	  // after this easy handle was removed from its multi handle, which
+	  // should cause it never to be returned by info_read().
+	  llassert(ptr);
+	  if (ptr)
 	  {
+		AICurlEasyRequest easy_request(ptr);
+		llassert(*AICurlEasyRequest_wat(*easy_request) == easy);
+		// Store result and trigger events for the easy request.
+		finish_easy_request(easy_request, msg->data.result);
+		// This invalidates msg, but not easy_request.
+		CURLMcode res = remove_easy_request(easy_request);
+		// This should hold, I think, because the handles are obviously ok and
+		// the only error we could get is when remove_easy_request() was already
+		// called before (by this thread); but if that was the case then the easy
+		// handle should not have been be returned by info_read()...
+		llassert(res == CURLM_OK);
+		// Nevertheless, if it was already removed then just ignore it.
+		if (res == -2)
+		{
+		  llwarns << "Curl easy handle returned by curl_multi_info_read() that is not (anymore) in MultiHandle::mAddedEasyRequests!?!" << llendl;
+		}
+		// Destruction of easy_request at this point, causes the CurlEasyRequest to be deleted.
 	  }
-	  else if (res == -2)
-	  {
-		llwarns << "Curl easy handle returned by curl_multi_info_read() that is not (anymore) in MultiHandle::mAddedEasyRequests!?!" << llendl;
-	  }
-	  // Destruction of easy_request at this point, causes the CurlEasyRequest to be deleted.
 	}
   }
   if (msgs_done)

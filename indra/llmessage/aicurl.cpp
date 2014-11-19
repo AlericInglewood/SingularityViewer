@@ -1268,6 +1268,9 @@ void CurlEasyRequest::removed_from_multi_handle(AICurlEasyRequest_wat& curl_easy
 {
   if (mHandleEventsTarget)
 	mHandleEventsTarget->removed_from_multi_handle(curl_easy_request_w);
+  // Just to be sure that this won't be used anymore because upon return from
+  // this call this CurlEasyRequest will be removed from MultiHandle::mAddedEasyRequests.
+  setopt(CURLOPT_PRIVATE, (void*)NULL);
 }
 
 void CurlEasyRequest::bad_file_descriptor(AICurlEasyRequest_wat& curl_easy_request_w)
@@ -1279,7 +1282,12 @@ void CurlEasyRequest::bad_file_descriptor(AICurlEasyRequest_wat& curl_easy_reque
 void CurlEasyRequest::force_timeout(AICurlEasyRequest_wat& curl_easy_request_w)
 {
   if (mHandleEventsTarget)
+  {
 	mHandleEventsTarget->force_timeout(curl_easy_request_w);
+#ifdef SHOW_ASSERT
+	mForcedTimeout = true;
+#endif
+  }
 }
 
 #ifdef SHOW_ASSERT
