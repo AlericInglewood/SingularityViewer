@@ -333,6 +333,9 @@ class CurlEasyRequest : public CurlEasyHandle {
 	bool mIsHttps;								// Set if the url starts with "https:".
 	bool mHostnameUnresolved;					// Set to true if the hostname of this request might not have been (DNS) resolved yet.
 	AICurlTimer mBadConnectionTimer;			// This is used to detect if the server stops sending body data after it already sent something before.
+#ifdef SHOW_ASSERT
+	bool mForcedTimeout;						// Set when force_timeout is called.
+#endif
 
 #ifdef CWDEBUG
   public:
@@ -365,11 +368,14 @@ class CurlEasyRequest : public CurlEasyHandle {
 	  else
 		mBadConnectionTimer.create(expiration, boost::bind(&CurlEasyRequest::bad_connection, lockobj));
 	}
+#ifdef SHOW_ASSERT
+	bool forced_timeout(void) const { return mForcedTimeout; }
+#endif
 
   protected:
 	// This class may only be created as base class of BufferedCurlEasyRequest.
 	// Throws AICurlNoEasyHandle.
-	CurlEasyRequest(void) : mHeaders(NULL), mHandleEventsTarget(NULL), mContentLength(0), mResult(CURLE_FAILED_INIT), mTimeoutPolicy(NULL), mTimeoutIsOrphan(false), mHostnameUnresolved(false)
+	CurlEasyRequest(void) : mHeaders(NULL), mHandleEventsTarget(NULL), mContentLength(0), mResult(CURLE_FAILED_INIT), mTimeoutPolicy(NULL), mTimeoutIsOrphan(false), mHostnameUnresolved(false), mForcedTimeout(false)
 #ifdef CWDEBUG
 		, mDebugIsHeadOrGetMethod(false), mDebugHumanReadable(false)
 #endif
