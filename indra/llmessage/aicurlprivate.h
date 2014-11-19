@@ -375,7 +375,10 @@ class CurlEasyRequest : public CurlEasyHandle {
   protected:
 	// This class may only be created as base class of BufferedCurlEasyRequest.
 	// Throws AICurlNoEasyHandle.
-	CurlEasyRequest(void) : mHeaders(NULL), mHandleEventsTarget(NULL), mContentLength(0), mResult(CURLE_FAILED_INIT), mTimeoutPolicy(NULL), mTimeoutIsOrphan(false), mHostnameUnresolved(false), mForcedTimeout(false)
+	CurlEasyRequest(void) : mHeaders(NULL), mHandleEventsTarget(NULL), mContentLength(0), mResult(CURLE_FAILED_INIT), mTimeoutPolicy(NULL), mTimeoutIsOrphan(false), mHostnameUnresolved(false)
+#ifdef SHOW_ASSERT
+		, mForcedTimeout(false)
+#endif
 #ifdef CWDEBUG
 		, mDebugIsHeadOrGetMethod(false), mDebugHumanReadable(false)
 #endif
