@@ -1171,16 +1171,16 @@
           <key>linux</key>
           <map>
             <key>md5sum</key>
-            <string>c57c14353e07e45c0f168313f26ace8e</string>
+            <string>bcfc09a5b2505500f2a5b43cad51d62b</string>
             <key>url</key>
-            <uri>https://bitbucket.org/SingularityViewer/libraries/downloads/openssl-1.0.0g-linux-20120207.tar.bz2</uri>
+			<uri>https://github.com/AlericInglewood/3p-openssl/releases/download/linux-20141119/openssl-1.0.1j-linux-20141119.tar.bz2</uri>
           </map>
           <key>linux64</key>
           <map>
             <key>md5sum</key>
-            <string>10e3de555fe95d7be00b6209e26a0566</string>
+            <string>81a9ffa3f1b9b1e2a8589b22f1141236</string>
             <key>url</key>
-            <uri>https://bitbucket.org/SingularityViewer/libraries/downloads/openssl-1.0.1j-linux64-20141020.tar.bz2</uri>
+			<uri>https://github.com/AlericInglewood/3p-openssl/releases/download/linux-20141119/openssl-1.0.1j-linux64-20141119.tar.bz2</uri>
           </map>
           <key>windows</key>
           <map>
