@@ -943,6 +943,7 @@ class Linux_x86_64Manifest(LinuxManifest):
             self.path("libjpeg.so*")
             self.path("libpng*.so*")
             self.path("libz.so*")
+            self.path("libcurl.so.*")
 
             # Boost
             self.path("libboost_context-mt.so.*")
