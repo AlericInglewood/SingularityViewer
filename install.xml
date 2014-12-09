@@ -303,16 +303,16 @@
           <key>linux</key>
           <map>
             <key>md5sum</key>
-            <string>f35a301aa5e058b3fb15e69b984a0534</string>
+            <string>d82751ef8b0ca7fe99a681a17c133157</string>
             <key>url</key>
-            <uri>https://bitbucket.org/SingularityViewer/libraries/downloads/curl-7.21.1-linux-20110316.tar.bz2</uri>
+			<uri>https://github.com/AlericInglewood/3p-libcurl/releases/download/linux-20141121/curl-pipelinefix-e4b691e8-linux-20141121.tar.bz2</uri>
           </map>
           <key>linux64</key>
           <map>
             <key>md5sum</key>
-            <string>f101ce789d67d33876c948f81d7085f5</string>
+            <string>7582fb7b61128a4722fdbcab943830d5</string>
             <key>url</key>
-			<uri>https://github.com/AlericInglewood/curl/releases/download/singu_20141116/curl-7.39.0-pipeline-fixes-linux64-20141116.tar.bz2</uri>
+			<uri>https://github.com/AlericInglewood/3p-libcurl/releases/download/linux64-20141121/curl-pipelinefix-e4b691e8-linux64-20141121.tar.bz2</uri>
           </map>
           <key>windows</key>
           <map>
@@ -1171,16 +1171,16 @@
           <key>linux</key>
           <map>
             <key>md5sum</key>
-            <string>c57c14353e07e45c0f168313f26ace8e</string>
+            <string>95d9148bf9aa4e28f811453203a5ae49</string>
             <key>url</key>
-            <uri>https://bitbucket.org/SingularityViewer/libraries/downloads/openssl-1.0.0g-linux-20120207.tar.bz2</uri>
+			<uri>https://github.com/AlericInglewood/3p-openssl/releases/download/linux-20141121/openssl-1.0.1j-linux-20141121.tar.bz2</uri>
           </map>
           <key>linux64</key>
           <map>
             <key>md5sum</key>
-            <string>10e3de555fe95d7be00b6209e26a0566</string>
+            <string>95fb425984de2005d514c42851ba1e5c</string>
             <key>url</key>
-            <uri>https://bitbucket.org/SingularityViewer/libraries/downloads/openssl-1.0.1j-linux64-20141020.tar.bz2</uri>
+			<uri>https://github.com/AlericInglewood/3p-openssl/releases/download/linux64-20141121/openssl-1.0.1j-linux64-20141121.tar.bz2</uri>
           </map>
           <key>windows</key>
           <map>

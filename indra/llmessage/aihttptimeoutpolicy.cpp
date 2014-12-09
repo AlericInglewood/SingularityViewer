@@ -957,8 +957,6 @@ P(iamHereVoice);
 P2(inventoryModelFetchDescendentsResponder,		transfer_300s);
 P(inventoryModelFetchItemResponder);
 P(lcl_responder);
-P(MPImportGetResponder);
-P(MPImportPostResponder);
 P(mapLayerResponder);
 P(materialsResponder);
 P2(maturityPreferences,							transfer_30s_connect_10s);
