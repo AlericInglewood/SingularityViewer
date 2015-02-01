@@ -1285,7 +1285,7 @@ Cache will be cleared after you restart [APP_NAME].
    icon="alertmodal.tga"
    name="CacheClearReset"
    type="alertmodal">
-The debug setting ClearCacheOnStartup was set! This caused your cache to clear EVERY relog, forever! It now has been reset.
+The debug setting PurgeCacheOnStartup was set! This caused your cache to clear EVERY relog, forever! It now has been reset.
 
 Your cache will be cleared once more the next time you restart [APP_NAME].
     <usetemplate
