@@ -546,7 +546,7 @@ void LLFloaterAvatarList::updateAvatarList()
 			const LLUUID& avid = avatar_ids[i];
 			std::string name;
 			static const LLCachedControl<S32> namesystem("RadarNameSystem");
-			if (!LLAvatarNameCache::getPNSName(avid, name, namesystem)) continue; //prevent (Loading...)
+			if (!LLAvatarNameCache::getNSName(avid, name, namesystem)) continue; //prevent (Loading...)
 
 			LLVector3d position = positions[i];
 
@@ -622,9 +622,8 @@ void LLFloaterAvatarList::expireAvatarList()
 	for(av_list_t::iterator it = mAvatars.begin(); it != mAvatars.end();)
 	{
 		LLAvatarListEntry* entry = it->get();
-		if (!entry->isDead())
+		if (entry->getAlive() && !entry->isDead())
 		{
-			entry->getAlive();
 			++it;
 		}
 		else

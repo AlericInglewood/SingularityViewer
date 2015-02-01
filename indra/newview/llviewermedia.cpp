@@ -51,6 +51,7 @@
 #include "llkeyboard.h"
 #include "llmarketplacefunctions.h"
 #include "llmediaentry.h"
+#include "llmenugl.h"
 #include "llmimetypes.h"
 #include "llmutelist.h"
 #include "llnotifications.h"
@@ -940,7 +941,7 @@ void LLViewerMedia::updateMedia(void *dummy_arg)
 					{
 						F32 approximate_interest_dimension = (F32) sqrt(pimpl->getInterest());
 					
-						pimpl->setLowPrioritySizeLimit(llround(approximate_interest_dimension));
+						pimpl->setLowPrioritySizeLimit(llmath::llround(approximate_interest_dimension));
 					}
 				}
 				else
@@ -2366,8 +2367,8 @@ void LLViewerMediaImpl::scaleTextureCoords(const LLVector2& texture_coords, S32 
 		texture_y = 1.0 + texture_y;
 
 	// scale x and y to texel units.
-	*x = llround(texture_x * plugin->getTextureWidth());
-	*y = llround((1.0f - texture_y) * plugin->getTextureHeight());
+	*x = llmath::llround(texture_x * plugin->getTextureWidth());
+	*y = llmath::llround((1.0f - texture_y) * plugin->getTextureHeight());
 
 	// Adjust for the difference between the actual texture height and the amount of the texture in use.
 	*y -= (plugin->getTextureHeight() - plugin->getHeight());
@@ -2753,25 +2754,28 @@ bool LLViewerMediaImpl::handleKeyHere(KEY key, MASK mask)
 		// Menu keys should be handled by the menu system and not passed to UI elements, but this is how LLTextEditor and LLLineEditor do it...
 		if( MASK_CONTROL & mask )
 		{
-			if( 'C' == key )
+			if('C' == key)
 			{
 				plugin->copy();
 				result = true;
 			}
-			else
-			if( 'V' == key )
+			else if('V' == key)
 			{
 				plugin->paste();
 				result = true;
 			}
-			else
-			if( 'X' == key )
+			else if('X' == key)
 			{
 				plugin->cut();
 				result = true;
 			}
 		}
-		
+
+		// Singu Note: At the very least, let's allow the login menu to function
+		extern LLMenuBarGL* gLoginMenuBarView;
+		if (gLoginMenuBarView && gLoginMenuBarView->getVisible() && gLoginMenuBarView->handleAcceleratorKey(key, mask))
+			return true;
+
 		if(!result)
 		{
 			

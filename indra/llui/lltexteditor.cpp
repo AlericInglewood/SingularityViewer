@@ -312,7 +312,7 @@ LLTextEditor::LLTextEditor(
 
 	updateTextRect();
 
-	S32 line_height = llround( mGLFont->getLineHeight() );
+	S32 line_height = llmath::llround( mGLFont->getLineHeight() );
 	S32 page_size = mTextRect.getHeight() / line_height;
 
 	// Init the scrollbar
@@ -970,7 +970,7 @@ S32 LLTextEditor::getCursorPosFromLocalCoord( S32 local_x, S32 local_y, BOOL rou
 
 	// Figure out which line we're nearest to.
 	S32 total_lines = getLineCount();
-	S32 line_height = llround( mGLFont->getLineHeight() );
+	S32 line_height = llmath::llround( mGLFont->getLineHeight() );
 	S32 max_visible_lines = mTextRect.getHeight() / line_height;
 	S32 scroll_lines = mScrollbar->getDocPos();
 	S32 visible_lines = llmin( total_lines - scroll_lines, max_visible_lines );			// Lines currently visible 
@@ -2927,7 +2927,7 @@ void LLTextEditor::drawSelectionBackground()
 		const S32 text_len = getLength();
 		std::queue<S32> line_endings;
 
-		S32 line_height = llround( mGLFont->getLineHeight() );
+		S32 line_height = llmath::llround( mGLFont->getLineHeight() );
 
 		S32 selection_left		= llmin( mSelectionStart, mSelectionEnd );
 		S32 selection_right		= llmax( mSelectionStart, mSelectionEnd );
@@ -3122,7 +3122,7 @@ void LLTextEditor::drawMisspelled()
 
 				S32 line_end = 0;
 				// Determine if the cursor is visible and if so what its coordinates are.
-				while( (mTextRect.mBottom <= llround(text_y)) && (search_pos < num_lines))
+				while( (mTextRect.mBottom <= llmath::llround(text_y)) && (search_pos < num_lines))
 				{
 					line_end = text_len + 1;
 					S32 next_line = -1;
@@ -3197,7 +3197,7 @@ void LLTextEditor::drawCursor()
 
 		S32 line_end = 0;
 		// Determine if the cursor is visible and if so what its coordinates are.
-		while( (mTextRect.mBottom <= llround(text_y)) && (cur_pos < num_lines))
+		while( (mTextRect.mBottom <= llmath::llround(text_y)) && (cur_pos < num_lines))
 		{
 			line_end = text_len + 1;
 			S32 next_line = -1;
@@ -3316,7 +3316,7 @@ void LLTextEditor::drawPreeditMarker()
 		return;
 	}
 		
-	const S32 line_height = llround( mGLFont->getLineHeight() );
+	const S32 line_height = llmath::llround( mGLFont->getLineHeight() );
 
 	S32 line_start = getLineStart(cur_line);
 	S32 line_y = mTextRect.mTop - line_height;
@@ -3436,7 +3436,7 @@ void LLTextEditor::drawText()
 	if (seg_iter == mSegments.end() || (*seg_iter)->getStart() > line_start) --seg_iter;
 	LLTextSegment* cur_segment = *seg_iter;
 	
-	S32 line_height = llround( mGLFont->getLineHeight() );
+	S32 line_height = llmath::llround( mGLFont->getLineHeight() );
 	F32 text_y = (F32)(mTextRect.mTop - line_height);
 	while((mTextRect.mBottom <= text_y) && (cur_line < num_lines))
 	{
@@ -3461,7 +3461,7 @@ void LLTextEditor::drawText()
 		if( mShowLineNumbers && !cur_line_is_continuation) 
 		{
 			const LLFontGL *num_font = LLFontGL::getFontMonospace();
-			F32 y_top = text_y + ((F32)llround(num_font->getLineHeight()) / 2);
+			F32 y_top = text_y + ((F32)llmath::llround(num_font->getLineHeight()) / 2);
 			const LLWString ltext = utf8str_to_wstring(llformat("%*d", UI_TEXTEDITOR_LINE_NUMBER_DIGITS, cur_line_num ));
 			BOOL is_cur_line = getCurrentLine() == cur_line_num;
 			const U8 style = is_cur_line ? LLFontGL::BOLD : LLFontGL::NORMAL;
@@ -3505,7 +3505,7 @@ void LLTextEditor::drawText()
 					S32 style_image_height = style->mImageHeight;
 					S32 style_image_width = style->mImageWidth;
 					LLUIImagePtr image = style->getImage();
-					image->draw(llround(text_x), llround(text_y)+line_height-style_image_height, 
+					image->draw(llmath::llround(text_x), llmath::llround(text_y)+line_height-style_image_height, 
 						style_image_width, style_image_height);
 				}
 
@@ -3592,7 +3592,7 @@ void LLTextEditor::drawClippedSegment(const LLWString &text, S32 seg_start, S32 
 		}
 	}
 
-	F32 y_top = y + (F32)llround(font->getLineHeight());
+	F32 y_top = y + (F32)llmath::llround(font->getLineHeight());
 
   	if( selection_left > seg_start )
 	{
@@ -3995,7 +3995,7 @@ void LLTextEditor::reshape(S32 width, S32 height, BOOL called_from_parent)
 	// propagate shape information to scrollbar
 	mScrollbar->setDocSize( getLineCount() );
 
-	S32 line_height = llround( mGLFont->getLineHeight() );
+	S32 line_height = llmath::llround( mGLFont->getLineHeight() );
 	S32 page_lines = mTextRect.getHeight() / line_height;
 	mScrollbar->setPageSize( page_lines );
 }
@@ -5162,7 +5162,7 @@ BOOL LLTextEditor::getPreeditLocation(S32 query_offset, LLCoordGL *coord, LLRect
 	}
 
 	const llwchar * const text = mWText.c_str();
-	const S32 line_height = llround(mGLFont->getLineHeight());
+	const S32 line_height = llmath::llround(mGLFont->getLineHeight());
 
 	if (coord)
 	{
@@ -5265,7 +5265,7 @@ void LLTextEditor::markAsPreedit(S32 position, S32 length)
 
 S32 LLTextEditor::getPreeditFontSize() const
 {
-	return llround(mGLFont->getLineHeight() * LLUI::getScaleFactor().mV[VY]);
+	return llmath::llround(mGLFont->getLineHeight() * LLUI::getScaleFactor().mV[VY]);
 }
 
 void LLTextEditor::setKeystrokeCallback(const keystroke_signal_t::slot_type& callback)

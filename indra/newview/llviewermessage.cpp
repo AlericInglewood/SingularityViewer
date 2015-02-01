@@ -2096,7 +2096,7 @@ static std::string clean_name_from_task_im(const std::string& msg,
 		// Don't try to clean up group names
 		if (!from_group)
 		{
-			if (LLAvatarNameCache::useDisplayNames())
+			if (LLAvatarName::useDisplayNames())
 			{
 				// ...just convert to username
 				final += LLCacheName::buildUsername(name);
@@ -2119,22 +2119,20 @@ void notification_display_name_callback(const LLUUID& id,
 					  LLSD& substitutions, 
 					  const LLSD& payload)
 {
-	substitutions["NAME"] = av_name.mDisplayName;
+	substitutions["NAME"] = av_name.getDisplayName();
 	LLNotificationsUtil::add(name, substitutions, payload);
 }
 
 // Callback for name resolution of a god/estate message
 void god_message_name_cb(const LLAvatarName& av_name, LLChat chat, std::string message)
 {
-	std::string name;
-	LLAvatarNameCache::getPNSName(av_name, name);
 	LLSD args;
-	args["NAME"] = name;
+	args["NAME"] = av_name.getNSName();
 	args["MESSAGE"] = message;
 	LLNotificationsUtil::add("GodMessage", args);
 
 	// Treat like a system message and put in chat history.
-	chat.mText = name + ": " + message;
+	chat.mText = av_name.getNSName() + ": " + message;
 
 	// Claim to be from a local agent so it doesn't go into console.
 	LLFloaterChat::addChat(chat, false, true);
@@ -2155,7 +2153,7 @@ std::string replace_wildcards(std::string autoresponse, const LLUUID& id, const 
 
 	// Add in their display name
 	LLAvatarName av_name;
-	boost::algorithm::replace_all(autoresponse, "#d", LLAvatarNameCache::get(id, &av_name) ? av_name.mDisplayName : name);
+	boost::algorithm::replace_all(autoresponse, "#d", LLAvatarNameCache::get(id, &av_name) ? av_name.getDisplayName() : name);
 
 	if (!isAgentAvatarValid()) return autoresponse;
 	// Add in idle time
@@ -2453,11 +2451,11 @@ void process_improved_im(LLMessageSystem *msg, void **user_data)
 					session_id);
 				gAgent.sendReliableMessage();
 
-				std::string pns_name;
-				if (!LLAvatarNameCache::getPNSName(from_id, pns_name)) pns_name = name;
+				LLAvatarName av_name;
+				std::string ns_name = LLAvatarNameCache::get(from_id, &av_name) ? av_name.getNSName() : name;
 				if (show_autoresponded)
 				{
-					gIMMgr->addMessage(session_id, from_id, name, LLTrans::getString("IM_autoresponded_to") + " " + pns_name);
+					gIMMgr->addMessage(session_id, from_id, name, LLTrans::getString("IM_autoresponded_to") + " " + ns_name);
 				}
 				if (LLViewerInventoryItem* item = gInventory.getItem(itemid))
 				{
@@ -2465,7 +2463,7 @@ void process_improved_im(LLMessageSystem *msg, void **user_data)
 					if (show_autoresponded)
 					{
 						gIMMgr->addMessage(computed_session_id, from_id, name,
-							llformat("%s %s \"%s\"", pns_name.c_str(), LLTrans::getString("IM_autoresponse_sent_item").c_str(), item->getName().c_str()));
+							llformat("%s %s \"%s\"", ns_name.c_str(), LLTrans::getString("IM_autoresponse_sent_item").c_str(), item->getName().c_str()));
 					}
 				}
 			}
@@ -2584,14 +2582,14 @@ void process_improved_im(LLMessageSystem *msg, void **user_data)
 			// Don't announce that someone has started messaging, if they're muted or when in busy mode
 			if (!is_muted && (!accept_im_from_only_friend || is_friend) && !is_do_not_disturb && !gIMMgr->hasSession(computed_session_id) && gSavedSettings.getBOOL("AscentInstantMessageAnnounceIncoming"))
 			{
-				std::string pns_name;
-				if (!LLAvatarNameCache::getPNSName(from_id, pns_name)) pns_name = name;
+				LLAvatarName av_name;
+				std::string ns_name = LLAvatarNameCache::get(from_id, &av_name) ? av_name.getNSName() : name;
 
 				gIMMgr->addMessage(
 						computed_session_id,
 						from_id,
 						name,
-						llformat("%s ", pns_name.c_str()) + LLTrans::getString("IM_announce_incoming"),
+						llformat("%s ", ns_name.c_str()) + LLTrans::getString("IM_announce_incoming"),
 						name,
 						IM_NOTHING_SPECIAL,
 						parent_estate_id,
@@ -2628,7 +2626,7 @@ void process_improved_im(LLMessageSystem *msg, void **user_data)
 
 					if (show_autoresponded)
 					{
-						gIMMgr->addMessage(session_id, from_id, name, LLTrans::getString("IM_autoresponded_to") + " " + pns_name);
+						gIMMgr->addMessage(session_id, from_id, name, LLTrans::getString("IM_autoresponded_to") + " " + ns_name);
 					}
 					if (LLViewerInventoryItem* item = gInventory.getItem(itemid))
 					{
@@ -2636,7 +2634,7 @@ void process_improved_im(LLMessageSystem *msg, void **user_data)
 						if (show_autoresponded)
 						{
 							gIMMgr->addMessage(computed_session_id, from_id, name,
-								llformat("%s %s \"%s\"", pns_name.c_str(), LLTrans::getString("IM_autoresponse_sent_item").c_str(), item->getName().c_str()));
+								llformat("%s %s \"%s\"", ns_name.c_str(), LLTrans::getString("IM_autoresponse_sent_item").c_str(), item->getName().c_str()));
 						}
 					}
 				}
@@ -3126,7 +3124,7 @@ void process_improved_im(LLMessageSystem *msg, void **user_data)
 		}
 		else
 		{
-			gIMMgr->addMessage(session_id, from_id, name, message);
+			gIMMgr->addMessage(session_id, from_id, name, separator_string + message.substr(message_offset), name, dialog, parent_estate_id, region_id, position, true);
 		}
 		break;
 		
@@ -3486,11 +3484,11 @@ void send_do_not_disturb_message (LLMessageSystem* msg, const LLUUID& from_id, c
 			IM_ONLINE,
 			IM_BUSY_AUTO_RESPONSE);
 		gAgent.sendReliableMessage();
-		std::string pns_name;
-		if (!LLAvatarNameCache::getPNSName(from_id, pns_name)) pns_name = from_name;
+		LLAvatarName av_name;
+		std::string ns_name = LLAvatarNameCache::get(from_id, &av_name) ? av_name.getNSName() : from_name;
 		LLUUID session_id;
 		msg->getUUIDFast(_PREHASH_MessageBlock, _PREHASH_ID, session_id);
-		if (gSavedPerAccountSettings.getBOOL("BusyModeResponseShow")) gIMMgr->addMessage(session_id, from_id, from_name, LLTrans::getString("IM_autoresponded_to") + " " + pns_name);
+		if (gSavedPerAccountSettings.getBOOL("BusyModeResponseShow")) gIMMgr->addMessage(session_id, from_id, from_name, LLTrans::getString("IM_autoresponded_to") + " " + ns_name);
 		if (!gSavedPerAccountSettings.getBOOL("BusyModeResponseItem")) return; // Not sending an item, finished
 		if (LLViewerInventoryItem* item = gInventory.getItem(static_cast<LLUUID>(gSavedPerAccountSettings.getString("BusyModeResponseItemID"))))
 		{
@@ -3499,7 +3497,7 @@ void send_do_not_disturb_message (LLMessageSystem* msg, const LLUUID& from_id, c
 			LLUUID computed_session_id = LLIMMgr::computeSessionID(static_cast<EInstantMessage>(d), from_id);
 			LLGiveInventory::doGiveInventoryItem(from_id, item, computed_session_id);
 			if (gSavedPerAccountSettings.getBOOL("BusyModeResponseShow"))
-				gIMMgr->addMessage(computed_session_id, from_id, from_name, llformat("%s %s \"%s\"", pns_name.c_str(), LLTrans::getString("IM_autoresponse_sent_item").c_str(), item->getName().c_str()));
+				gIMMgr->addMessage(computed_session_id, from_id, from_name, llformat("%s %s \"%s\"", ns_name.c_str(), LLTrans::getString("IM_autoresponse_sent_item").c_str(), item->getName().c_str()));
 		}
 	}
 }
@@ -3794,7 +3792,7 @@ void process_chat_from_simulator(LLMessageSystem *msg, void **user_data)
 		LLAvatarName av_name;
 		if (LLAvatarNameCache::get(from_id, &av_name))
 		{
-			chat.mFromName = av_name.mDisplayName;
+			chat.mFromName = av_name.getDisplayName();
 		}
 		else
 		{
@@ -3941,9 +3939,10 @@ void process_chat_from_simulator(LLMessageSystem *msg, void **user_data)
 
 		is_owned_by_me = chatter->permYouOwner();
 	}
+	else is_owned_by_me = owner_id == gAgentID;
 
 	U32 links_for_chatting_objects = gSavedSettings.getU32("LinksForChattingObjects");
-	if (links_for_chatting_objects != 0 && chatter && chat.mSourceType == CHAT_SOURCE_OBJECT &&
+	if (links_for_chatting_objects != 0 /*&& chatter*/ && chat.mSourceType == CHAT_SOURCE_OBJECT &&
 		(!is_owned_by_me || links_for_chatting_objects == 2)
 // [RLVa:KB]
 		&& !gRlvHandler.hasBehaviour(RLV_BHVR_SHOWNAMES)
@@ -3958,13 +3957,16 @@ void process_chat_from_simulator(LLMessageSystem *msg, void **user_data)
 		if( !gRlvHandler.hasBehaviour(RLV_BHVR_SHOWLOC) )
 // [/RLVa:KB]
 		{
+			// Fallback on the owner, if the chatter isn't present, lastly use the agent's region at the origin.
+			const LLViewerObject* obj(chatter ? chatter : gObjectList.findObject(owner_id));
 			// Compute the object SLURL.
-			LLVector3 pos = chatter->getPositionRegion();
-			S32 x = llround((F32)fmod((F64)pos.mV[VX], (F64)REGION_WIDTH_METERS));
-			S32 y = llround((F32)fmod((F64)pos.mV[VY], (F64)REGION_WIDTH_METERS));
-			S32 z = llround((F32)pos.mV[VZ]);
+			LLVector3 pos = obj ? obj->getPositionRegion() : LLVector3::zero;
+			S32 x = llmath::llround((F32)fmod((F64)pos.mV[VX], (F64)REGION_WIDTH_METERS));
+			S32 y = llmath::llround((F32)fmod((F64)pos.mV[VY], (F64)REGION_WIDTH_METERS));
+			S32 z = llmath::llround((F32)pos.mV[VZ]);
 			std::ostringstream location;
-			location << chatter->getRegion()->getName() << "/" << x << "/" << y << "/" << z;
+			location << (obj ? obj->getRegion() : gAgent.getRegion())->getName() << "/" << x << "/" << y << "/" << z;
+			if (chatter != obj) location << "?owner_not_object";
 			query_string["slurl"] = location.str();
 		}
 
@@ -3997,7 +3999,7 @@ void process_chat_from_simulator(LLMessageSystem *msg, void **user_data)
 
 		if (chatter && chatter->isAvatar())
 		{
-			if (LLAvatarNameCache::getPNSName(from_id, from_name))
+			if (LLAvatarNameCache::getNSName(from_id, from_name))
 				chat.mFromName = from_name;
 		}
 
@@ -4518,11 +4520,14 @@ void process_teleport_finish(LLMessageSystem* msg, void**)
 	// Viewer trusts the simulator.
 	gMessageSystem->enableCircuit(sim_host, TRUE);
 // <FS:CR> Aurora Sim
-	U32 region_size_x = 256;
-	msg->getU32Fast(_PREHASH_Info, _PREHASH_RegionSizeX, region_size_x);
-	U32 region_size_y = 256;
-	msg->getU32Fast(_PREHASH_Info, _PREHASH_RegionSizeY, region_size_y);
-	LLWorld::getInstance()->setRegionSize(region_size_x, region_size_y);
+	if (!gHippoGridManager->getConnectedGrid()->isSecondLife())
+	{
+		U32 region_size_x = 256;
+		msg->getU32Fast(_PREHASH_Info, _PREHASH_RegionSizeX, region_size_x);
+		U32 region_size_y = 256;
+		msg->getU32Fast(_PREHASH_Info, _PREHASH_RegionSizeY, region_size_y);
+		LLWorld::getInstance()->setRegionSize(region_size_x, region_size_y);
+	}
 // </FS:CR> Aurora Sim
 	LLViewerRegion* regionp =  LLWorld::getInstance()->addRegion(region_handle, sim_host);
 
@@ -4850,11 +4855,14 @@ void process_crossed_region(LLMessageSystem* msg, void**)
 	send_complete_agent_movement(sim_host);
 
 // <FS:CR> Aurora Sim
-	U32 region_size_x = 256;
-	msg->getU32(_PREHASH_RegionData, _PREHASH_RegionSizeX, region_size_x);
-	U32 region_size_y = 256;
-	msg->getU32(_PREHASH_RegionData, _PREHASH_RegionSizeY, region_size_y);
-	LLWorld::getInstance()->setRegionSize(region_size_x, region_size_y);
+	if (!gHippoGridManager->getConnectedGrid()->isSecondLife())
+	{
+		U32 region_size_x = 256;
+		msg->getU32(_PREHASH_RegionData, _PREHASH_RegionSizeX, region_size_x);
+		U32 region_size_y = 256;
+		msg->getU32(_PREHASH_RegionData, _PREHASH_RegionSizeY, region_size_y);
+		LLWorld::getInstance()->setRegionSize(region_size_x, region_size_y);
+	}
 // </FS:CR> Aurora Sim
 	LLViewerRegion* regionp = LLWorld::getInstance()->addRegion(region_handle, sim_host);
 	regionp->setSeedCapability(seedCap);
@@ -6275,15 +6283,14 @@ static void money_balance_avatar_notify(const LLUUID& agent_id,
 {
 	bool no_transaction_clutter = gSavedSettings.getBOOL("LiruNoTransactionClutter");
 	std::string notification = no_transaction_clutter ? "Payment" : "SystemMessage";
-	std::string name;
-	LLAvatarNameCache::getPNSName(av_name,name);
-	args["NAME"] = name;
+	args["NAME"] = av_name.getNSName();
 	LLSD msg_args;
 	msg_args["MESSAGE"] = LLTrans::getString(message,args);
 	LLNotificationsUtil::add(notification,msg_args,payload);
 
 	if (!no_transaction_clutter) LLFloaterChat::addChat(msg_args["MESSAGE"].asString()); // Alerts won't automatically log to chat.
 }
+
 static void process_money_balance_reply_extended(LLMessageSystem* msg)
 {
 	// Added in server 1.40 and viewer 2.1, support for localization
@@ -6500,83 +6507,101 @@ bool handle_special_notification(std::string notificationID, LLSD& llsdBlock)
 }
 
 // some of the server notifications need special handling. This is where we do that.
-bool handle_teleport_access_blocked(LLSD& llsdBlock)
+bool handle_teleport_access_blocked(LLSD& llsdBlock, const std::string & notificationID, const std::string & defaultMessage)
 {
-	std::string notificationID("TeleportEntryAccessBlocked");
 	U8 regionAccess = static_cast<U8>(llsdBlock["_region_access"].asInteger());
 	std::string regionMaturity = LLViewerRegion::accessToString(regionAccess);
 	LLStringUtil::toLower(regionMaturity);
 	llsdBlock["REGIONMATURITY"] = regionMaturity;
 	
 	bool returnValue = false;
-	LLNotificationPtr maturityLevelNotification;
-	std::string notifySuffix = "_Notify";
-	if (regionAccess == SIM_ACCESS_MATURE)
-	{
-		if (gAgent.isTeen())
-		{
-			gAgent.clearTeleportRequest();
-			maturityLevelNotification = LLNotificationsUtil::add(notificationID+"_AdultsOnlyContent", llsdBlock);
-			returnValue = true;
+	LLNotificationPtr tp_failure_notification;
+	std::string notifySuffix;
 
-			notifySuffix = "_NotifyAdultsOnly";
-		}
-		else if (gAgent.prefersPG())
+	if (notificationID == std::string("TeleportEntryAccessBlocked"))
+	{
+		notifySuffix = "_Notify";
+		if (regionAccess == SIM_ACCESS_MATURE)
 		{
-			if (gAgent.hasRestartableFailedTeleportRequest())
+			if (gAgent.isTeen())
 			{
-				maturityLevelNotification = LLNotificationsUtil::add(notificationID+"_ChangeAndReTeleport", llsdBlock, llsdBlock, handle_prompt_for_maturity_level_change_and_reteleport_callback);
+				gAgent.clearTeleportRequest();
+				tp_failure_notification = LLNotificationsUtil::add(notificationID+"_AdultsOnlyContent", llsdBlock);
 				returnValue = true;
+
+				notifySuffix = "_NotifyAdultsOnly";
+			}
+			else if (gAgent.prefersPG())
+			{
+				if (gAgent.hasRestartableFailedTeleportRequest())
+				{
+					tp_failure_notification = LLNotificationsUtil::add(notificationID+"_ChangeAndReTeleport", llsdBlock, llsdBlock, handle_prompt_for_maturity_level_change_and_reteleport_callback);
+					returnValue = true;
+				}
+				else
+				{
+					gAgent.clearTeleportRequest();
+					tp_failure_notification = LLNotificationsUtil::add(notificationID+"_Change", llsdBlock, llsdBlock, handle_prompt_for_maturity_level_change_callback);
+					returnValue = true;
+				}
 			}
 			else
 			{
 				gAgent.clearTeleportRequest();
-				maturityLevelNotification = LLNotificationsUtil::add(notificationID+"_Change", llsdBlock, llsdBlock, handle_prompt_for_maturity_level_change_callback);
+				tp_failure_notification = LLNotificationsUtil::add(notificationID+"_PreferencesOutOfSync", llsdBlock, llsdBlock, handle_prompt_for_maturity_level_change_callback);
 				returnValue = true;
 			}
 		}
-		else
+		else if (regionAccess == SIM_ACCESS_ADULT)
 		{
-			gAgent.clearTeleportRequest();
-			maturityLevelNotification = LLNotificationsUtil::add(notificationID+"_PreferencesOutOfSync", llsdBlock, llsdBlock, handle_prompt_for_maturity_level_change_callback);
-			returnValue = true;
-		}
-	}
-	else if (regionAccess == SIM_ACCESS_ADULT)
-	{
-		if (!gAgent.isAdult())
-		{
-			gAgent.clearTeleportRequest();
-			maturityLevelNotification = LLNotificationsUtil::add(notificationID+"_AdultsOnlyContent", llsdBlock);
-			returnValue = true;
-
-			notifySuffix = "_NotifyAdultsOnly";
-		}
-		else if (gAgent.prefersPG() || gAgent.prefersMature())
-		{
-			if (gAgent.hasRestartableFailedTeleportRequest())
+			if (!gAgent.isAdult())
 			{
-				maturityLevelNotification = LLNotificationsUtil::add(notificationID+"_ChangeAndReTeleport", llsdBlock, llsdBlock, handle_prompt_for_maturity_level_change_and_reteleport_callback);
+				gAgent.clearTeleportRequest();
+				tp_failure_notification = LLNotificationsUtil::add(notificationID+"_AdultsOnlyContent", llsdBlock);
 				returnValue = true;
+
+				notifySuffix = "_NotifyAdultsOnly";
+			}
+			else if (gAgent.prefersPG() || gAgent.prefersMature())
+			{
+				if (gAgent.hasRestartableFailedTeleportRequest())
+				{
+					tp_failure_notification = LLNotificationsUtil::add(notificationID+"_ChangeAndReTeleport", llsdBlock, llsdBlock, handle_prompt_for_maturity_level_change_and_reteleport_callback);
+					returnValue = true;
+				}
+				else
+				{
+					gAgent.clearTeleportRequest();
+					tp_failure_notification = LLNotificationsUtil::add(notificationID+"_Change", llsdBlock, llsdBlock, handle_prompt_for_maturity_level_change_callback);
+					returnValue = true;
+				}
 			}
 			else
 			{
 				gAgent.clearTeleportRequest();
-				maturityLevelNotification = LLNotificationsUtil::add(notificationID+"_Change", llsdBlock, llsdBlock, handle_prompt_for_maturity_level_change_callback);
+				tp_failure_notification = LLNotificationsUtil::add(notificationID+"_PreferencesOutOfSync", llsdBlock, llsdBlock, handle_prompt_for_maturity_level_change_callback);
 				returnValue = true;
 			}
 		}
+	}		// End of special handling for "TeleportEntryAccessBlocked"
+	else
+	{	// Normal case, no message munging
+		gAgent.clearTeleportRequest();
+		if (LLNotificationTemplates::getInstance()->templateExists(notificationID))
+		{
+			tp_failure_notification = LLNotificationsUtil::add(notificationID, llsdBlock, llsdBlock);
+		}
 		else
 		{
-			gAgent.clearTeleportRequest();
-			maturityLevelNotification = LLNotificationsUtil::add(notificationID+"_PreferencesOutOfSync", llsdBlock, llsdBlock, handle_prompt_for_maturity_level_change_callback);
-			returnValue = true;
+			llsdBlock["MESSAGE"] = defaultMessage;
+			tp_failure_notification = LLNotificationsUtil::add("GenericAlertOK", llsdBlock);
 		}
+		returnValue = true;
 	}
 
-	if ((maturityLevelNotification == NULL) || maturityLevelNotification->isIgnored())
+	if ((tp_failure_notification == NULL) || tp_failure_notification->isIgnored())
 	{
-		// Given a simple notification if no maturityLevelNotification is set or it is ignore
+		// Given a simple notification if no tp_failure_notification is set or it is ignore
 		LLNotificationsUtil::add(notificationID + notifySuffix, llsdBlock);
 	}
 
@@ -6942,8 +6967,7 @@ void chat_mean_collision(const LLUUID& id, const LLAvatarName& avname, const EMe
 		args["ACT"] = LLTrans::getString("physical_object_collide");
 	else
 		return; // How did we get here? I used to know you so well.
-	std::string name;
-	LLAvatarNameCache::getPNSName(avname, name);
+	const std::string name(avname.getNSName());
 	args["NAME"] = name;
 	args["MAG"] = llformat("%f", mag);
 	LLChat chat(LLTrans::getString("BumpedYou", args));
@@ -7237,6 +7261,7 @@ bool script_question_cb(const LLSD& notification, const LLSD& response)
 
 	return false;
 }
+
 static LLNotificationFunctorRegistration script_question_cb_reg_1("ScriptQuestion", script_question_cb);
 static LLNotificationFunctorRegistration script_question_cb_reg_2("ScriptQuestionCaution", script_question_cb);
 
@@ -7384,7 +7409,6 @@ void process_script_question(LLMessageSystem *msg, void **user_data)
 			// fall back to default behavior if cautions are entirely disabled
 			LLNotificationsUtil::add("ScriptQuestion", args, payload);
 		}
-
 	}
 }
 
@@ -7516,8 +7540,8 @@ std::string formatted_time(const time_t& the_time)
 
 void process_teleport_failed(LLMessageSystem *msg, void**)
 {
-	std::string reason;
-	std::string big_reason;
+	std::string message_id;		// Tag from server, like "RegionEntryAccessBlocked"
+	std::string big_reason;		// Actual message to display
 	LLSD args;
 
 	// Let the interested parties know that teleport failed.
@@ -7527,16 +7551,16 @@ void process_teleport_failed(LLMessageSystem *msg, void**)
 	if (msg->has(_PREHASH_AlertInfo) && msg->getSizeFast(_PREHASH_AlertInfo, _PREHASH_Message) > 0)
 	{
 		// Get the message ID
-		msg->getStringFast(_PREHASH_AlertInfo, _PREHASH_Message, reason);
-		big_reason = LLAgent::sTeleportErrorMessages[reason];
+		msg->getStringFast(_PREHASH_AlertInfo, _PREHASH_Message, message_id);
+		big_reason = LLAgent::sTeleportErrorMessages[message_id];
 		if ( big_reason.size() > 0 )
 		{	// Substitute verbose reason from the local map
 			args["REASON"] = big_reason;
 		}
 		else
 		{	// Nothing found in the map - use what the server returned in the original message block
-			msg->getStringFast(_PREHASH_Info, _PREHASH_Reason, reason);
-			args["REASON"] = reason;
+			msg->getStringFast(_PREHASH_Info, _PREHASH_Reason, big_reason);
+			args["REASON"] = big_reason;
 		}
 
 		LLSD llsd_block;
@@ -7552,7 +7576,7 @@ void process_teleport_failed(LLMessageSystem *msg, void**)
 			else
 			{
 				// change notification name in this special case
-				if (handle_teleport_access_blocked(llsd_block))
+				if (handle_teleport_access_blocked(llsd_block, message_id, args["REASON"]))
 				{
 					if( gAgent.getTeleportState() != LLAgent::TELEPORT_NONE )
 					{
@@ -7565,17 +7589,17 @@ void process_teleport_failed(LLMessageSystem *msg, void**)
 
 	}
 	else
-	{
-		msg->getStringFast(_PREHASH_Info, _PREHASH_Reason, reason);
+	{	// Extra message payload not found - use what the simulator sent
+		msg->getStringFast(_PREHASH_Info, _PREHASH_Reason, message_id);
 
-		big_reason = LLAgent::sTeleportErrorMessages[reason];
+		big_reason = LLAgent::sTeleportErrorMessages[message_id];
 		if ( big_reason.size() > 0 )
 		{	// Substitute verbose reason from the local map
 			args["REASON"] = big_reason;
 		}
 		else
 		{	// Nothing found in the map - use what the server returned
-			args["REASON"] = reason;
+			args["REASON"] = message_id;
 		}
 	}
 
@@ -7621,9 +7645,8 @@ void process_teleport_local(LLMessageSystem *msg,void**)
 		}
 	}
 
-	static LLCachedControl<bool> fly_after_tp(gSavedSettings, "LiruFlyAfterTeleport");
 	// Sim tells us whether the new position is off the ground
-	if (fly_after_tp || (teleport_flags & TELEPORT_FLAGS_IS_FLYING))
+	if (teleport_flags & TELEPORT_FLAGS_IS_FLYING || gSavedSettings.getBOOL("LiruFlyAfterTeleport"))
 	{
 		gAgent.setFlying(TRUE);
 	}
@@ -7759,6 +7782,7 @@ void send_lures(const LLSD& notification, const LLSD& response)
 
 		msg->nextBlockFast(_PREHASH_TargetData);
 		msg->addUUIDFast(_PREHASH_TargetID, target_id);
+
 		// Record the offer.
 		if (notification["payload"]["ids"].size() < 10) // Singu Note: Do NOT spam chat!
 		{
@@ -7767,14 +7791,13 @@ void send_lures(const LLSD& notification, const LLSD& response)
 // [/RLVa:KB]
 			std::string target_name;
 			gCacheName->getFullName(target_id, target_name);  // for im log filenames
-
 			LLSD args;
 // [RLVa:KB] - Checked: 2014-03-31 (Catznip-3.6)
 			if (fRlvHideName)
 				target_name = RlvStrings::getAnonym(target_name);
 			else
 // [/RLVa:KB]
-				LLAvatarNameCache::getPNSName(target_id, target_name);
+				LLAvatarNameCache::getNSName(target_id, target_name);
 			args["TO_NAME"] = target_name;
 
 			LLSD payload;
@@ -8411,9 +8434,7 @@ void process_covenant_reply(LLMessageSystem* msg, void**)
 
 void callbackCacheEstateOwnerName(const LLUUID& id, const LLAvatarName& av_name)
 {
-	std::string name;
-	LLAvatarNameCache::getPNSName(av_name, name);
-
+	const std::string name(av_name.getNSName());
 	LLPanelEstateCovenant::updateEstateOwnerName(name);
 	LLPanelLandCovenant::updateEstateOwnerName(name);
 	LLPanelEstateInfo::updateEstateOwnerName(name);

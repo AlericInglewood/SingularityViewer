@@ -31,7 +31,6 @@ set(llcommon_SOURCE_FILES
     llapr.cpp
     llaprpool.cpp
     llassettype.cpp
-    llavatarname.cpp
     llbase32.cpp
     llbase64.cpp
     llcommon.cpp
@@ -135,7 +134,6 @@ set(llcommon_HEADER_FILES
     llassoclist.h
     llatomic.h
     llavatarconstants.h
-    llavatarname.h
     llbase32.h
     llbase64.h
     llboost.h
@@ -283,6 +281,8 @@ target_link_libraries(
     ${WINDOWS_LIBRARIES}
     ${Boost_CONTEXT_LIBRARY}
     ${Boost_REGEX_LIBRARY}
+    ${Boost_THREAD_LIBRARY}
+    ${Boost_SYSTEM_LIBRARY}
     ${CORESERVICES_LIBRARY}
     )
 

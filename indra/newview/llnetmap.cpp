@@ -314,7 +314,7 @@ void LLNetMap::draw()
 		static const LLCachedControl<LLColor4> live_region_color(gColors, "NetMapLiveRegion");
 		static const LLCachedControl<LLColor4> dead_region_color(gColors, "NetMapDeadRegion");
 // <FS:CR> Aurora Sim
-		//S32 region_width = llround(LLWorld::getInstance()->getRegionWidthInMeters());
+		//S32 region_width = llmath::llround(LLWorld::getInstance()->getRegionWidthInMeters());
 		S32 region_width = REGION_WIDTH_UNITS;
 // </FS:CR> Aurora Sim
 
@@ -329,14 +329,15 @@ void LLNetMap::draw()
 			F32 relative_x = (rel_region_pos.mV[0] / region_width) * mScale;
 			F32 relative_y = (rel_region_pos.mV[1] / region_width) * mScale;
 
+			const F32 real_width(regionp->getWidth());
 			// Background region rectangle.
 			F32 bottom =	relative_y;
 			F32 left =		relative_x;
 // <FS:CR> Aurora Sim
 			//F32 top =		bottom + mScale ;
 			//F32 right =		left + mScale ;
-			F32 top =		bottom + (regionp->getWidth() / REGION_WIDTH_METERS) * mScale ;
-			F32 right =		left + (regionp->getWidth() / REGION_WIDTH_METERS) * mScale ;
+			F32 top =		bottom + (real_width / REGION_WIDTH_METERS) * mScale ;
+			F32 right =		left + (real_width / REGION_WIDTH_METERS) * mScale ;
 // </FS:CR> Aurora Sim
 
 			if (regionp == region) gGL.color4fv(this_region_color().mV);
@@ -349,23 +350,34 @@ void LLNetMap::draw()
 
 			if (s_fUseWorldMapTextures)
 			{
-				LLViewerTexture* pRegionImage = regionp->getWorldMapTile();
-				if ( (pRegionImage) && (pRegionImage->hasGLTexture()) )
-				{
-					gGL.getTexUnit(0)->bind(pRegionImage);
-					gGL.begin(LLRender::QUADS);
-						gGL.texCoord2f(0.f, 1.f);
-						gGL.vertex2f(left, top);
-						gGL.texCoord2f(0.f, 0.f);
-						gGL.vertex2f(left, bottom);
-						gGL.texCoord2f(1.f, 0.f);
-						gGL.vertex2f(right, bottom);
-						gGL.texCoord2f(1.f, 1.f);
-						gGL.vertex2f(right, top);
-					gGL.end();
+				const LLViewerRegion::tex_matrix_t& tiles(regionp->getWorldMapTiles());
 
-					pRegionImage->setBoostLevel(LLViewerTexture::BOOST_MAP_VISIBLE);
-					fRenderTerrain = false;
+				for (S32 i(0), scaled_width(real_width/region_width), square_width(scaled_width*scaled_width); i < square_width; ++i)
+				{
+					const F32 y(i/scaled_width);
+					const F32 x(i - y*scaled_width);
+					const F32 local_left(left + x*mScale);
+					const F32 local_right(local_left + mScale);
+					const F32 local_bottom(bottom + y*mScale);
+					const F32 local_top(local_bottom + mScale);
+					LLViewerTexture* pRegionImage = tiles[x*scaled_width+y];
+					if (pRegionImage && pRegionImage->hasGLTexture())
+					{
+						gGL.getTexUnit(0)->bind(pRegionImage);
+						gGL.begin(LLRender::QUADS);
+							gGL.texCoord2f(0.f, 1.f);
+							gGL.vertex2f(local_left, local_top);
+							gGL.texCoord2f(0.f, 0.f);
+							gGL.vertex2f(local_left, local_bottom);
+							gGL.texCoord2f(1.f, 0.f);
+							gGL.vertex2f(local_right, local_bottom);
+							gGL.texCoord2f(1.f, 1.f);
+							gGL.vertex2f(local_right, local_top);
+						gGL.end();
+
+						pRegionImage->setBoostLevel(LLViewerTexture::BOOST_MAP_VISIBLE);
+						fRenderTerrain = false;
+					}
 				}
 			}
 // [/SL:KB]
@@ -638,8 +650,8 @@ void LLNetMap::draw()
 						(pos_map.mV[VX] >= getRect().getWidth()) ||
 						(pos_map.mV[VY] >= getRect().getHeight()) )
 					{
-						S32 x = llround( pos_map.mV[VX] );
-						S32 y = llround( pos_map.mV[VY] );
+						S32 x = llmath::llround( pos_map.mV[VX] );
+						S32 y = llmath::llround( pos_map.mV[VY] );
 
 						LLWorldMapView::drawTrackingCircle( getRect(), x, y, color, 1, 10);
 					}
@@ -675,13 +687,13 @@ void LLNetMap::draw()
 		}
 
 		pos_map = globalPosToView(gAgent.getPositionGlobal());
-		S32 dot_width = llround(mDotRadius * 2.f);
+		S32 dot_width = llmath::llround(mDotRadius * 2.f);
 		LLUIImagePtr you = LLWorldMapView::sAvatarYouLargeImage;
 
 		if (you)
 		{
-			you->draw(llround(pos_map.mV[VX] - mDotRadius),
-					  llround(pos_map.mV[VY] - mDotRadius),
+			you->draw(llmath::llround(pos_map.mV[VX] - mDotRadius),
+					  llmath::llround(pos_map.mV[VY] - mDotRadius),
 					  dot_width,
 					  dot_width);
 
@@ -844,8 +856,8 @@ void LLNetMap::drawTracking(const LLVector3d& pos_global, const LLColor4& color,
 	{
 		if (draw_arrow)
 		{
-			S32 x = llround( pos_local.mV[VX] );
-			S32 y = llround( pos_local.mV[VY] );
+			S32 x = llmath::llround( pos_local.mV[VX] );
+			S32 y = llmath::llround( pos_local.mV[VY] );
 			LLWorldMapView::drawTrackingCircle( getRect(), x, y, color, 1, 10 );
 			LLWorldMapView::drawTrackingArrow( getRect(), x, y, color );
 		}
@@ -861,8 +873,8 @@ void LLNetMap::drawTracking(const LLVector3d& pos_global, const LLColor4& color,
 
 LLVector3d LLNetMap::viewPosToGlobal( S32 x, S32 y )
 {
-	x -= llround(getRect().getWidth() / 2 + mCurPan.mV[VX]);
-	y -= llround(getRect().getHeight() / 2 + mCurPan.mV[VY]);
+	x -= llmath::llround(getRect().getWidth() / 2 + mCurPan.mV[VX]);
+	y -= llmath::llround(getRect().getHeight() / 2 + mCurPan.mV[VY]);
 
 	LLVector3 pos_local( (F32)x, (F32)y, 0 );
 
@@ -952,7 +964,7 @@ BOOL LLNetMap::handleToolTip( S32 x, S32 y, std::string& tool_tip, LLRect* stick
 					LLVector3d targetPosition = (*current).second;
 
 					std::string fullName;
-					if (targetUUID.notNull() && LLAvatarNameCache::getPNSName(targetUUID, fullName))
+					if (targetUUID.notNull() && LLAvatarNameCache::getNSName(targetUUID, fullName))
 					{
 						//tool_tip.append(fullName);
 // [RLVa:KB] - Version: 1.23.4 | Checked: 2009-07-08 (RLVa-1.0.0e) | Modified: RLVa-0.2.0b
@@ -1008,8 +1020,8 @@ void LLNetMap::setDirectionPos( LLTextBox* text_box, F32 rotation )
 	// Inset by a little to account for position display.
 	radius -= 8.f;
 
-	text_box->setOrigin(llround(half_width  + radius * cos( rotation )),
-						llround(half_height + radius * sin( rotation )));
+	text_box->setOrigin(llmath::llround(half_width  + radius * cos( rotation )),
+						llmath::llround(half_height + radius * sin( rotation )));
 }
 
 void LLNetMap::updateMinorDirections()
@@ -1038,7 +1050,7 @@ void LLNetMap::renderScaledPointGlobal( const LLVector3d& pos, const LLColor4U &
 	const F32 MAX_RADIUS = 256.0f;
 	F32 radius_clamped = llmin(radius_meters, MAX_RADIUS);
 
-	S32 diameter_pixels = llround(2 * radius_clamped * mObjectMapTPM);
+	S32 diameter_pixels = llmath::llround(2 * radius_clamped * mObjectMapTPM);
 	renderPoint( local_pos, color, diameter_pixels );
 }
 
@@ -1054,8 +1066,8 @@ void LLNetMap::renderPoint(const LLVector3 &pos_local, const LLColor4U &color,
 	const S32 image_width = (S32)mObjectImagep->getWidth();
 	const S32 image_height = (S32)mObjectImagep->getHeight();
 
-	S32 x_offset = llround(pos_local.mV[VX] * mObjectMapTPM + image_width / 2);
-	S32 y_offset = llround(pos_local.mV[VY] * mObjectMapTPM + image_height / 2);
+	S32 x_offset = llmath::llround(pos_local.mV[VX] * mObjectMapTPM + image_width / 2);
+	S32 y_offset = llmath::llround(pos_local.mV[VY] * mObjectMapTPM + image_height / 2);
 
 	if ((x_offset < 0) || (x_offset >= image_width))
 	{
@@ -1135,25 +1147,26 @@ void LLNetMap::renderPropertyLinesForRegion(const LLViewerRegion* pRegion, const
 	const S32 imgHeight = (S32)mParcelImagep->getHeight();
 
 	const LLVector3 originLocal(pRegion->getOriginGlobal() - mParcelImageCenterGlobal);
-	const S32 originX = llround(originLocal.mV[VX] * mObjectMapTPM + imgWidth / 2);
-	const S32 originY = llround(originLocal.mV[VY] * mObjectMapTPM + imgHeight / 2);
+	const S32 originX = llmath::llround(originLocal.mV[VX] * mObjectMapTPM + imgWidth / 2);
+	const S32 originY = llmath::llround(originLocal.mV[VY] * mObjectMapTPM + imgHeight / 2);
 
 	U32* pTextureData = (U32*)mParcelRawImagep->getData();
 
 	//
 	// Draw the north and east region borders
 	//
-	const S32 borderY = originY + llround(REGION_WIDTH_METERS * mObjectMapTPM);
+	const F32 real_width(pRegion->getWidth());
+const S32 borderY = originY + llmath::llround(real_width * mObjectMapTPM);
 	if ( (borderY >= 0) && (borderY < imgHeight) )
 	{
-		S32 curX = llclamp(originX, 0, imgWidth), endX = llclamp(originX + llround(REGION_WIDTH_METERS * mObjectMapTPM), 0, imgWidth - 1);
+		S32 curX = llclamp(originX, 0, imgWidth), endX = llclamp(originX + llmath::llround(real_width * mObjectMapTPM), 0, imgWidth - 1);
 		for (; curX <= endX; curX++)
 			pTextureData[borderY * imgWidth + curX] = clrOverlay.mAll;
 	}
-	const S32 borderX = originX + llround(REGION_WIDTH_METERS * mObjectMapTPM);
+	const S32 borderX = originX + llmath::llround(real_width * mObjectMapTPM);
 	if ( (borderX >= 0) && (borderX < imgWidth) )
 	{
-		S32 curY = llclamp(originY, 0, imgHeight), endY = llclamp(originY + llround(REGION_WIDTH_METERS * mObjectMapTPM), 0, imgHeight - 1);
+		S32 curY = llclamp(originY, 0, imgHeight), endY = llclamp(originY + llmath::llround(real_width * mObjectMapTPM), 0, imgHeight - 1);
 		for (; curY <= endY; curY++)
 			pTextureData[curY * imgWidth + borderX] = clrOverlay.mAll;
 	}
@@ -1162,7 +1175,7 @@ void LLNetMap::renderPropertyLinesForRegion(const LLViewerRegion* pRegion, const
 	// Render parcel lines
 	//
 	static const F32 GRID_STEP = PARCEL_GRID_STEP_METERS;
-	static const S32 GRIDS_PER_EDGE = REGION_WIDTH_METERS / GRID_STEP;
+	static const S32 GRIDS_PER_EDGE = real_width / GRID_STEP;
 
 	const U8* pOwnership = pRegion->getParcelOverlay()->getOwnership();
 	const U8* pCollision = (pRegion->getHandle() == LLViewerParcelMgr::instance().getCollisionRegionHandle()) ? LLViewerParcelMgr::instance().getCollisionBitmap() : NULL;
@@ -1177,17 +1190,17 @@ void LLNetMap::renderPropertyLinesForRegion(const LLViewerRegion* pRegion, const
 			if ( (!fForSale) && (!fCollision) && (0 == (overlay & (PARCEL_SOUTH_LINE | PARCEL_WEST_LINE))) )
 				continue;
 
-			const S32 posX = originX + llround(idxCol * GRID_STEP * mObjectMapTPM);
-			const S32 posY = originY + llround(idxRow * GRID_STEP * mObjectMapTPM);
+			const S32 posX = originX + llmath::llround(idxCol * GRID_STEP * mObjectMapTPM);
+			const S32 posY = originY + llmath::llround(idxRow * GRID_STEP * mObjectMapTPM);
 
 			static LLCachedControl<bool> s_fForSaleParcels(gSavedSettings, "MiniMapForSaleParcels");
 			static LLCachedControl<bool> s_fShowCollisionParcels(gSavedSettings, "MiniMapCollisionParcels");
 			if ( ((s_fForSaleParcels) && (fForSale)) || ((s_fShowCollisionParcels) && (fCollision)) )
 			{
-				S32 curY = llclamp(posY, 0, imgHeight), endY = llclamp(posY + llround(GRID_STEP * mObjectMapTPM), 0, imgHeight - 1);
+				S32 curY = llclamp(posY, 0, imgHeight), endY = llclamp(posY + llmath::llround(GRID_STEP * mObjectMapTPM), 0, imgHeight - 1);
 				for (; curY <= endY; curY++)
 				{
-					S32 curX = llclamp(posX, 0, imgWidth) , endX = llclamp(posX + llround(GRID_STEP * mObjectMapTPM), 0, imgWidth - 1);
+					S32 curX = llclamp(posX, 0, imgWidth) , endX = llclamp(posX + llmath::llround(GRID_STEP * mObjectMapTPM), 0, imgWidth - 1);
 					for (; curX <= endX; curX++)
 					{
 						pTextureData[curY * imgWidth + curX] = (fForSale) ? LLColor4U(255, 255, 128, 192).mAll
@@ -1199,7 +1212,7 @@ void LLNetMap::renderPropertyLinesForRegion(const LLViewerRegion* pRegion, const
 			{
 				if ( (posY >= 0) && (posY < imgHeight) )
 				{
-					S32 curX = llclamp(posX, 0, imgWidth), endX = llclamp(posX + llround(GRID_STEP * mObjectMapTPM), 0, imgWidth - 1);
+					S32 curX = llclamp(posX, 0, imgWidth), endX = llclamp(posX + llmath::llround(GRID_STEP * mObjectMapTPM), 0, imgWidth - 1);
 					for (; curX <= endX; curX++)
 						pTextureData[posY * imgWidth + curX] = clrOverlay.mAll;
 				}
@@ -1208,7 +1221,7 @@ void LLNetMap::renderPropertyLinesForRegion(const LLViewerRegion* pRegion, const
 			{
 				if ( (posX >= 0) && (posX < imgWidth) )
 				{
-					S32 curY = llclamp(posY, 0, imgHeight), endY = llclamp(posY + llround(GRID_STEP * mObjectMapTPM), 0, imgHeight - 1);
+					S32 curY = llclamp(posY, 0, imgHeight), endY = llclamp(posY + llmath::llround(GRID_STEP * mObjectMapTPM), 0, imgHeight - 1);
 					for (; curY <= endY; curY++)
 						pTextureData[curY * imgWidth + posX] = clrOverlay.mAll;
 				}
@@ -1227,7 +1240,7 @@ bool LLNetMap::createImage(LLPointer<LLImageRaw>& rawimagep) const
 	// ... which is, the diagonal of the rect.
 	F32 width = (F32)getRect().getWidth();
 	F32 height = (F32)getRect().getHeight();
-	S32 square_size = llround( sqrt(width*width + height*height) );
+	S32 square_size = llmath::llround( sqrt(width*width + height*height) );
 
 	// Find the least power of two >= the minimum size.
 	const S32 MIN_SIZE = 64;
