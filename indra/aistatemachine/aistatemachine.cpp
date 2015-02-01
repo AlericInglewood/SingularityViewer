@@ -768,7 +768,7 @@ void AIStateMachine::multiplex(event_type event)
 		mMultiplexMutex.unlock();
 	  }
 
-	  // Now it is safe to leave the critical area of mState as the tryLock won't fail anymore.
+	  // Now it is safe to leave the critical area of mState as the try_lock won't fail anymore.
 	  // (Or, if we didn't release mMultiplexMutex because keep_looping is true, then this
 	  // end of the critical area of mState is equivalent to the first critical area in this
 	  // function.

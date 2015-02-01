@@ -191,7 +191,7 @@ void intrusive_ptr_release(DatabaseThreadLockSingleton* p)
 boost::intrusive_ptr<DatabaseThreadLockSingleton> DatabaseThreadLockSingleton::trylock(void)
 {
   boost::intrusive_ptr<DatabaseThreadLockSingleton> res;
-  if (mMutex.tryLock())
+  if (mMutex.try_lock())
   {
     res = DatabaseThreadLockSingleton::getInstance();
     mMutex.unlock();    // This never releases the mutex, since the previous line caused lock() to be called, incrementing LLMutexBase::mCount.
@@ -232,7 +232,7 @@ void DatabaseThreadLock::multiplex_impl(state_type run_state)
     {
       DatabaseThreadLockSingleton::Condition_t& condition(DatabaseThreadLockSingleton::instance().mCondition);
       int count = 0;
-      // This causes DatabaseThreadLockSingleton::trylock to be called which, if mMutex.tryLock() succeeds,
+      // This causes DatabaseThreadLockSingleton::trylock to be called which, if mMutex.try_lock() succeeds,
       // causes intrusive_ptr_add_ref(DatabaseThreadLockSingleton*) to be called which causes mMutex to be
       // locked recursively a second time (which never blocks because we already hold the lock).
       // Subsequently mMutex is unlocked once (still leaving it locked).
