@@ -213,13 +213,13 @@ void LLFloaterCustomize::refreshCurrentOutfitName(const std::string& name)
 				//mCurrentLookName->setText(outfit_name);
 				LLStringUtil::format_map_t args;
 				args["[OUTFIT]"] = outfit_name;
-				mMakeOutfitBtn->add(getString("Save changes to", args), true);
+				mMakeOutfitBtn->add(getString("Save changes to", args), LLSD(true));
 				return;
 		}
 
 		std::string string_name = gAgentWearables.isCOFChangeInProgress() ? "Changing outfits" : "No Outfit";
 		//mCurrentLookName->setText(getString(string_name));
-		mMakeOutfitBtn->add(getString(string_name), false);
+		mMakeOutfitBtn->add(getString(string_name), LLSD());
 		//mOpenOutfitBtn->setEnabled(FALSE);
 	}
 	else
@@ -227,7 +227,7 @@ void LLFloaterCustomize::refreshCurrentOutfitName(const std::string& name)
 		//mCurrentLookName->setText(name);
 		LLStringUtil::format_map_t args;
 		args["[OUTFIT]"] = name;
-		mMakeOutfitBtn->add(getString("Save changes to", args), true);
+		mMakeOutfitBtn->add(getString("Save changes to", args), LLSD(true));
 		// Can't just call update verbs since the folder link may not have been created yet.
 		//mOpenOutfitBtn->setEnabled(TRUE);
 	}

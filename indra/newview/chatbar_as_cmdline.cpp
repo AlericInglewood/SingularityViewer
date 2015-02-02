@@ -219,9 +219,7 @@ struct ProfCtrlListAccum : public LLControlGroup::ApplyFunctor
 #endif //PROF_CTRL_CALLS
 void spew_key_to_name(const LLUUID& targetKey, const LLAvatarName& av_name)
 {
-	std::string object_name;
-	LLAvatarNameCache::getPNSName(av_name, object_name);
-	cmdline_printchat(llformat("%s: %s", targetKey.asString().c_str(), object_name.c_str()));
+	cmdline_printchat(llformat("%s: %s", targetKey.asString().c_str(), av_name.getNSName().c_str()));
 }
 bool cmd_line_chat(std::string revised_text, EChatType type)
 {
@@ -525,37 +523,24 @@ LLUUID cmdline_partial_name2key(std::string partial_name)
 	std::string av_name;
 	LLStringUtil::toLower(partial_name);
 	LLWorld::getInstance()->getAvatars(&avatars);
-	typedef std::vector<LLUUID>::const_iterator av_iter;
 	bool has_avatarlist = LLFloaterAvatarList::instanceExists();
-	if(has_avatarlist)
+	if (has_avatarlist)
 		LLFloaterAvatarList::getInstance()->updateAvatarList();
-	for(av_iter i = avatars.begin(); i != avatars.end(); ++i)
+	for(std::vector<LLUUID>::const_iterator i = avatars.begin(); i != avatars.end(); ++i)
 	{
-		if(has_avatarlist)
-		{
-			LLAvatarListEntry* entry = LLFloaterAvatarList::getInstance()->getAvatarEntry(*i);
-			if(entry)
-			{
-				av_name = entry->getName();
-			}
-		}
-		if (av_name.empty() && !gCacheName->getFullName(*i, av_name))
-		{
-			LLVOAvatar *avatarp = gObjectList.findAvatar(*i);
-			if(avatarp)
-			{
-				av_name = avatarp->getFullname();
-			}
-		}
+		if (LLAvatarListEntry* entry = has_avatarlist ? LLFloaterAvatarList::instance().getAvatarEntry(*i) : NULL)
+			av_name = entry->getName();
+		else if (gCacheName->getFullName(*i, av_name));
+		else if (LLVOAvatar* avatarp = gObjectList.findAvatar(*i))
+			av_name = avatarp->getFullname();
+		else
+			continue;
 		LLStringUtil::toLower(av_name);
-		if(strstr(av_name.c_str(), partial_name.c_str()))
-		{
+		if (av_name.find(partial_name) != std::string::npos)
 			return *i;
-		}
 	}
 	return LLUUID::null;
 }
-					
 
 
 void cmdline_tp2name(std::string target)

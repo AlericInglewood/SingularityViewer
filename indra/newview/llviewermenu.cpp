@@ -3811,12 +3811,11 @@ class LLEditEnableCustomizeAvatar : public view_listener_t
 
 class LLEditEnableChangeDisplayname : public view_listener_t
 {
-       bool handleEvent(LLPointer<LLEvent> event, const LLSD& userdata)
-       {
-               bool new_value = LLAvatarNameCache::useDisplayNames();
-               gMenuHolder->findControl(userdata["control"].asString())->setValue(new_value);
-               return true;
-       }
+	bool handleEvent(LLPointer<LLEvent> event, const LLSD& userdata)
+	{
+		gMenuHolder->findControl(userdata["control"].asString())->setValue(LLAvatarName::useDisplayNames());
+		return true;
+	}
 };
 
 bool is_object_sittable()
@@ -8868,6 +8867,15 @@ class SinguVisibleDebugConsole : public view_listener_t
 	}
 };
 
+class VisibleSecondLife : public view_listener_t
+{
+	bool handleEvent(LLPointer<LLEvent> event, const LLSD& userdata)
+	{
+		gMenuHolder->findControl(userdata["control"].asString())->setValue(gHippoGridManager->getCurrentGrid()->isSecondLife());
+		return true;
+	}
+};
+
 class VisibleNotSecondLife : public view_listener_t
 {
 	bool handleEvent(LLPointer<LLEvent> event, const LLSD& userdata)
@@ -9528,6 +9536,7 @@ void initialize_menus()
 	}
 // [/RLVa:KB]
 
+	addMenu(new VisibleSecondLife(), "VisibleSecondLife");
 	addMenu(new VisibleNotSecondLife(), "VisibleNotSecondLife");
 
 	// List-bound menus
@@ -9565,7 +9574,24 @@ void initialize_menus()
 
 	add_radar_listeners();
 
-	LLToolMgr::getInstance()->initMenu(sMenus);
+	class LLViewBuildMode : public view_listener_t
+	{
+		bool handleEvent(LLPointer<LLEvent> event, const LLSD& userdata)
+		{
+			LLToolMgr::getInstance()->toggleBuildMode();
+			return true;
+		}
+	};
+	class LLViewCheckBuildMode : public view_listener_t
+	{
+		bool handleEvent(LLPointer<LLEvent> event, const LLSD& userdata)
+		{
+			gMenuHolder->findControl(userdata["control"].asString())->setValue(LLToolMgr::getInstance()->inEdit());
+			return true;
+		}
+	};
+	addMenu(new LLViewBuildMode(), "View.BuildMode");
+	addMenu(new LLViewCheckBuildMode(), "View.CheckBuildMode");
 }
 
 void region_change()

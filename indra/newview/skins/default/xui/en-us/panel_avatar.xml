@@ -9,7 +9,9 @@
 [PAYMENTINFO]
 [AGEVERIFICATION]
 			</string>
-      <button bottom="-24" follows="left|top" halign="right" height="16" label="Copy Key:" left="4" font="SansSerifSmall" tool_tip="Copy key to clipboard" name="copy_key" width="70"/>
+      <flyout_button bottom="-24" follows="left|top" height="16" label="Copy:" left="4" font="SansSerifSmall" tool_tip="Copy key to clipboard, press the arrow for other copy options" name="copy_flyout" width="70">
+        <flyout_button_item label="Copy SLURL" name="copy_slurl_item" value="1"/>
+      </flyout_button>
       <name_editor bevel_style="in" border_style="line"
 			     border_thickness="1" bottom="-24" enabled="false" follows="left|top"
 			     font="SansSerifSmall" height="16" is_unicode="false" left_delta="75"
@@ -156,7 +158,7 @@
 			     label="Instant Message..." label_selected="Instant Message..."
 			     left_delta="71" mouse_opaque="true" name="Instant Message..."
 			     tool_tip="Instant Message (IM)" width="140" />
-			<button bottom="-470" font="SansSerifSmall" halign="center" height="20" label="(Un)Mute"
+			<button bottom="-470" font="SansSerifSmall" halign="center" height="20" label="Mute" label_selected="Unmute" toggle="true"
 			     left_delta="141" mouse_opaque="true" name="Mute"
 			     width="60" />
 			<button bottom="-470" font="SansSerif" halign="center" height="20" label="Invite to Group"

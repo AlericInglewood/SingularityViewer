@@ -846,8 +846,8 @@ BOOL LLViewerWindow::handleAnyMouseClick(LLWindow *window,  LLCoordGL pos, MASK 
 	BOOL handled = FALSE;
 	S32 x = pos.mX;
 	S32 y = pos.mY;
-	x = llround((F32)x / mDisplayScale.mV[VX]);
-	y = llround((F32)y / mDisplayScale.mV[VY]);
+	x = llmath::llround((F32)x / mDisplayScale.mV[VX]);
+	y = llmath::llround((F32)y / mDisplayScale.mV[VY]);
 
 	if (down)
 		{
@@ -1021,8 +1021,8 @@ BOOL LLViewerWindow::handleRightMouseDown(LLWindow *window,  LLCoordGL pos, MASK
 {
 	S32 x = pos.mX;
 	S32 y = pos.mY;
-	x = llround((F32)x / mDisplayScale.mV[VX]);
-	y = llround((F32)y / mDisplayScale.mV[VY]);
+	x = llmath::llround((F32)x / mDisplayScale.mV[VX]);
+	y = llmath::llround((F32)y / mDisplayScale.mV[VY]);
 
 	LLView::sMouseHandlerMessage.clear();
 
@@ -1220,8 +1220,8 @@ void LLViewerWindow::handleMouseMove(LLWindow *window,  LLCoordGL pos, MASK mask
 	S32 x = pos.mX;
 	S32 y = pos.mY;
 
-	x = llround((F32)x / mDisplayScale.mV[VX]);
-	y = llround((F32)y / mDisplayScale.mV[VY]);
+	x = llmath::llround((F32)x / mDisplayScale.mV[VX]);
+	y = llmath::llround((F32)y / mDisplayScale.mV[VY]);
 
 	mMouseInWindow = TRUE;
 
@@ -1373,6 +1373,13 @@ BOOL LLViewerWindow::handleTranslatedKeyUp(KEY key,  MASK mask)
 	// Let the voice chat code check for its PTT key.  Note that this never affects event processing.
 	LLVoiceClient::getInstance()->keyUp(key, mask);
 
+	// Let the inspect tool code check for ALT key to set LLToolSelectRect active instead LLToolCamera
+	LLToolCompInspect * tool_inspectp = LLToolCompInspect::getInstance();
+	if (LLToolMgr::getInstance()->getCurrentTool() == tool_inspectp)
+	{
+		tool_inspectp->keyUp(key, mask);
+	}
+
 	return FALSE;
 }
 
@@ -1380,7 +1387,7 @@ BOOL LLViewerWindow::handleTranslatedKeyUp(KEY key,  MASK mask)
 void LLViewerWindow::handleScanKey(KEY key, BOOL key_down, BOOL key_up, BOOL key_level)
 {
 	LLViewerJoystick::getInstance()->setCameraNeedsUpdate(true);
-	return gViewerKeyboard.scanKey(key, key_down, key_up, key_level);
+	gViewerKeyboard.scanKey(key, key_down, key_up, key_level);
 }
 
 
@@ -1665,7 +1672,7 @@ LLViewerWindow::LLViewerWindow(
 	{
 		LLSplashScreen::update(LLTrans::getString("StartupRequireDriverUpdate"));
 	
-		LL_WARNS("Window") << "Failed to create window, to be shutting Down, be sure your graphics driver is updated." << llendl ;
+		LL_WARNS("Window") << "Failed to create window, to be shutting Down, be sure your graphics driver is updated." << LL_ENDL ;
 
 		ms_sleep(5000) ; //wait for 5 seconds.
 
@@ -1709,7 +1716,7 @@ LLViewerWindow::LLViewerWindow(
 		LLCoordWindow size;
 		mWindow->getSize(&size);
 		mWindowRectRaw.set(0, size.mY, size.mX, 0);
-		mWindowRectScaled.set(0, llround((F32)size.mY / mDisplayScale.mV[VY]), llround((F32)size.mX / mDisplayScale.mV[VX]), 0);
+		mWindowRectScaled.set(0, llmath::llround((F32)size.mY / mDisplayScale.mV[VY]), llmath::llround((F32)size.mX / mDisplayScale.mV[VX]), 0);
 	}
 	
 	LLFontManager::initClass();
@@ -2391,8 +2398,8 @@ void LLViewerWindow::reshape(S32 width, S32 height)
 		LLUI::setScaleFactor(mDisplayScale);
 
 		// update our window rectangle
-		mWindowRectScaled.mRight = mWindowRectScaled.mLeft + llround((F32)width / mDisplayScale.mV[VX]);
-		mWindowRectScaled.mTop = mWindowRectScaled.mBottom + llround((F32)height / mDisplayScale.mV[VY]);
+		mWindowRectScaled.mRight = mWindowRectScaled.mLeft + llmath::llround((F32)width / mDisplayScale.mV[VX]);
+		mWindowRectScaled.mTop = mWindowRectScaled.mBottom + llmath::llround((F32)height / mDisplayScale.mV[VY]);
 
 		setup2DViewport();
 
@@ -2553,8 +2560,8 @@ void LLViewerWindow::draw()
 		microsecondsToTimecodeString(gFrameTime,text);
 		const LLFontGL* font = LLFontGL::getFontSansSerif();
 		font->renderUTF8(text, 0,
-						llround((getWindowWidthScaled()/2)-100.f),
-						llround((getWindowHeightScaled()-60.f)),
+						llmath::llround((getWindowWidthScaled()/2)-100.f),
+						llmath::llround((getWindowHeightScaled()-60.f)),
 			LLColor4( 1.f, 1.f, 1.f, 1.f ),
 			LLFontGL::LEFT, LLFontGL::TOP);
 	}
@@ -2654,7 +2661,7 @@ void LLViewerWindow::draw()
 			const S32 DIST_FROM_TOP = 20;
 			LLFontGL::getFontSansSerifBig()->renderUTF8(
 				mOverlayTitle, 0,
-				llround( getWindowWidthScaled() * 0.5f),
+				llmath::llround( getWindowWidthScaled() * 0.5f),
 				getWindowHeightScaled() - DIST_FROM_TOP,
 				LLColor4(1, 1, 1, 0.4f),
 				LLFontGL::HCENTER, LLFontGL::TOP);
@@ -3366,10 +3373,8 @@ void LLViewerWindow::updateLayout()
 			||	(tool != LLToolPie::getInstance()						// not default tool
 				&& tool != LLToolCompGun::getInstance()					// not coming out of mouselook
 				&& !suppress_toolbox									// not override in third person
-				&& LLToolMgr::getInstance()->getCurrentToolset() != gFaceEditToolset	// not special mode
-				&& LLToolMgr::getInstance()->getCurrentToolset() != gMouselookToolset
+				&& LLToolMgr::getInstance()->getCurrentToolset()->isShowFloaterTools()
 				&& (!captor || dynamic_cast<LLView*>(captor) != NULL)))						// not dragging
-
 		{
 			// Force floater tools to be visible (unless minimized)
 			if (!gFloaterTools->getVisible())
@@ -3406,7 +3411,7 @@ void LLViewerWindow::updateLayout()
 	}
 
 	// Update rectangles for the various toolbars
-	if (gOverlayBar && gNotifyBoxView && gConsole && gToolBar && gHUDView)
+	if (gOverlayBar && gNotifyBoxView && gToolBar && gHUDView)
 	{
 		LLRect bar_rect(-1, STATUS_BAR_HEIGHT, getWindowWidth()+1, -1);
 
@@ -3456,10 +3461,13 @@ void LLViewerWindow::updateLayout()
 		{
 			gFloaterView->setSnapOffsetBottom(0);
 		}
+	}
 
-		// Always update console
+	// Always update console
+	if (gConsole)
+	{
 		LLRect console_rect = getChatConsoleRect();
-		console_rect.mBottom = gHUDView->getRect().mBottom + getChatConsoleBottomPad();
+		if (gHUDView) console_rect.mBottom = gHUDView->getRect().mBottom + getChatConsoleBottomPad();
 		gConsole->reshape(console_rect.getWidth(), console_rect.getHeight());
 		gConsole->setRect(console_rect);
 	}
@@ -3506,7 +3514,7 @@ void LLViewerWindow::updateMouseDelta()
 		fdx = fdx + ((F32) dx - fdx) * llmin(gFrameIntervalSeconds*amount,1.f);
 		fdy = fdy + ((F32) dy - fdy) * llmin(gFrameIntervalSeconds*amount,1.f);
 
-		mCurrentMouseDelta.set(llround(fdx), llround(fdy));
+		mCurrentMouseDelta.set(llmath::llround(fdx), llmath::llround(fdy));
 		mouse_vel.setVec(fdx,fdy);
 	}
 	else
@@ -3559,6 +3567,7 @@ void LLViewerWindow::updateKeyboardFocus()
 			cur_focus->focusFirstItem();
 		}
 	}
+
 	// last ditch force of edit menu to selection manager
 	if (LLEditMenuHandler::gEditMenuHandler == NULL && LLSelectMgr::getInstance()->getSelection()->getObjectCount())
 	{
@@ -3597,6 +3606,7 @@ void LLViewerWindow::saveLastMouse(const LLCoordGL &point)
 {
 	// Store last mouse location.
 	// If mouse leaves window, pretend last point was on edge of window
+
 	if (point.mX < 0)
 	{
 		mCurrentMousePoint.mX = 0;
@@ -3886,6 +3896,8 @@ void LLViewerWindow::schedulePick(LLPickInfo& pick_info)
 	mPicks.push_back(pick_info);
 
 	// delay further event processing until we receive results of pick
+	// only do this for async picks so that handleMouseUp won't be called
+	// until the pick triggered in handleMouseDown has been processed, for example
 	mWindow->delayInputProcessing();
 }
 
@@ -3963,6 +3975,7 @@ LLHUDIcon* LLViewerWindow::cursorIntersectIcon(S32 mouse_x, S32 mouse_y, F32 dep
 	}
 
 	// world coordinates of mouse
+	// VECTORIZE THIS
 	LLVector3 mouse_direction_global = mouseDirectionGlobal(x,y);
 	LLVector3 mouse_point_global = LLViewerCamera::getInstance()->getOrigin();
 	LLVector3 mouse_world_start = mouse_point_global;
@@ -4258,7 +4271,7 @@ BOOL LLViewerWindow::mousePointOnLandGlobal(const S32 x, const S32 y, LLVector3d
 		S32 grids_per_edge = (S32) regionp->getLand().mGridsPerEdge;
 		if ((i >= grids_per_edge) || (j >= grids_per_edge))
 		{
-			//llinfos << "LLViewerWindow::mousePointOnLand probe_point is out of region" << llendl;
+			//LL_INFOS() << "LLViewerWindow::mousePointOnLand probe_point is out of region" << LL_ENDL;
 			continue;
 		}
 
@@ -4305,7 +4318,7 @@ BOOL LLViewerWindow::mousePointOnLandGlobal(const S32 x, const S32 y, LLVector3d
 			j = (S32) (local_probe_point.mV[VY]/regionp->getLand().getMetersPerGrid());
 			if ((i >= regionp->getLand().mGridsPerEdge) || (j >= regionp->getLand().mGridsPerEdge))
 			{
-				// llinfos << "LLViewerWindow::mousePointOnLand probe_point is out of region" << llendl;
+				// LL_INFOS() << "LLViewerWindow::mousePointOnLand probe_point is out of region" << LL_ENDL;
 				continue;
 			}
 			land_z = regionp->getLand().mSurfaceZ[ i + j * (regionp->getLand().mGridsPerEdge) ];
@@ -4313,7 +4326,7 @@ BOOL LLViewerWindow::mousePointOnLandGlobal(const S32 x, const S32 y, LLVector3d
 
 			land_z = regionp->getLand().resolveHeightRegion(probe_point_region);
 
-			//llinfos << "mousePointOnLand refine z " << land_z << llendl;
+			//LL_INFOS() << "mousePointOnLand refine z " << land_z << LL_ENDL;
 
 			if (probe_point_region.mV[VZ] < land_z)
 			{
@@ -4739,7 +4752,9 @@ bool LLViewerWindow::rawRawSnapshot(LLImageRaw *raw,
 	S32 original_width = 0;
 	S32 original_height = 0;
 	bool reset_deferred = false;
+
 	LLRenderTarget scratch_space;
+
 	if ((image_width > window_width || image_height > window_height) && LLPipeline::sRenderDeferred && !show_ui)
 	{
 		if (scratch_space.allocate(image_width, image_height, GL_RGBA, true, true))
@@ -4789,10 +4804,10 @@ bool LLViewerWindow::rawRawSnapshot(LLImageRaw *raw,
 	// However, if the buffer turns out to be too large, then clamp it to max_size.
 		scale_factor = llmin(max_size / snapshot_width, max_size / snapshot_height))	// Clamp
 	{
-		image_buffer_x = llround(unscaled_image_buffer_x * scale_factor);
-		image_buffer_y = llround(unscaled_image_buffer_y * scale_factor);
-		S32 image_size_x = llround(snapshot_width * scale_factor);
-		S32 image_size_y = llround(snapshot_width * scale_factor);
+		image_buffer_x = llmath::llround(unscaled_image_buffer_x * scale_factor);
+		image_buffer_y = llmath::llround(unscaled_image_buffer_y * scale_factor);
+		S32 image_size_x = llmath::llround(snapshot_width * scale_factor);
+		S32 image_size_y = llmath::llround(snapshot_width * scale_factor);
 		if (llmax(image_size_x, image_size_y) > max_size &&		// Boundary check to avoid memory overflow.
 			internal_scale <= 1.f && !reset_deferred)				// SHY_MOD: If supersampling... Don't care about max_size.
 		{
@@ -4955,6 +4970,7 @@ bool LLViewerWindow::rawRawSnapshot(LLImageRaw *raw,
 		LLHUDObject::reshapeAll();
 	}
 
+
 	setCursor(UI_CURSOR_ARROW);
 
 	if (do_rebuild)
@@ -5059,7 +5075,7 @@ void LLViewerWindow::drawMouselookInstructions()
 		INSTRUCTIONS_PAD,
 		getWindowHeight() - INSTRUCTIONS_PAD,
 		font->getWidth( instructions ) + 2 * INSTRUCTIONS_PAD,
-		llround(font->getLineHeight() + 2 * INSTRUCTIONS_PAD));
+		llmath::llround(font->getLineHeight() + 2 * INSTRUCTIONS_PAD));
 
 	{
 		gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
@@ -5669,8 +5685,8 @@ void LLViewerWindow::calcDisplayScale()
 
 	if (mWindow->getFullscreen())
 	{
-		display_scale.mV[0] = llround(display_scale.mV[0], 2.0f/(F32) mWindowRectRaw.getWidth());
-		display_scale.mV[1] = llround(display_scale.mV[1], 2.0f/(F32) mWindowRectRaw.getHeight());
+		display_scale.mV[0] = llmath::llround(display_scale.mV[0], 2.0f/(F32) mWindowRectRaw.getWidth());
+		display_scale.mV[1] = llmath::llround(display_scale.mV[1], 2.0f/(F32) mWindowRectRaw.getHeight());
 	}
 
 	if (display_scale != mDisplayScale)
@@ -5954,8 +5970,8 @@ void LLPickInfo::updateXYCoords()
 		LLPointer<LLViewerTexture> imagep = LLViewerTextureManager::getFetchedTexture(tep->getID());
 		if(mUVCoords.mV[VX] >= 0.f && mUVCoords.mV[VY] >= 0.f && imagep.notNull())
 		{
-			mXYCoords.mX = llround(mUVCoords.mV[VX] * (F32)imagep->getWidth());
-			mXYCoords.mY = llround((1.f - mUVCoords.mV[VY]) * (F32)imagep->getHeight());
+			mXYCoords.mX = llmath::llround(mUVCoords.mV[VX] * (F32)imagep->getWidth());
+			mXYCoords.mY = llmath::llround((1.f - mUVCoords.mV[VY]) * (F32)imagep->getHeight());
 		}
 	}
 }
@@ -5984,7 +6000,7 @@ void LLPickInfo::getSurfaceInfo()
 
 	if (objectp)
 	{
-		if (gViewerWindow->cursorIntersect(llround((F32)mMousePt.mX), llround((F32)mMousePt.mY), 1024.f,
+		if (gViewerWindow->cursorIntersect(llmath::llround((F32)mMousePt.mX), llmath::llround((F32)mMousePt.mY), 1024.f,
 										   objectp, -1, mPickTransparent,
 										   &mObjectFace,
 										   &intersection,
@@ -6042,8 +6058,8 @@ LLVector2 LLPickInfo::pickUV()
 		objectp->mDrawable.notNull() && objectp->getPCode() == LL_PCODE_VOLUME &&
 		mObjectFace < objectp->mDrawable->getNumFaces())
 	{
-		S32 scaled_x = llround((F32)mPickPt.mX * gViewerWindow->getDisplayScale().mV[VX]);
-		S32 scaled_y = llround((F32)mPickPt.mY * gViewerWindow->getDisplayScale().mV[VY]);
+		S32 scaled_x = llmath::llround((F32)mPickPt.mX * gViewerWindow->getDisplayScale().mV[VX]);
+		S32 scaled_y = llmath::llround((F32)mPickPt.mY * gViewerWindow->getDisplayScale().mV[VY]);
 		const S32 UV_PICK_WIDTH = 5;
 		const S32 UV_PICK_HALF_WIDTH = (UV_PICK_WIDTH - 1) / 2;
 		U8 uv_pick_buffer[UV_PICK_WIDTH * UV_PICK_WIDTH * 4];
