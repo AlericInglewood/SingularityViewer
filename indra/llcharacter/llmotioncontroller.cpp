@@ -908,8 +908,10 @@ void LLMotionController::updateMotions(bool force_update)
 			clearBlenders();
 
 			mTimeStepCount = quantum_count;
-			llassert((F32)quantum_count * mTimeStep >= mAnimTime); // mAnimTime may never be set back in time.
-			mAnimTime = (F32)quantum_count * mTimeStep;
+			// Singu note: mAnimTime may never be set back in time.
+			// Despite the llmax/llceil above, (F32)quantum_count * mTimeStep can still
+			// be a tiny bit smaller than mAnimTime due to floating point round off errors.
+			mAnimTime = llmax(mAnimTime, (F32)quantum_count * mTimeStep);
 			mLastInterp = 0.f;
 		}
 		else
