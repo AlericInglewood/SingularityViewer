@@ -1054,7 +1054,8 @@ void LLKeyframeMotion::applyConstraint(JointConstraint* constraint, F32 time, U8
 	{
 	case CONSTRAINT_TARGET_TYPE_GROUND:
 		target_pos = mCharacter->getPosAgentFromGlobal(constraint->mGroundPos);
-//		llinfos << "Target Pos " << constraint->mGroundPos << " on " << mCharacter->findCollisionVolume(shared_data->mSourceConstraintVolume)->getName() << llendl;
+		target_pos += mCharacter->getHoverOffset();
+//		LL_INFOS() << "Target Pos " << constraint->mGroundPos << " on " << mCharacter->findCollisionVolume(shared_data->mSourceConstraintVolume)->getName() << LL_ENDL;
 		break;
 	case CONSTRAINT_TARGET_TYPE_BODY:
 		target_pos = mCharacter->getVolumePos(shared_data->mTargetConstraintVolume, shared_data->mTargetConstraintOffset);
@@ -1118,7 +1119,7 @@ void LLKeyframeMotion::applyConstraint(JointConstraint* constraint, F32 time, U8
 
 	LLVector3 source_to_target = target_pos - keyframe_source_pos;
 	
-	S32 max_iteration_count = llmath::llround(clamp_rescale(
+	S32 max_iteration_count = ll_round(clamp_rescale(
 										  mCharacter->getPixelArea(),
 										  MAX_PIXEL_AREA_CONSTRAINTS,
 										  MIN_PIXEL_AREA_CONSTRAINTS,

@@ -1388,9 +1388,9 @@
           <key>darwin</key>
           <map>
             <key>md5sum</key>
-            <string>8eb5462ea9d469bce4b0d22bd8f0c33b</string>
+            <string>68a8fab5ad3a180487598d3a3e0d57b1</string>
             <key>url</key>
-            <uri>https://bitbucket.org/SingularityViewer/libraries/downloads/slvoice-4.6.0009.20030-darwin-20140312-rpk.tar.bz2</uri>
+            <uri>http://automated-builds-secondlife-com.s3.amazonaws.com/hg/repo/slvoice_3p-update-slvoice/rev/298329/arch/Darwin/installer/slvoice-4.6.0017.21209.298329-darwin-298329.tar.bz2</uri>
           </map>
           <key>linux</key>
           <map>
@@ -1409,16 +1409,16 @@
           <key>windows</key>
           <map>
             <key>md5sum</key>
-            <string>4a6b9cf0f1e2767240de21af3338ffd7</string>
+            <string>399afab7047e6fa62e7b2fb1768059ea</string>
             <key>url</key>
-            <uri>https://bitbucket.org/SingularityViewer/libraries/downloads/slvoice-4.6.0009.20030-windows-20140312-rpk.tar.bz2</uri>
+            <uri>http://automated-builds-secondlife-com.s3.amazonaws.com/hg/repo/slvoice_3p-update-slvoice/rev/298329/arch/CYGWIN/installer/slvoice-4.6.0017.21209.298329-windows-298329.tar.bz2</uri>
           </map>
           <key>windows64</key>
           <map>
             <key>md5sum</key>
-            <string>4a6b9cf0f1e2767240de21af3338ffd7</string>
+            <string>399afab7047e6fa62e7b2fb1768059ea</string>
             <key>url</key>
-            <uri>https://bitbucket.org/SingularityViewer/libraries/downloads/slvoice-4.6.0009.20030-windows-20140312-rpk.tar.bz2</uri>
+            <uri>http://automated-builds-secondlife-com.s3.amazonaws.com/hg/repo/slvoice_3p-update-slvoice/rev/298329/arch/CYGWIN/installer/slvoice-4.6.0017.21209.298329-windows-298329.tar.bz2</uri>
           </map>
         </map>
       </map>

@@ -1167,7 +1167,7 @@ LLTextureCtrl::LLTextureCtrl(
 	S32 image_top = getRect().getHeight();
 	S32 image_bottom = BTN_HEIGHT_SMALL;
 	S32 image_middle = (image_top + image_bottom) / 2;
-	S32 line_height = llmath::llround(LLFontGL::getFontSansSerifSmall()->getLineHeight());
+	S32 line_height = ll_round(LLFontGL::getFontSansSerifSmall()->getLineHeight());
 
 	mTentativeLabel = new LLTextBox( std::string("Multiple"), 
 		LLRect( 
@@ -1727,6 +1727,7 @@ BOOL LLTextureCtrl::doDrop(LLInventoryItem* item)
 	// no callback installed, so just set the image ids and carry on.
 	setImageAssetID( item->getAssetUUID() );
 	mImageItemID = item->getUUID();
+	mDirty = true;
 	return TRUE;
 }
 

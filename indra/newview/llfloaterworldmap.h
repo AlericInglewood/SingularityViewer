@@ -132,6 +132,7 @@ protected:
 	void			onShowTargetBtn();
 	void			onShowAgentBtn();
 	void			onCopySLURL();
+	void			onTrackRegion();
 
 	void			centerOnTarget(BOOL animate);
 	void			updateLocation();
@@ -192,7 +193,7 @@ private:
 	LLVector3d				mTrackedLocation;
 	LLTracker::ETrackingStatus mTrackedStatus;
 	std::string				mTrackedSimName;
-	std::string				mTrackedAvatarName;
+	LLUUID					mTrackedAvatarID;
 	LLSLURL				mSLURL;
 
 	LLCtrlListInterface *	mListFriendCombo;

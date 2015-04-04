@@ -103,6 +103,8 @@ private:
 	std::string mCmdLineAway;
 	std::string mCmdLineRegionSay;
 	std::string mCmdLineURL;
+	std::string mCmdLineResync;
+	std::string mCmdLineHover;
 
 	//Security ----------------------------------------------------------------------------
 	bool mBroadcastViewerEffects;
@@ -113,6 +115,7 @@ private:
 	bool mLookAtLines;
 	bool mQuietSnapshotsToDisk;
 	bool mAnnounceBumps;
+	bool mSitOnAway;
 	bool mDetachBridge;
 	bool mRevokePermsOnStandUp;
 	bool mDisableClickSit;

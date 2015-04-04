@@ -139,6 +139,11 @@ size_t strnlen(const char *s, size_t n)
 }
 #endif
 
+const F32 MAX_HOVER_Z = 2.0;
+const F32 MIN_HOVER_Z = -2.0;
+
+// #define OUTPUT_BREAST_DATA
+
 using namespace LLAvatarAppearanceDefines;
 
 //-----------------------------------------------------------------------------
@@ -909,48 +914,55 @@ const LLUUID SHClientTagMgr::getClientID(const LLVOAvatar* pAvatar) const
 	}
 	return tag.asUUID();
 }
+bool getColorFor(const LLUUID& id, LLViewerRegion* parent_estate, LLColor4& color, bool name_restricted = false)
+{
+	static const LLCachedControl<LLColor4> ascent_linden_color("AscentLindenColor");
+	static const LLCachedControl<LLColor4> ascent_estate_owner_color("AscentEstateOwnerColor" );
+	static const LLCachedControl<LLColor4> ascent_friend_color("AscentFriendColor");
+	static const LLCachedControl<LLColor4> ascent_muted_color("AscentMutedColor");
+	//Lindens are always more Linden than your friend, make that take precedence
+	if (LLMuteList::getInstance()->isLinden(id))
+		color = ascent_linden_color;
+	//check if they are an estate owner at their current position
+	else if (parent_estate && parent_estate->isAlive() && id.notNull() && id == parent_estate->getOwner())
+		color = ascent_estate_owner_color;
+	//without these dots, SL would suck.
+	else if (!name_restricted && LLAvatarTracker::instance().isBuddy(id))
+		color = ascent_friend_color;
+	//big fat jerkface who is probably a jerk, display them as such.
+	else if (LLMuteList::getInstance()->isMuted(id))
+		color = ascent_muted_color;
+	else
+		return false;
+	return true;
+}
 bool mm_getMarkerColor(const LLUUID&, LLColor4&);
+bool getCustomColor(const LLUUID& id, LLColor4& color, LLViewerRegion* parent_estate)
+{
+	return mm_getMarkerColor(id, color) || getColorFor(id, parent_estate, color);
+}
+bool getCustomColorRLV(const LLUUID& id, LLColor4& color, LLViewerRegion* parent_estate, bool name_restricted)
+{
+	return mm_getMarkerColor(id, color) || getColorFor(id, parent_estate, color, name_restricted);
+}
 bool SHClientTagMgr::getClientColor(const LLVOAvatar* pAvatar, bool check_status, LLColor4& color) const
 {
-	if (mm_getMarkerColor(pAvatar->getID(), color)) return true;
+	const LLUUID& id(pAvatar->getID());
+	if (mm_getMarkerColor(id, color)) return true;
 	static const LLCachedControl<bool> ascent_use_status_colors("AscentUseStatusColors",true);
 	static const LLCachedControl<bool> ascent_show_self_tag_color("AscentShowSelfTagColor");
 	static const LLCachedControl<bool> ascent_show_others_tag_color("AscentShowOthersTagColor");
 
-	if(check_status && ascent_use_status_colors && !pAvatar->isSelf())
+	if (check_status && ascent_use_status_colors && !pAvatar->isSelf())
 	{
-		LLViewerRegion* parent_estate = LLWorld::getInstance()->getRegionFromPosGlobal(pAvatar->getPositionGlobal());
-		if(LLMuteList::getInstance()->isLinden(pAvatar->getFullname()))
-		{
-			static const LLCachedControl<LLColor4> ascent_linden_color( "AscentLindenColor" );
-			color = ascent_linden_color.get();
+		if (getColorFor(id, pAvatar->getRegion(), color, false))
 			return true;
-		}
-		else if(pAvatar->getID().notNull() && parent_estate && parent_estate->isAlive() && pAvatar->getID() == parent_estate->getOwner())
-		{
-			static const LLCachedControl<LLColor4> ascent_estate_owner_color( "AscentEstateOwnerColor" );
-			color = ascent_estate_owner_color.get();
-			return true;
-		}
-		else if(LLAvatarTracker::instance().isBuddy(pAvatar->getID()))
-		{
-			static const LLCachedControl<LLColor4> ascent_friend_color( "AscentFriendColor" );
-			color = ascent_friend_color.get();
-			return true;
-		}
-		else if(LLMuteList::getInstance()->isMuted(pAvatar->getID()))
-		{
-			static const LLCachedControl<LLColor4> ascent_muted_color( "AscentMutedColor" );
-			color = ascent_muted_color.get();
-			return true;
-		}
 	}
 	std::map<LLUUID, LLSD>::const_iterator it;
 	LLSD tag;
 	if(
-		((pAvatar->isSelf() && ascent_show_self_tag_color) ||
-		(!pAvatar->isSelf() && ascent_show_others_tag_color)) &&
-		 (it = mAvatarTags.find(pAvatar->getID()))!=mAvatarTags.end() &&
+		(pAvatar->isSelf() ? ascent_show_self_tag_color : ascent_show_others_tag_color) &&
+		 (it = mAvatarTags.find(id))!=mAvatarTags.end() &&
 		 (tag = it->second.get("color")).isDefined())
 	{
 		color.setValue(tag);
@@ -1084,6 +1096,7 @@ LLVOAvatar::LLVOAvatar(const LLUUID& id,
 	mFreezeTimeLangolier = freeze_time;
 
 	//VTResume();  // VTune
+	setHoverOffset(LLVector3(0.0, 0.0, 0.0));
 	
 	// mVoiceVisualizer is created by the hud effects manager and uses the HUD Effects pipeline
 	const bool needsSendToSim = false; // currently, this HUD effect doesn't need to pack and unpack data to do its job
@@ -3810,7 +3823,8 @@ BOOL LLVOAvatar::updateCharacter(LLAgent &agent)
 	if (gSavedSettings.getBOOL("DebugAvatarAppearanceMessage"))
 	{
 		S32 central_bake_version = -1;
-		if (getRegion())
+		LLViewerRegion* region = getRegion();
+		if (region)
 		{
 			central_bake_version = getRegion()->getCentralBakeVersion();
 		}
@@ -3823,9 +3837,10 @@ BOOL LLVOAvatar::updateCharacter(LLAgent &agent)
 										  mUseServerBakes, central_bake_version);
 		std::string origin_string = bakedTextureOriginInfo();
 		debug_line += " [" + origin_string + "]";
-		S32 curr_cof_version = LLAppearanceMgr::instance().getCOFVersion();
-		S32 last_request_cof_version = LLAppearanceMgr::instance().getLastUpdateRequestCOFVersion();
-		S32 last_received_cof_version = LLAppearanceMgr::instance().getLastAppearanceUpdateCOFVersion();
+		const LLAppearanceMgr& appmgr(LLAppearanceMgr::instance());
+		S32 curr_cof_version = appmgr.getCOFVersion();
+		S32 last_request_cof_version = appmgr.getLastUpdateRequestCOFVersion();
+		S32 last_received_cof_version = appmgr.getLastAppearanceUpdateCOFVersion();
 		if (isSelf())
 		{
 			debug_line += llformat(" - cof: %d req: %d rcv:%d",
@@ -3834,6 +3849,16 @@ BOOL LLVOAvatar::updateCharacter(LLAgent &agent)
 		else
 		{
 			debug_line += llformat(" - cof rcv:%d", last_received_cof_version);
+		}
+		debug_line += llformat(" bsz-z: %f avofs-z: %f", mBodySize[2], mAvatarOffset[2]);
+		bool hover_enabled = region && region->avatarHoverHeightEnabled();
+		debug_line += hover_enabled ? " H" : " h";
+		const LLVector3& hover_offset = getHoverOffset();
+		if (hover_offset[2] != 0.0)
+		{
+			debug_line += llformat(" hov_z: %f", hover_offset[2]);
+			debug_line += llformat(" %s", (mIsSitting ? "S" : "T"));
+			debug_line += llformat("%s", (isMotionActive(ANIM_AGENT_SIT_GROUND_CONSTRAINED) ? "G" : "-"));
 		}
 		addDebugText(debug_line);
 	}
@@ -4022,6 +4047,9 @@ BOOL LLVOAvatar::updateCharacter(LLAgent &agent)
 	LLVector3 xyVel = getVelocity();
 	xyVel.mV[VZ] = 0.0f;
 	speed = xyVel.length();
+	// remembering the value here prevents a display glitch if the
+	// animation gets toggled during this update.
+	bool was_sit_ground_constrained = isMotionActive(ANIM_AGENT_SIT_GROUND_CONSTRAINED);
 
 	if (!(mIsSitting && getParent()))
 	{
@@ -4078,6 +4106,10 @@ BOOL LLVOAvatar::updateCharacter(LLAgent &agent)
 		// correct for the fact that the pelvis is not necessarily the center 
 		// of the agent's physical representation
 		root_pos.mdV[VZ] -= (0.5f * mBodySize.mV[VZ]) - mPelvisToFoot;
+		if (!mIsSitting && !was_sit_ground_constrained)
+		{
+			root_pos += LLVector3d(getHoverOffset());
+		}
 		
 		LLVector3 newPosition = gAgent.getPosAgentFromGlobal(root_pos);
 
@@ -4255,8 +4287,11 @@ BOOL LLVOAvatar::updateCharacter(LLAgent &agent)
 	}
 	else if (mDrawable.notNull())
 	{
-		mRoot->setPosition(mDrawable->getPosition());
-		mRoot->setRotation(mDrawable->getRotation());
+		LLVector3 pos = mDrawable->getPosition();
+		const LLQuaternion& rot = mDrawable->getRotation();
+		pos += getHoverOffset() * rot;
+		mRoot->setPosition(pos);
+		mRoot->setRotation(rot);
 	}
 	
 	//-------------------------------------------------------------------------
@@ -4270,6 +4305,19 @@ BOOL LLVOAvatar::updateCharacter(LLAgent &agent)
 		updateMotions(LLCharacter::FORCE_UPDATE);
 	else
 		updateMotions(LLCharacter::NORMAL_UPDATE);
+
+	// Special handling for sitting on ground.
+	if (!getParent() && (mIsSitting || was_sit_ground_constrained))
+	{
+		F32 off_z = LLVector3d(getHoverOffset()).mdV[VZ];
+		if (off_z != 0.0)
+		{
+			LLVector3 pos = mRoot->getWorldPosition();
+			pos.mV[VZ] += off_z;
+			mRoot->touch();
+			mRoot->setWorldPosition(pos);
+		}
+	}
 
 	// update head position
 	updateHeadOffset();
@@ -7933,6 +7981,8 @@ struct LLAppearanceMessageContents
 	//U32 appearance_flags = 0;
 	std::vector<F32> mParamWeights;
 	std::vector<LLVisualParam*> mParams;
+	LLVector3 mHoverOffset;
+	bool mHoverOffsetWasSet;
 };
 
 void LLVOAvatar::parseAppearanceMessage(LLMessageSystem* mesgsys, LLAppearanceMessageContents& contents)
@@ -7949,6 +7999,17 @@ void LLVOAvatar::parseAppearanceMessage(LLMessageSystem* mesgsys, LLAppearanceMe
 		mesgsys->getS32Fast(_PREHASH_AppearanceData, _PREHASH_CofVersion, contents.mCOFVersion, 0);
 		// For future use:
 		//mesgsys->getU32Fast(_PREHASH_AppearanceData, _PREHASH_Flags, appearance_flags, 0);
+	}
+
+	// Parse the AppearanceHover field, if any.
+	contents.mHoverOffsetWasSet = false;
+	if (mesgsys->has(_PREHASH_AppearanceHover))
+	{
+		LLVector3 hover;
+		mesgsys->getVector3Fast(_PREHASH_AppearanceHover, _PREHASH_HoverHeight, hover);
+		LL_DEBUGS("Avatar") << avString() << " hover received " << hover.mV[ VX ] << "," << hover.mV[ VY ] << "," << hover.mV[ VZ ] << LL_ENDL;
+		contents.mHoverOffset = hover;
+		contents.mHoverOffsetWasSet = true;
 	}
 
 	// Parse visual params, if any.
@@ -8014,7 +8075,7 @@ void LLVOAvatar::parseAppearanceMessage(LLMessageSystem* mesgsys, LLAppearanceMe
 		if (it != contents.mParams.end())
 		{
 			S32 index = it - contents.mParams.begin();
-			contents.mParamAppearanceVersion = llmath::llround(contents.mParamWeights[index]);
+			contents.mParamAppearanceVersion = ll_round(contents.mParamWeights[index]);
 			LL_DEBUGS("Avatar") << "appversion req by appearance_version param: " << contents.mParamAppearanceVersion << LL_ENDL;
 		}
 	}
@@ -8261,6 +8322,22 @@ void LLVOAvatar::processAvatarAppearance( LLMessageSystem* mesgsys )
 			llinfos << "That's okay, we already have a non-default shape for object: "  << getID() << llendl;
 			// we don't really care.
 		}
+	}
+
+	if (contents.mHoverOffsetWasSet && !isSelf())
+	{
+		// Got an update for some other avatar
+		// Ignore updates for self, because we have a more authoritative value in the preferences.
+		setHoverOffset(contents.mHoverOffset);
+		LL_INFOS("Avatar") << avString() << "setting hover from message" << contents.mHoverOffset[2] << LL_ENDL;
+	}
+
+	if (!contents.mHoverOffsetWasSet && !isSelf())
+	{
+		// If we don't get a value at all, we are presumably in a
+		// region that does not support hover height.
+		llwarns << avString() << "zeroing hover because not defined in appearance message" << LL_ENDL;
+		setHoverOffset(LLVector3(0.0, 0.0, 0.0));
 	}
 
 	setCompositeUpdatesEnabled( TRUE );
@@ -8938,20 +9015,14 @@ void LLVOAvatar::updateSoftwareSkinnedVertices(const LLMeshSkinInfo* skin, const
 			final_mat.add(src);
 		}
 		
-		LLVector4a& v = vol_face.mPositions[j];
-		LLVector4a t;
-		LLVector4a dst;
-		bind_shape_matrix.affineTransform(v, t);
-		final_mat.affineTransform(t, dst);
-		pos[j] = dst;
+		final_mat.mul(bind_shape_matrix);
+		final_mat.affineTransform(vol_face.mPositions[j], pos[j]);
 
 		if (norm)
 		{
-			LLVector4a& n = vol_face.mNormals[j];
-			bind_shape_matrix.rotate(n, t);
-			final_mat.rotate(t, dst);
-			dst.normalize3fast();
-			norm[j] = dst;
+			final_mat.invert();
+			final_mat.transpose();
+			final_mat.affineTransform(vol_face.mNormals[j], norm[j]);
 		}
 	}
 }

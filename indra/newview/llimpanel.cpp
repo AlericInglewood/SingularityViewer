@@ -336,6 +336,9 @@ LLFloaterIMPanel::LLFloaterIMPanel(
 		mFactoryMap["active_speakers_panel"] = LLCallbackMap(createSpeakersPanel, this);
 		mVoiceChannel = new LLVoiceChannelGroup(mSessionUUID, mLogLabel);
 		break;
+	default:
+		llwarns << "Unknown session type: " << mDialog << llendl;
+		// fallthrough, Singu TODO: Find out which cases this happens in, seems to only be P2P, though.
 	// just received text from another user
 	case IM_NOTHING_SPECIAL:
 		mTextIMPossible = LLVoiceClient::getInstance()->isSessionTextIMPossible(mSessionUUID);
@@ -346,9 +349,6 @@ LLFloaterIMPanel::LLFloaterIMPanel(
 		LLAvatarTracker::instance().addParticularFriendObserver(mOtherParticipantUUID, this);
 		LLMuteList::instance().addObserver(this);
 		mDing = gSavedSettings.getBOOL("LiruNewMessageSoundIMsOn");
-		break;
-	default:
-		llwarns << "Unknown session type" << llendl;
 		break;
 	}
 
@@ -444,9 +444,6 @@ LLFloaterIMPanel::~LLFloaterIMPanel()
 	
 	delete mVoiceChannel;
 	mVoiceChannel = NULL;
-
-	//delete focus lost callback
-	mFocusLostSignal.disconnect();
 }
 
 // virtual
@@ -484,7 +481,7 @@ BOOL LLFloaterIMPanel::postBuild()
 		mInputEditor = getChild<LLLineEditor>("chat_editor");
 		mInputEditor->setAutoreplaceCallback(boost::bind(&LLAutoReplace::autoreplaceCallback, LLAutoReplace::getInstance(), _1, _2, _3, _4, _5));
 		mInputEditor->setFocusReceivedCallback( boost::bind(&LLFloaterIMPanel::onInputEditorFocusReceived, this) );
-		mFocusLostSignal = mInputEditor->setFocusLostCallback(boost::bind(&LLFloaterIMPanel::setTyping, this, false));
+		mInputEditor->setFocusLostCallback(boost::bind(&LLFloaterIMPanel::setTyping, this, false));
 		mInputEditor->setKeystrokeCallback( boost::bind(&LLFloaterIMPanel::onInputEditorKeystroke, this, _1) );
 		mInputEditor->setCommitCallback( boost::bind(&LLFloaterIMPanel::onSendMsg,this) );
 		mInputEditor->setCommitOnFocusLost( FALSE );
