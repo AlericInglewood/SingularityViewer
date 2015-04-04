@@ -82,6 +82,7 @@ set(viewer_SOURCE_FILES
     NACLantispam.cpp
     aihttpview.cpp
     aixmllindengenepool.cpp
+    alfloaterregiontracker.cpp
     aoremotectrl.cpp
     ascentfloatercontactgroups.cpp
     ascentkeyword.cpp
@@ -94,9 +95,9 @@ set(viewer_SOURCE_FILES
     floaterao.cpp
     floaterlocalassetbrowse.cpp
     floatervoicelicense.cpp
-	generichandlers.cpp
-    hbfloatergrouptitles.cpp
+    generichandlers.cpp
     groupchatlistener.cpp
+    hbfloatergrouptitles.cpp
     hippofloaterxml.cpp
     hippogridmanager.cpp
     hippolimits.cpp
@@ -611,6 +612,7 @@ set(viewer_HEADER_FILES
     NACLantispam.h
     aihttpview.h
     aixmllindengenepool.h
+    alfloaterregiontracker.h
     aoremotectrl.h
     ascentfloatercontactgroups.h
     ascentkeyword.h
@@ -623,7 +625,7 @@ set(viewer_HEADER_FILES
     floaterao.h
     floaterlocalassetbrowse.h
     floatervoicelicense.h
-	generichandlers.h
+    generichandlers.h
     groupchatlistener.h
     hbfloatergrouptitles.h
     hippofloaterxml.h
@@ -1137,8 +1139,6 @@ set(viewer_HEADER_FILES
     shcommandhandler.h
     shfloatermediaticker.h
     wlfPanel_AdvSettings.h
-    VertexCache.h
-    VorbisFramework.h
     )
 
 source_group("CMake Rules" FILES ViewerInstall.cmake)

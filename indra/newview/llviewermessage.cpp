@@ -1176,7 +1176,7 @@ bool check_asset_previewable(const LLAssetType::EType asset_type)
 
 void open_inventory_offer(const uuid_vec_t& objects, const std::string& from_name)
 {
-	if (gAgent.getBusy()) return;
+	if (gAgent.isDoNotDisturb()) return;
 	for (uuid_vec_t::const_iterator obj_iter = objects.begin();
 		 obj_iter != objects.end();
 		 ++obj_iter)
@@ -1496,7 +1496,7 @@ bool LLOfferInfo::inventory_offer_callback(const LLSD& notification, const LLSD&
 		from_string = chatHistory_string = mFromName;
 	}
 	
-	bool busy = gAgent.getBusy();
+	bool busy = gAgent.isDoNotDisturb();
 	
 // [RLVa:KB] - Checked: 2010-09-23 (RLVa-1.2.1)
 	bool fRlvNotifyAccepted = false;
@@ -1800,7 +1800,7 @@ void inventory_offer_handler(LLOfferInfo* info)
 		return;
 	}
 
-	if (gAgent.getBusy() && info->mIM != IM_TASK_INVENTORY_OFFERED) // busy mode must not affect interaction with objects (STORM-565)
+	if (gAgent.isDoNotDisturb() && info->mIM != IM_TASK_INVENTORY_OFFERED) // busy mode must not affect interaction with objects (STORM-565)
 	{
 		// Until throttling is implemented, busy mode should reject inventory instead of silently
 		// accepting it.  SEE SL-39554
@@ -2164,6 +2164,27 @@ std::string replace_wildcards(std::string autoresponse, const LLUUID& id, const 
 	return autoresponse;
 }
 
+void autoresponder_finish(bool show_autoresponded, const LLUUID& computed_session_id, const LLUUID& from_id, const std::string& name, const LLUUID& itemid, bool is_muted)
+{
+	LLAvatarName av_name;
+	const std::string ns_name(LLAvatarNameCache::get(from_id, &av_name) ? av_name.getNSName() : name);
+	void cmdline_printchat(const std::string& message);
+	if (show_autoresponded)
+	{
+		const std::string notice(LLTrans::getString("IM_autoresponded_to") + ' ' + ns_name);
+		is_muted ? cmdline_printchat(notice) : gIMMgr->addMessage(computed_session_id, from_id, name, notice);
+	}
+	if (LLViewerInventoryItem* item = gInventory.getItem(itemid))
+	{
+		LLGiveInventory::doGiveInventoryItem(from_id, item, computed_session_id);
+		if (show_autoresponded)
+		{
+			const std::string notice(llformat("%s %s \"%s\"", ns_name.c_str(), LLTrans::getString("IM_autoresponse_sent_item").c_str(), item->getName().c_str()));
+			is_muted ? cmdline_printchat(notice) : gIMMgr->addMessage(computed_session_id, from_id, name, notice);
+		}
+	}
+}
+
 void process_improved_im(LLMessageSystem *msg, void **user_data)
 {
 	if (gNoRender)
@@ -2250,7 +2271,7 @@ void process_improved_im(LLMessageSystem *msg, void **user_data)
 		llinfos << "RegionID: " << region_id.asString() << llendl;
 	// </edit>
 
-	BOOL is_do_not_disturb = gAgent.getBusy();
+	bool is_do_not_disturb = gAgent.isDoNotDisturb();
 	BOOL is_muted = LLMuteList::getInstance()->isMuted(from_id, name, LLMute::flagTextChat)
 		// object IMs contain sender object id in session_id (STORM-1209)
 		|| dialog == IM_FROM_TASK && LLMuteList::getInstance()->isMuted(session_id);
@@ -2422,7 +2443,7 @@ void process_improved_im(LLMessageSystem *msg, void **user_data)
 					response = gSavedPerAccountSettings.getString("AutoresponseMutedMessage");
 					if (gSavedPerAccountSettings.getBOOL("AutoresponseMutedItem"))
 						itemid = static_cast<LLUUID>(gSavedPerAccountSettings.getString("AutoresponseMutedItemID"));
-					// We don't show that we've responded to mutes
+					show_autoresponded = gSavedPerAccountSettings.getBOOL("AutoresponseMutedShow");
 				}
 				else if (is_autorespond_nonfriends)
 				{
@@ -2442,7 +2463,7 @@ void process_improved_im(LLMessageSystem *msg, void **user_data)
 					gMessageSystem,
 					gAgentID,
 					FALSE,
-					gAgent.getSessionID(),
+					gAgentSessionID,
 					from_id,
 					my_name,
 					replace_wildcards(response, from_id, name),
@@ -2451,21 +2472,7 @@ void process_improved_im(LLMessageSystem *msg, void **user_data)
 					session_id);
 				gAgent.sendReliableMessage();
 
-				LLAvatarName av_name;
-				std::string ns_name = LLAvatarNameCache::get(from_id, &av_name) ? av_name.getNSName() : name;
-				if (show_autoresponded)
-				{
-					gIMMgr->addMessage(session_id, from_id, name, LLTrans::getString("IM_autoresponded_to") + " " + ns_name);
-				}
-				if (LLViewerInventoryItem* item = gInventory.getItem(itemid))
-				{
-					LLGiveInventory::doGiveInventoryItem(from_id, item, computed_session_id);
-					if (show_autoresponded)
-					{
-						gIMMgr->addMessage(computed_session_id, from_id, name,
-							llformat("%s %s \"%s\"", ns_name.c_str(), LLTrans::getString("IM_autoresponse_sent_item").c_str(), item->getName().c_str()));
-					}
-				}
+				autoresponder_finish(show_autoresponded, computed_session_id, from_id, name, itemid, is_muted);
 			}
 			// We stored the incoming IM in history before autoresponding, logically.
 		}
@@ -2561,7 +2568,7 @@ void process_improved_im(LLMessageSystem *msg, void **user_data)
 						gMessageSystem,
 						gAgentID,
 						FALSE,
-						gAgent.getSessionID(),
+						gAgentSessionID,
 						from_id,
 						my_name,
 						replace_wildcards(gSavedPerAccountSettings.getString("AutoresponseMutedMessage"), from_id, name),
@@ -2569,9 +2576,8 @@ void process_improved_im(LLMessageSystem *msg, void **user_data)
 						IM_BUSY_AUTO_RESPONSE,
 						session_id);
 					gAgent.sendReliableMessage();
-					if (gSavedPerAccountSettings.getBOOL("AutoresponseMutedItem"))
-						if (LLViewerInventoryItem* item = gInventory.getItem(static_cast<LLUUID>(gSavedPerAccountSettings.getString("AutoresponseMutedItemID"))))
-							LLGiveInventory::doGiveInventoryItem(from_id, item, computed_session_id);
+					LLAvatarName av_name;
+					autoresponder_finish(gSavedPerAccountSettings.getBOOL("AutoresponseMutedShow"), computed_session_id, from_id, LLAvatarNameCache::get(from_id, &av_name) ? av_name.getNSName() : name, gSavedPerAccountSettings.getBOOL("AutoresponseMutedItem") ? static_cast<LLUUID>(gSavedPerAccountSettings.getString("AutoresponseMutedItemID")) : LLUUID::null, true);
 				}
 			}
 		}
@@ -2624,19 +2630,7 @@ void process_improved_im(LLMessageSystem *msg, void **user_data)
 					pack_instant_message(gMessageSystem, gAgentID, false, gAgentSessionID, from_id, my_name, replace_wildcards(response, from_id, name), IM_ONLINE, IM_BUSY_AUTO_RESPONSE, session_id);
 					gAgent.sendReliableMessage();
 
-					if (show_autoresponded)
-					{
-						gIMMgr->addMessage(session_id, from_id, name, LLTrans::getString("IM_autoresponded_to") + " " + ns_name);
-					}
-					if (LLViewerInventoryItem* item = gInventory.getItem(itemid))
-					{
-						LLGiveInventory::doGiveInventoryItem(from_id, item, computed_session_id);
-						if (show_autoresponded)
-						{
-							gIMMgr->addMessage(computed_session_id, from_id, name,
-								llformat("%s %s \"%s\"", ns_name.c_str(), LLTrans::getString("IM_autoresponse_sent_item").c_str(), item->getName().c_str()));
-						}
-					}
+					autoresponder_finish(show_autoresponded, computed_session_id, from_id, name, itemid, is_muted);
 				}
 			}
 			LLPointer<LLIMInfo> im_info = new LLIMInfo(gMessageSystem);
@@ -3465,7 +3459,7 @@ void process_improved_im(LLMessageSystem *msg, void **user_data)
 
 void send_do_not_disturb_message (LLMessageSystem* msg, const LLUUID& from_id, const LLUUID& session_id)
 {
-	if (gAgent.getBusy())
+	if (gAgent.isDoNotDisturb())
 	{
 		std::string my_name;
 		LLAgentUI::buildFullname(my_name);
@@ -3488,7 +3482,7 @@ void send_do_not_disturb_message (LLMessageSystem* msg, const LLUUID& from_id, c
 		std::string ns_name = LLAvatarNameCache::get(from_id, &av_name) ? av_name.getNSName() : from_name;
 		LLUUID session_id;
 		msg->getUUIDFast(_PREHASH_MessageBlock, _PREHASH_ID, session_id);
-		if (gSavedPerAccountSettings.getBOOL("BusyModeResponseShow")) gIMMgr->addMessage(session_id, from_id, from_name, LLTrans::getString("IM_autoresponded_to") + " " + ns_name);
+		if (gSavedPerAccountSettings.getBOOL("BusyModeResponseShow")) gIMMgr->addMessage(session_id, from_id, from_name, LLTrans::getString("IM_autoresponded_to") + ' ' + ns_name);
 		if (!gSavedPerAccountSettings.getBOOL("BusyModeResponseItem")) return; // Not sending an item, finished
 		if (LLViewerInventoryItem* item = gInventory.getItem(static_cast<LLUUID>(gSavedPerAccountSettings.getString("BusyModeResponseItemID"))))
 		{
@@ -3584,7 +3578,7 @@ void process_offer_callingcard(LLMessageSystem* msg, void**)
 
 	if(!source_name.empty())
 	{
-		if (gAgent.getBusy() 
+		if (gAgent.isDoNotDisturb()
 			|| LLMuteList::getInstance()->isMuted(source_id, source_name, LLMute::flagTextChat))
 		{
 			// automatically decline offer
@@ -3810,7 +3804,7 @@ void process_chat_from_simulator(LLMessageSystem *msg, void **user_data)
 		chat.mFromName = from_name;
 	}
 
-	BOOL is_do_not_disturb = gAgent.getBusy();
+	bool is_do_not_disturb = gAgent.isDoNotDisturb();
 
 	BOOL is_muted = FALSE;
 	BOOL is_linden = FALSE;
@@ -3961,9 +3955,9 @@ void process_chat_from_simulator(LLMessageSystem *msg, void **user_data)
 			const LLViewerObject* obj(chatter ? chatter : gObjectList.findObject(owner_id));
 			// Compute the object SLURL.
 			LLVector3 pos = obj ? obj->getPositionRegion() : LLVector3::zero;
-			S32 x = llmath::llround((F32)fmod((F64)pos.mV[VX], (F64)REGION_WIDTH_METERS));
-			S32 y = llmath::llround((F32)fmod((F64)pos.mV[VY], (F64)REGION_WIDTH_METERS));
-			S32 z = llmath::llround((F32)pos.mV[VZ]);
+			S32 x = ll_round((F32)fmod((F64)pos.mV[VX], (F64)REGION_WIDTH_METERS));
+			S32 y = ll_round((F32)fmod((F64)pos.mV[VY], (F64)REGION_WIDTH_METERS));
+			S32 z = ll_round((F32)pos.mV[VZ]);
 			std::ostringstream location;
 			location << (obj ? obj->getRegion() : gAgent.getRegion())->getName() << "/" << x << "/" << y << "/" << z;
 			if (chatter != obj) location << "?owner_not_object";
@@ -4789,14 +4783,7 @@ void process_agent_movement_complete(LLMessageSystem* msg, void**)
 	}
 
 	// force simulator to recognize busy state
-	if (gAgent.getBusy())
-	{
-		gAgent.setBusy();
-	}
-	else
-	{
-		gAgent.clearBusy();
-	}
+	gAgent.setDoNotDisturb(gAgent.isDoNotDisturb());
 
 	if (isAgentAvatarValid())
 	{

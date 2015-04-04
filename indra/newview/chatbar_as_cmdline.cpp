@@ -66,9 +66,9 @@
 #include "llchat.h"
 
 #include "llfloaterchat.h"
+#include "rlvhandler.h"
 
-
-void cmdline_printchat(std::string message);
+void cmdline_printchat(const std::string& message);
 void cmdline_rezplat(bool use_saved_value = true, F32 visual_radius = 30.0);
 void cmdline_tp2name(std::string target);
 
@@ -241,6 +241,8 @@ bool cmd_line_chat(std::string revised_text, EChatType type)
 	static LLCachedControl<std::string> sSinguCmdLineAway(gSavedSettings,  "SinguCmdLineAway");
 	static LLCachedControl<std::string> sSinguCmdLineRegionSay(gSavedSettings,  "SinguCmdLineRegionSay");
 	static LLCachedControl<std::string> sSinguCmdLineURL(gSavedSettings,  "SinguCmdLineURL");
+	static LLCachedControl<std::string> sResyncAnimCommand(gSavedSettings, "AlchemyChatCommandResyncAnim", "/resync");
+	static LLCachedControl<std::string> sHoverHeight(gSavedSettings, "AlchemyChatCommandHoverHeight", "/hover");
 
 	if(sAscentCmdLine)
 	{
@@ -463,6 +465,34 @@ bool cmd_line_chat(std::string revised_text, EChatType type)
 				}
 				return false;
 			}
+			else if (command == utf8str_tolower(sHoverHeight)) // Hover height
+			{
+				F32 height;
+				if (i >> height)
+				{
+					gSavedPerAccountSettings.set("AvatarHoverOffsetZ",
+												 llclamp<F32>(height, MIN_HOVER_Z, MAX_HOVER_Z));
+					return false;
+				}
+			}
+			else if (command == utf8str_tolower(sResyncAnimCommand)) // Resync Animations
+			{
+				for (S32 i = 0; i < gObjectList.getNumObjects(); i++)
+				{
+					LLViewerObject* object = gObjectList.getObject(i);
+					if (object && object->isAvatar())
+					{
+						LLVOAvatar& avatarp = *(LLVOAvatar*)object;
+						for (LLVOAvatar::AnimIterator it = avatarp.mPlayingAnimations.begin(), end = avatarp.mPlayingAnimations.end(); it != end; ++it)
+						{
+							const std::pair<LLUUID, S32>& playpair = *it;
+							avatarp.stopMotion(playpair.first, TRUE);
+							avatarp.startMotion(playpair.first);
+						}
+					}
+				}
+				return false;
+			}
 			else if(command == "typingstop")
 			{
 				std::string text;
@@ -623,11 +653,11 @@ void cmdline_rezplat(bool use_saved_value, F32 visual_radius) //cmdline_rezplat(
 	msg->sendReliable(gAgent.getRegionHost());
 }
 
-void cmdline_printchat(std::string message)
+void cmdline_printchat(const std::string& message)
 {
-	LLChat chat;
-	chat.mText = message;
+	LLChat chat(message);
 	chat.mSourceType = CHAT_SOURCE_SYSTEM;
-	LLFloaterChat::addChat(chat, FALSE, FALSE);
+	if (rlv_handler_t::isEnabled()) chat.mRlvLocFiltered = chat.mRlvNamesFiltered = true;
+	LLFloaterChat::addChat(chat);
 }
 
