@@ -154,6 +154,9 @@ export SL_CMD='$LL_WRAPPER bin/$VIEWER_BINARY'
 if [ -n "$AITESTPLUGIN" ]; then
 	SL_CMD="$LL_WRAPPER bin/SLPlugin"
 	SL_OPT="TESTPLUGIN"
+elif [ -n "$AITESTSLVOICE" ]; then
+	SL_CMD="$LL_WRAPPER bin/SLVoice"
+	SL_OPT=""
 else
 	SL_OPT="`cat gridargs.dat` $@"
 fi

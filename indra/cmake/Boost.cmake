@@ -42,25 +42,25 @@ else (STANDALONE)
   elseif (LINUX)
     set(Boost_CONTEXT_LIBRARY
         optimized boost_context-mt
-        debug boost_context-mt-d)
+        debug boost_context-mt)
     set(Boost_FILESYSTEM_LIBRARY
         optimized boost_filesystem-mt
-        debug boost_filesystem-mt-d)
+        debug boost_filesystem-mt)
     set(Boost_PROGRAM_OPTIONS_LIBRARY
         optimized boost_program_options-mt
-        debug boost_program_options-mt-d)
+        debug boost_program_options-mt)
     set(Boost_REGEX_LIBRARY
         optimized boost_regex-mt
-        debug boost_regex-mt-d)
+        debug boost_regex-mt)
     set(Boost_SIGNALS_LIBRARY
         optimized boost_signals-mt
-        debug boost_signals-mt-d)
+        debug boost_signals-mt)
     set(Boost_SYSTEM_LIBRARY
         optimized boost_system-mt
-        debug boost_system-mt-d)
+        debug boost_system-mt)
     set(Boost_THREAD_LIBRARY
         optimized boost_thread-mt
-        debug boost_thread-mt-d)
+        debug boost_thread-mt)
   elseif (DARWIN)
     set(Boost_CONTEXT_LIBRARY
         optimized boost_context-mt
