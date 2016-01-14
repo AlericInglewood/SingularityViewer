@@ -1232,9 +1232,9 @@
           <key>linux64</key>
           <map>
             <key>md5sum</key>
-            <string>95fb425984de2005d514c42851ba1e5c</string>
+            <string>da542ac0c734c275b4663517cd49c554</string>
             <key>url</key>
-			<uri>https://github.com/AlericInglewood/3p-openssl/releases/download/linux64-20141121/openssl-1.0.1j-linux64-20141121.tar.bz2</uri>
+			<uri>https://github.com/AlericInglewood/3p-openssl/releases/download/linux64-20150413/openssl-1.0.1m-linux64-20150413.tar.bz2</uri>
           </map>
           <key>windows</key>
           <map>

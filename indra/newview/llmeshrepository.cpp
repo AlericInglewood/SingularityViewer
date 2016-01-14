@@ -673,11 +673,7 @@ void LLMeshRepoThread::run()
 
 		mSignal->wait();
 	}
-
-	if (mSignal->isLocked())
-	{ //make sure to let go of the mutex associated with the given signal before shutting down
-		mSignal->unlock();
-	}
+	mSignal->unlock();
 
 	res = LLConvexDecomposition::quitThread();
 	if (res != LLCD_OK)
@@ -3402,10 +3398,7 @@ void LLPhysicsDecomp::run()
 
 	decomp->quitThread();
 	
-	if (mSignal->isLocked())
-	{ //let go of mSignal's associated mutex
-		mSignal->unlock();
-	}
+	mSignal->unlock();
 
 	mDone = true;
 }
